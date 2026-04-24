@@ -537,7 +537,6 @@ function render() {
 const thumbMaps = {};
 
 function initThumbs(visible) {
-  // Use IntersectionObserver for lazy loading
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
@@ -546,9 +545,10 @@ function initThumbs(visible) {
       const f   = fieldsData[idx];
       if (!f || !f.ring || thumbMaps[idx]) return;
       observer.unobserve(el);
-      buildThumb(el, f, idx);
+      // Small delay so the container is fully painted before Leaflet reads its size
+      setTimeout(() => buildThumb(el, f, idx), 50);
     });
-  }, { threshold: 0.1 });
+  }, { threshold: 0.01, rootMargin: '100px' });
 
   document.querySelectorAll('[id^="thumb_"]').forEach(el => {
     const idx = parseInt(el.dataset.idx);
@@ -560,6 +560,9 @@ function initThumbs(visible) {
 function buildThumb(container, f, idx) {
   if (thumbMaps[idx]) return;
   try {
+    // Clear placeholder text
+    container.innerHTML = '';
+
     const m = L.map(container, {
       zoomControl:false, attributionControl:false,
       dragging:false, scrollWheelZoom:false,
@@ -575,7 +578,7 @@ function buildThumb(container, f, idx) {
       fillOpacity:0.08, dashArray:'5,4'
     }).addTo(m);
 
-    // Tree dots
+    // Tree dots — cap at 200 for performance
     const trees = treesByField[f.fieldId] || [];
     const step  = trees.length > 200 ? Math.ceil(trees.length / 200) : 1;
     trees.forEach((t, i) => {
@@ -587,8 +590,17 @@ function buildThumb(container, f, idx) {
       }).addTo(m);
     });
 
-    m.fitBounds(poly.getBounds(), { padding:[8,8] });
-    setTimeout(() => { try { m.invalidateSize(); } catch(e){} }, 100);
+    const bounds = poly.getBounds();
+    m.fitBounds(bounds, { padding:[8,8] });
+
+    // Multiple invalidateSize calls to handle late paint
+    setTimeout(() => {
+      try { m.invalidateSize(); m.fitBounds(bounds, { padding:[8,8] }); } catch(e){}
+    }, 100);
+    setTimeout(() => {
+      try { m.invalidateSize(); m.fitBounds(bounds, { padding:[8,8] }); } catch(e){}
+    }, 400);
+
     thumbMaps[idx] = m;
   } catch(e) {
     container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:10px">Map error</div>';
