@@ -241,6 +241,12 @@ input[type=text]:focus { border-color:var(--green); }
     <div class="cat-grid" id="catGrid">
       <div class="empty" style="grid-column:1/-1">Connect to Fieldforce to load fields and trees</div>
     </div>
+    <div style="padding:8px 12px;background:var(--panel);border-top:1px solid var(--border);
+      display:flex;align-items:center;gap:8px;flex-shrink:0;font-family:var(--mono);font-size:10px">
+      <button class="view-btn" id="btnPrev" onclick="changePage(-1)" disabled>← Prev</button>
+      <span style="color:var(--muted)" id="pageInfo">—</span>
+      <button class="view-btn" id="btnNext" onclick="changePage(1)" disabled>Next →</button>
+    </div>
   </div>
 </div>
 
@@ -495,38 +501,56 @@ function updateKPIs() {
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
+const PAGE_SIZE = 48;
+let currentPage = 1;
+let visibleCache = [];
+
 function render() {
   const filter = document.getElementById('fltStatus').value;
   const q      = document.getElementById('fltSearch').value.toLowerCase().trim();
-  const grid   = document.getElementById('catGrid');
 
   if (!fieldsData.length) return;
 
-  const visible = fieldsData.filter(f => {
+  visibleCache = fieldsData.filter(f => {
     if (q && !f.fieldId.toLowerCase().includes(q) &&
               !f.owner.toLowerCase().includes(q)) return false;
     const trees = treesByField[f.fieldId] || [];
-    if (filter === 'no_poly')   return !f.ring;
-    if (filter === 'no_trees')  return trees.length === 0;
-    if (!f.ring) return filter === '' ;
-    if (filter === 'inside') {
-      return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
-    }
-    if (filter === 'outside') {
-      return trees.some(t => !pip(t.lat, t.lng, f.ring));
-    }
+    if (filter === 'no_poly')  return !f.ring;
+    if (filter === 'no_trees') return trees.length === 0;
+    if (!f.ring) return filter === '';
+    if (filter === 'inside')   return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
+    if (filter === 'outside')  return trees.some(t => !pip(t.lat, t.lng, f.ring));
     return true;
   });
 
-  document.getElementById('catCount').textContent =
-    `${visible.length.toLocaleString()} of ${fieldsData.length.toLocaleString()} fields`;
+  currentPage = 1;
+  renderPage();
+}
 
-  if (!visible.length) {
+function renderPage() {
+  const grid  = document.getElementById('catGrid');
+  const total = visibleCache.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const page  = visibleCache.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('catCount').textContent =
+    `${total.toLocaleString()} fields · page ${currentPage} of ${pages}`;
+
+  // Update pagination buttons
+  document.getElementById('btnPrev').disabled = currentPage <= 1;
+  document.getElementById('btnNext').disabled = currentPage >= pages;
+  document.getElementById('pageInfo').textContent =
+    `${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total.toLocaleString()}`;
+
+  if (!page.length) {
     grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No fields match the current filter</div>';
     return;
   }
 
-  grid.innerHTML = visible.map((f, i) => {
+  applyGridClass();
+
+  grid.innerHTML = page.map(f => {
     const trees   = treesByField[f.fieldId] || [];
     const hasRing = !!f.ring;
     let inCount = 0, outCount = 0;
@@ -534,11 +558,11 @@ function render() {
       trees.forEach(t => pip(t.lat, t.lng, f.ring) ? inCount++ : outCount++);
     }
     const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
+    const pctCol = pct === null ? '' : pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
     const pctBadge = pct !== null
-      ? `<span class="badge" style="background:${pct>=90?'rgba(34,197,94,0.1)':pct>=70?'rgba(245,158,11,0.1)':'rgba(239,68,68,0.1)'};color:${pct>=90?'#22c55e':pct>=70?'#f59e0b':'#ef4444'};border:1px solid ${pct>=90?'rgba(34,197,94,0.3)':pct>=70?'rgba(245,158,11,0.3)':'rgba(239,68,68,0.3)'}">${pct}%</span>`
-      : '';
-    const thumb = hasRing ? makeSVG(f, trees) :
-      `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
+      ? `<span class="badge" style="background:${pctCol}18;color:${pctCol};border:1px solid ${pctCol}44">${pct}%</span>` : '';
+    const thumb = hasRing ? makeSVG(f, trees)
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
     return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})">
       <div class="map-thumb">${thumb}</div>
       <div class="info">
@@ -555,6 +579,13 @@ function render() {
       </div>
     </div>`;
   }).join('');
+}
+
+function changePage(d) {
+  const pages = Math.ceil(visibleCache.length / PAGE_SIZE);
+  currentPage = Math.max(1, Math.min(pages, currentPage + d));
+  renderPage();
+  document.querySelector('.catalog-wrap').scrollTop = 0;
 }
 
 // ── SVG THUMBNAIL ──────────────────────────────────────────────────────────
