@@ -557,54 +557,134 @@ function initThumbs(visible) {
   });
 }
 
+// ── THUMBNAIL MAPS — static tile images, no Leaflet ───────────────────────
+
+function lonLatToTile(lng, lat, zoom) {
+  const x = Math.floor((lng + 180) / 360 * Math.pow(2, zoom));
+  const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) +
+    1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
+  return { x, y };
+}
+
+function ringCenter(ring) {
+  const lats = ring.map(c => c[1]);
+  const lngs = ring.map(c => c[0]);
+  return {
+    lat: (Math.min(...lats) + Math.max(...lats)) / 2,
+    lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+    spanLat: Math.max(...lats) - Math.min(...lats),
+    spanLng: Math.max(...lngs) - Math.min(...lngs)
+  };
+}
+
+function bestZoom(spanLat, spanLng) {
+  const span = Math.max(spanLat, spanLng);
+  if (span > 0.5)  return 10;
+  if (span > 0.1)  return 12;
+  if (span > 0.02) return 14;
+  if (span > 0.005)return 15;
+  if (span > 0.001)return 16;
+  return 17;
+}
+
 function buildThumb(container, f, idx) {
   if (thumbMaps[idx]) return;
-  try {
-    // Clear placeholder text
-    container.innerHTML = '';
+  thumbMaps[idx] = true;
 
-    const m = L.map(container, {
-      zoomControl:false, attributionControl:false,
-      dragging:false, scrollWheelZoom:false,
-      doubleClickZoom:false, keyboard:false, tap:false
-    });
-    L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-      subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21
-    }).addTo(m);
+  const center = ringCenter(f.ring);
+  const zoom   = bestZoom(center.spanLat, center.spanLng);
+  const sub    = ['mt0','mt1','mt2','mt3'][idx % 4];
+  const tile   = lonLatToTile(center.lng, center.lat, zoom);
+  const tileUrl = `https://${sub}.google.com/vt/lyrs=s&x=${tile.x}&y=${tile.y}&z=${zoom}`;
 
-    const latLngs = f.ring.map(c => [c[1], c[0]]);
-    const poly = L.polygon(latLngs, {
-      color:'#38bdf8', weight:1.5, fillColor:'#38bdf8',
-      fillOpacity:0.08, dashArray:'5,4'
-    }).addTo(m);
-
-    // Tree dots — cap at 200 for performance
-    const trees = treesByField[f.fieldId] || [];
-    const step  = trees.length > 200 ? Math.ceil(trees.length / 200) : 1;
-    trees.forEach((t, i) => {
-      if (i % step !== 0) return;
-      L.circleMarker([t.lat, t.lng], {
-        radius:3, color:'rgba(255,255,255,0.3)', weight:0.5,
-        fillColor: pip(t.lat, t.lng, f.ring) ? '#22c55e' : '#ef4444',
-        fillOpacity:0.9
-      }).addTo(m);
-    });
-
-    const bounds = poly.getBounds();
-    m.fitBounds(bounds, { padding:[8,8] });
-
-    // Multiple invalidateSize calls to handle late paint
-    setTimeout(() => {
-      try { m.invalidateSize(); m.fitBounds(bounds, { padding:[8,8] }); } catch(e){}
-    }, 100);
-    setTimeout(() => {
-      try { m.invalidateSize(); m.fitBounds(bounds, { padding:[8,8] }); } catch(e){}
-    }, 400);
-
-    thumbMaps[idx] = m;
-  } catch(e) {
-    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:10px">Map error</div>';
+  // Use a 3×3 tile grid centred on the polygon for better coverage
+  const tiles = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      tiles.push({ x: tile.x + dx, y: tile.y + dy });
+    }
   }
+
+  // Build the tile mosaic using a canvas
+  container.innerHTML = '';
+  container.style.position = 'relative';
+  container.style.overflow = 'hidden';
+
+  // Simple single-tile approach — reliable and fast
+  const img = document.createElement('img');
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+  img.src = tileUrl;
+  img.onerror = () => {
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:10px;font-family:var(--mono)">No imagery</div>';
+  };
+  container.appendChild(img);
+
+  // Overlay SVG polygon + tree dots
+  img.onload = () => {
+    const svg = buildThumbSVG(f, center, zoom, tile);
+    if (svg) container.appendChild(svg);
+  };
+}
+
+function buildThumbSVG(f, center, zoom, tile) {
+  const W = 200, H = 140; // nominal thumb size
+
+  // Convert lng/lat to pixel offset within the tile mosaic
+  function toPixel(lng, lat) {
+    const scale = Math.pow(2, zoom);
+    const wx = (lng + 180) / 360 * scale;
+    const wy = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+      1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * scale;
+    // Tile origin in world coords
+    const ox = tile.x;
+    const oy = tile.y;
+    return {
+      x: (wx - ox) * 256,
+      y: (wy - oy) * 256
+    };
+  }
+
+  // Polygon path
+  const pts = f.ring.map(c => toPixel(c[0], c[1]));
+  if (!pts.length) return null;
+
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanX = maxX - minX || 1, spanY = maxY - minY || 1;
+
+  // Scale to fit in thumb with padding
+  const PAD  = 10;
+  const scaleX = (W - PAD * 2) / spanX;
+  const scaleY = (H - PAD * 2) / spanY;
+  const sc   = Math.min(scaleX, scaleY);
+  const offX = PAD + (W - PAD * 2 - spanX * sc) / 2;
+  const offY = PAD + (H - PAD * 2 - spanY * sc) / 2;
+
+  const tx = p => ((p.x - minX) * sc + offX).toFixed(1);
+  const ty = p => ((p.y - minY) * sc + offY).toFixed(1);
+
+  const polyPath = pts.map((p, i) => `${i ? 'L' : 'M'}${tx(p)},${ty(p)}`).join(' ') + ' Z';
+
+  // Tree dots — cap at 150
+  const trees = treesByField[f.fieldId] || [];
+  const step  = trees.length > 150 ? Math.ceil(trees.length / 150) : 1;
+  const dots  = trees.filter((_, i) => i % step === 0).map(t => {
+    const p     = toPixel(t.lng, t.lat);
+    const inside = pip(t.lat, t.lng, f.ring);
+    const cx    = ((p.x - minX) * sc + offX).toFixed(1);
+    const cy    = ((p.y - minY) * sc + offY).toFixed(1);
+    return `<circle cx="${cx}" cy="${cy}" r="3" fill="${inside ? '#22c55e' : '#ef4444'}" fill-opacity="0.9" stroke="rgba(255,255,255,0.4)" stroke-width="0.5"/>`;
+  }).join('');
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.style.cssText = `position:absolute;inset:0;width:100%;height:100%;pointer-events:none`;
+  svg.innerHTML = `
+    <path d="${polyPath}" fill="rgba(56,189,248,0.1)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5,3"/>
+    ${dots}
+  `;
+  return svg;
 }
 
 // ── LIGHTBOX ───────────────────────────────────────────────────────────────
