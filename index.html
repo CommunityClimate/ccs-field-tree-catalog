@@ -527,7 +527,7 @@ function render() {
   }
 
   grid.innerHTML = visible.map((f, i) => {
-    const trees  = treesByField[f.fieldId] || [];
+    const trees   = treesByField[f.fieldId] || [];
     const hasRing = !!f.ring;
     let inCount = 0, outCount = 0;
     if (hasRing) {
@@ -537,13 +537,10 @@ function render() {
     const pctBadge = pct !== null
       ? `<span class="badge" style="background:${pct>=90?'rgba(34,197,94,0.1)':pct>=70?'rgba(245,158,11,0.1)':'rgba(239,68,68,0.1)'};color:${pct>=90?'#22c55e':pct>=70?'#f59e0b':'#ef4444'};border:1px solid ${pct>=90?'rgba(34,197,94,0.3)':pct>=70?'rgba(245,158,11,0.3)':'rgba(239,68,68,0.3)'}">${pct}%</span>`
       : '';
+    const thumb = hasRing ? makeSVG(f, trees) :
+      `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
     return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})">
-      <div class="map-thumb" id="thumb_${i}" data-idx="${fieldsData.indexOf(f)}">
-        <div style="width:100%;height:100%;display:flex;align-items:center;
-          justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">
-          ${hasRing ? 'Loading map…' : 'No polygon'}
-        </div>
-      </div>
+      <div class="map-thumb">${thumb}</div>
       <div class="info">
         <div class="fid">${f.fieldId}</div>
         <div class="owner">${f.owner || '—'}</div>
@@ -558,33 +555,45 @@ function render() {
       </div>
     </div>`;
   }).join('');
-
-  // Lazy-load mini maps
-  initThumbs(visible);
 }
 
-// ── THUMBNAIL MAPS ─────────────────────────────────────────────────────────
-const thumbMaps = {};
+// ── SVG THUMBNAIL ──────────────────────────────────────────────────────────
+// Generated inline — no lazy loading, no observers, no external requests
 
-function initThumbs(visible) {
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const el  = entry.target;
-      const idx = parseInt(el.dataset.idx);
-      const f   = fieldsData[idx];
-      if (!f || !f.ring || thumbMaps[idx]) return;
-      observer.unobserve(el);
-      // Small delay so the container is fully painted before Leaflet reads its size
-      setTimeout(() => buildThumb(el, f, idx), 50);
-    });
-  }, { threshold: 0.01, rootMargin: '100px' });
+function makeSVG(f, trees) {
+  const ring = f.ring;
+  const W = 200, H = 140, PAD = 12;
 
-  document.querySelectorAll('[id^="thumb_"]').forEach(el => {
-    const idx = parseInt(el.dataset.idx);
-    const f   = fieldsData[idx];
-    if (f && f.ring) observer.observe(el);
-  });
+  const lats = ring.map(c => c[1]);
+  const lngs = ring.map(c => c[0]);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const spanLat = maxLat - minLat || 0.001;
+  const spanLng = maxLng - minLng || 0.001;
+
+  const sc   = Math.min((W - PAD*2) / spanLng, (H - PAD*2) / spanLat);
+  const offX = (W - spanLng * sc) / 2;
+  const offY = (H - spanLat * sc) / 2;
+
+  const tx = lng => ((lng - minLng) * sc + offX).toFixed(1);
+  const ty = lat => ((maxLat - lat) * sc + offY).toFixed(1);
+
+  const pts = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
+
+  const step = trees.length > 200 ? Math.ceil(trees.length / 200) : 1;
+  const dots = trees.filter((_, i) => i % step === 0).map(t => {
+    const inside = pip(t.lat, t.lng, ring);
+    return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="2.5"
+      fill="${inside ? '#22c55e' : '#ef4444'}" fill-opacity="0.85"
+      stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+    style="width:100%;height:100%;display:block;background:#0a0e18">
+    <polygon points="${pts}" fill="rgba(56,189,248,0.1)"
+      stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3"/>
+    ${dots}
+  </svg>`;
 }
 
 // ── VIEW CONTROLS ──────────────────────────────────────────────────────────
@@ -612,67 +621,12 @@ function applyGridClass() {
   grid.className = 'cat-grid';
   if (currentView === 'list') { grid.classList.add('list'); return; }
   if (currentSize !== 'md') grid.classList.add(currentSize);
-  // Re-trigger IntersectionObserver for newly visible cards
-  setTimeout(() => initThumbs([]), 100);
 }
 
 function clearFilters() {
   document.getElementById('fltStatus').value = '';
   document.getElementById('fltSearch').value = '';
   render();
-}
-
-// ── THUMBNAIL MAPS — pure SVG, no external tiles, no CORS ─────────────────
-
-function buildThumb(container, f, idx) {
-  if (thumbMaps[idx]) return;
-  thumbMaps[idx] = true;
-
-  const ring  = f.ring;
-  const trees = treesByField[f.fieldId] || [];
-
-  // Compute polygon bounds
-  const lats = ring.map(c => c[1]);
-  const lngs = ring.map(c => c[0]);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  const spanLat = maxLat - minLat || 0.001;
-  const spanLng = maxLng - minLng || 0.001;
-
-  const W = 200, H = 140, PAD = 10;
-  const scX = (W - PAD * 2) / spanLng;
-  const scY = (H - PAD * 2) / spanLat;
-  const sc  = Math.min(scX, scY);
-  const offX = PAD + (W - PAD * 2 - spanLng * sc) / 2;
-  const offY = PAD + (H - PAD * 2 - spanLat * sc) / 2;
-
-  const tx = lng => ((lng - minLng) * sc + offX).toFixed(1);
-  const ty = lat => ((maxLat - lat) * sc + offY).toFixed(1); // flip Y
-
-  // Polygon path
-  const polyPts = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
-
-  // Tree dots — cap at 300
-  const step = trees.length > 300 ? Math.ceil(trees.length / 300) : 1;
-  const dots = trees.filter((_, i) => i % step === 0).map(t => {
-    const inside = pip(t.lat, t.lng, ring);
-    return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="2.5"
-      fill="${inside ? '#22c55e' : '#ef4444'}"
-      fill-opacity="0.85" stroke="rgba(255,255,255,0.3)" stroke-width="0.4"/>`;
-  }).join('');
-
-  container.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
-      style="width:100%;height:100%;display:block;background:#0a0e18">
-      <!-- Grid lines -->
-      <line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
-      <line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
-      <!-- Polygon fill -->
-      <polygon points="${polyPts}" fill="rgba(56,189,248,0.08)" stroke="#38bdf8"
-        stroke-width="1.5" stroke-dasharray="4,3"/>
-      <!-- Tree dots -->
-      ${dots}
-    </svg>`;
 }
 
 // ── LIGHTBOX ───────────────────────────────────────────────────────────────
