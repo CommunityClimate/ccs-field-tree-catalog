@@ -94,27 +94,45 @@ input[type=text]:focus { border-color:var(--green); }
 .catalog-wrap { flex:1; overflow:hidden; display:flex; flex-direction:column; }
 .cat-toolbar { padding:8px 12px; background:var(--panel);
   border-bottom:1px solid var(--border); display:flex;
-  align-items:center; gap:8px; flex-shrink:0; }
+  align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap; }
 .cat-grid { flex:1; overflow-y:auto; padding:12px;
   display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
   gap:10px; align-content:start; }
+.cat-grid.sm { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+.cat-grid.lg { grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+.cat-grid.list { grid-template-columns:1fr; gap:5px; padding:8px 12px; }
 .cat-card { background:var(--card); border:1px solid var(--border);
   border-radius:8px; overflow:hidden; cursor:pointer;
   transition:border-color .15s; }
 .cat-card:hover { border-color:var(--green); }
-.cat-card .map-thumb { width:100%; height:140px; background:#0a0c12; }
+.cat-card .map-thumb { width:100%; height:140px; background:#0a0c12;
+  position:relative; overflow:hidden; }
+.cat-grid.sm .map-thumb { height:110px; }
+.cat-grid.lg .map-thumb { height:180px; }
+.cat-grid.list .cat-card { display:flex; align-items:center; border-radius:6px; }
+.cat-grid.list .map-thumb { width:80px; height:60px; flex-shrink:0; border-radius:6px 0 0 6px; }
+.cat-grid.list .info { flex:1; display:flex; align-items:center;
+  gap:12px; padding:8px 12px; }
+.cat-grid.list .fid { margin-bottom:0; }
+.cat-grid.list .owner { margin-bottom:0; }
+.cat-grid.list .stats { margin-left:auto; flex-shrink:0; }
 .cat-card .info { padding:8px 10px; }
 .cat-card .fid { font-family:var(--mono); font-size:10px; font-weight:700;
   color:var(--blue); margin-bottom:3px; white-space:nowrap;
   overflow:hidden; text-overflow:ellipsis; }
 .cat-card .owner { font-size:10px; color:var(--muted); white-space:nowrap;
   overflow:hidden; text-overflow:ellipsis; margin-bottom:4px; }
-.cat-card .stats { display:flex; gap:6px; }
+.cat-card .stats { display:flex; gap:6px; flex-wrap:wrap; }
 .badge { font-family:var(--mono); font-size:9px; font-weight:700;
   padding:2px 6px; border-radius:3px; }
 .badge.in  { background:var(--green-bg); color:var(--green); border:1px solid var(--green-b); }
 .badge.out { background:var(--red-bg);   color:var(--red);   border:1px solid var(--red-b); }
 .badge.na  { background:var(--card);     color:var(--muted); border:1px solid var(--border); }
+.view-btn { background:var(--card); border:1px solid var(--border);
+  color:var(--muted); border-radius:4px; padding:4px 8px;
+  font-family:var(--mono); font-size:10px; cursor:pointer; transition:all .15s; }
+.view-btn:hover { border-color:var(--green); color:var(--text); }
+.view-btn.active { background:var(--green-bg); border-color:var(--green-b); color:var(--green); }
 
 /* ── LIGHTBOX ── */
 .lb { position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,0.8);
@@ -206,7 +224,19 @@ input[type=text]:focus { border-color:var(--green); }
     <div class="cat-toolbar">
       <span style="font-family:var(--mono);font-size:10px;color:var(--muted)" id="catCount"></span>
       <div style="flex:1"></div>
-      <span style="font-size:10px;color:var(--muted)">Click any field to inspect polygon + trees</span>
+      <div style="display:flex;gap:4px;align-items:center">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-right:2px">Size:</span>
+        <button class="view-btn" onclick="setSize('sm')" id="btnSm">S</button>
+        <button class="view-btn active" onclick="setSize('md')" id="btnMd">M</button>
+        <button class="view-btn" onclick="setSize('lg')" id="btnLg">L</button>
+      </div>
+      <div style="width:1px;height:18px;background:var(--border)"></div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="view-btn active" onclick="setView('grid')" id="btnGrid">⊞ Grid</button>
+        <button class="view-btn" onclick="setView('list')" id="btnList">≡ List</button>
+      </div>
+      <div style="width:1px;height:18px;background:var(--border)"></div>
+      <button class="view-btn" onclick="clearFilters()" style="color:var(--amber)">✕ Clear</button>
     </div>
     <div class="cat-grid" id="catGrid">
       <div class="empty" style="grid-column:1/-1">Connect to Fieldforce to load fields and trees</div>
@@ -557,134 +587,92 @@ function initThumbs(visible) {
   });
 }
 
-// ── THUMBNAIL MAPS — static tile images, no Leaflet ───────────────────────
+// ── VIEW CONTROLS ──────────────────────────────────────────────────────────
+let currentSize = 'md';
+let currentView = 'grid';
 
-function lonLatToTile(lng, lat, zoom) {
-  const x = Math.floor((lng + 180) / 360 * Math.pow(2, zoom));
-  const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) +
-    1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
-  return { x, y };
+function setSize(s) {
+  currentSize = s;
+  ['sm','md','lg'].forEach(id => {
+    document.getElementById('btn' + id.charAt(0).toUpperCase() + id.slice(1))
+      .classList.toggle('active', id === s);
+  });
+  applyGridClass();
 }
 
-function ringCenter(ring) {
-  const lats = ring.map(c => c[1]);
-  const lngs = ring.map(c => c[0]);
-  return {
-    lat: (Math.min(...lats) + Math.max(...lats)) / 2,
-    lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
-    spanLat: Math.max(...lats) - Math.min(...lats),
-    spanLng: Math.max(...lngs) - Math.min(...lngs)
-  };
+function setView(v) {
+  currentView = v;
+  document.getElementById('btnGrid').classList.toggle('active', v === 'grid');
+  document.getElementById('btnList').classList.toggle('active', v === 'list');
+  applyGridClass();
 }
 
-function bestZoom(spanLat, spanLng) {
-  const span = Math.max(spanLat, spanLng);
-  if (span > 0.5)  return 10;
-  if (span > 0.1)  return 12;
-  if (span > 0.02) return 14;
-  if (span > 0.005)return 15;
-  if (span > 0.001)return 16;
-  return 17;
+function applyGridClass() {
+  const grid = document.getElementById('catGrid');
+  grid.className = 'cat-grid';
+  if (currentView === 'list') { grid.classList.add('list'); return; }
+  if (currentSize !== 'md') grid.classList.add(currentSize);
+  // Re-trigger IntersectionObserver for newly visible cards
+  setTimeout(() => initThumbs([]), 100);
 }
+
+function clearFilters() {
+  document.getElementById('fltStatus').value = '';
+  document.getElementById('fltSearch').value = '';
+  render();
+}
+
+// ── THUMBNAIL MAPS — pure SVG, no external tiles, no CORS ─────────────────
 
 function buildThumb(container, f, idx) {
   if (thumbMaps[idx]) return;
   thumbMaps[idx] = true;
 
-  const center = ringCenter(f.ring);
-  const zoom   = bestZoom(center.spanLat, center.spanLng);
-  const sub    = ['mt0','mt1','mt2','mt3'][idx % 4];
-  const tile   = lonLatToTile(center.lng, center.lat, zoom);
-  const tileUrl = `https://${sub}.google.com/vt/lyrs=s&x=${tile.x}&y=${tile.y}&z=${zoom}`;
+  const ring  = f.ring;
+  const trees = treesByField[f.fieldId] || [];
 
-  // Use a 3×3 tile grid centred on the polygon for better coverage
-  const tiles = [];
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      tiles.push({ x: tile.x + dx, y: tile.y + dy });
-    }
-  }
+  // Compute polygon bounds
+  const lats = ring.map(c => c[1]);
+  const lngs = ring.map(c => c[0]);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const spanLat = maxLat - minLat || 0.001;
+  const spanLng = maxLng - minLng || 0.001;
 
-  // Build the tile mosaic using a canvas
-  container.innerHTML = '';
-  container.style.position = 'relative';
-  container.style.overflow = 'hidden';
+  const W = 200, H = 140, PAD = 10;
+  const scX = (W - PAD * 2) / spanLng;
+  const scY = (H - PAD * 2) / spanLat;
+  const sc  = Math.min(scX, scY);
+  const offX = PAD + (W - PAD * 2 - spanLng * sc) / 2;
+  const offY = PAD + (H - PAD * 2 - spanLat * sc) / 2;
 
-  // Simple single-tile approach — reliable and fast
-  const img = document.createElement('img');
-  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
-  img.src = tileUrl;
-  img.onerror = () => {
-    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:10px;font-family:var(--mono)">No imagery</div>';
-  };
-  container.appendChild(img);
-
-  // Overlay SVG polygon + tree dots
-  img.onload = () => {
-    const svg = buildThumbSVG(f, center, zoom, tile);
-    if (svg) container.appendChild(svg);
-  };
-}
-
-function buildThumbSVG(f, center, zoom, tile) {
-  const W = 200, H = 140; // nominal thumb size
-
-  // Convert lng/lat to pixel offset within the tile mosaic
-  function toPixel(lng, lat) {
-    const scale = Math.pow(2, zoom);
-    const wx = (lng + 180) / 360 * scale;
-    const wy = (1 - Math.log(Math.tan(lat * Math.PI / 180) +
-      1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * scale;
-    // Tile origin in world coords
-    const ox = tile.x;
-    const oy = tile.y;
-    return {
-      x: (wx - ox) * 256,
-      y: (wy - oy) * 256
-    };
-  }
+  const tx = lng => ((lng - minLng) * sc + offX).toFixed(1);
+  const ty = lat => ((maxLat - lat) * sc + offY).toFixed(1); // flip Y
 
   // Polygon path
-  const pts = f.ring.map(c => toPixel(c[0], c[1]));
-  if (!pts.length) return null;
+  const polyPts = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
 
-  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1, spanY = maxY - minY || 1;
-
-  // Scale to fit in thumb with padding
-  const PAD  = 10;
-  const scaleX = (W - PAD * 2) / spanX;
-  const scaleY = (H - PAD * 2) / spanY;
-  const sc   = Math.min(scaleX, scaleY);
-  const offX = PAD + (W - PAD * 2 - spanX * sc) / 2;
-  const offY = PAD + (H - PAD * 2 - spanY * sc) / 2;
-
-  const tx = p => ((p.x - minX) * sc + offX).toFixed(1);
-  const ty = p => ((p.y - minY) * sc + offY).toFixed(1);
-
-  const polyPath = pts.map((p, i) => `${i ? 'L' : 'M'}${tx(p)},${ty(p)}`).join(' ') + ' Z';
-
-  // Tree dots — cap at 150
-  const trees = treesByField[f.fieldId] || [];
-  const step  = trees.length > 150 ? Math.ceil(trees.length / 150) : 1;
-  const dots  = trees.filter((_, i) => i % step === 0).map(t => {
-    const p     = toPixel(t.lng, t.lat);
-    const inside = pip(t.lat, t.lng, f.ring);
-    const cx    = ((p.x - minX) * sc + offX).toFixed(1);
-    const cy    = ((p.y - minY) * sc + offY).toFixed(1);
-    return `<circle cx="${cx}" cy="${cy}" r="3" fill="${inside ? '#22c55e' : '#ef4444'}" fill-opacity="0.9" stroke="rgba(255,255,255,0.4)" stroke-width="0.5"/>`;
+  // Tree dots — cap at 300
+  const step = trees.length > 300 ? Math.ceil(trees.length / 300) : 1;
+  const dots = trees.filter((_, i) => i % step === 0).map(t => {
+    const inside = pip(t.lat, t.lng, ring);
+    return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="2.5"
+      fill="${inside ? '#22c55e' : '#ef4444'}"
+      fill-opacity="0.85" stroke="rgba(255,255,255,0.3)" stroke-width="0.4"/>`;
   }).join('');
 
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.style.cssText = `position:absolute;inset:0;width:100%;height:100%;pointer-events:none`;
-  svg.innerHTML = `
-    <path d="${polyPath}" fill="rgba(56,189,248,0.1)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5,3"/>
-    ${dots}
-  `;
-  return svg;
+  container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+      style="width:100%;height:100%;display:block;background:#0a0e18">
+      <!-- Grid lines -->
+      <line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+      <line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+      <!-- Polygon fill -->
+      <polygon points="${polyPts}" fill="rgba(56,189,248,0.08)" stroke="#38bdf8"
+        stroke-width="1.5" stroke-dasharray="4,3"/>
+      <!-- Tree dots -->
+      ${dots}
+    </svg>`;
 }
 
 // ── LIGHTBOX ───────────────────────────────────────────────────────────────
