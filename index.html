@@ -924,7 +924,7 @@ async function connect() {
     // Load trees
     setStatus('Loading trees…', 'ok');
     const tRows = await dvFetchAll(token,
-      `${DV_API}/ccs_trees?$select=ccs_treecode,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value,ccs_species_tree&$filter=statecode eq 0`,
+      `${DV_API}/ccs_trees?$select=ccs_treecode,modifiedon,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value,ccs_species_tree&$filter=statecode eq 0`,
       'Trees'
     );
 
@@ -932,9 +932,24 @@ async function connect() {
     const guidToId = {};
     fieldsData.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
 
+    // Deduplicate trees by ccs_treecode — keep newest modifiedon
+    const treeMap = new Map();
+    tRows.forEach(r => {
+      const code = r.ccs_treecode;
+      if (!code) return; // no code — keep as-is, handled below
+      const existing = treeMap.get(code);
+      if (!existing || r.modifiedon > existing.modifiedon) {
+        treeMap.set(code, r);
+      }
+    });
+    // Re-combine: deduplicated coded rows + any rows with no tree code
+    const noCode  = tRows.filter(r => !r.ccs_treecode);
+    const dedupedRows = [...treeMap.values(), ...noCode];
+    const dupesDropped = tRows.length - dedupedRows.length;
+
     treesByField = {};
     let treeCount = 0;
-    tRows.forEach(r => {
+    dedupedRows.forEach(r => {
       const lat = parseFloat(r.ccs_treelatitude_tree);
       const lng = parseFloat(r.ccs_treelongitude_tree);
       if (isNaN(lat) || isNaN(lng)) return;
@@ -953,7 +968,11 @@ async function connect() {
 
     // KPIs
     updateKPIs();
-    setStatus(`✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`, 'ok');
+    setStatus(
+      `✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`
+      + (dupesDropped > 0 ? ` · ${dupesDropped.toLocaleString()} duplicates removed` : ''),
+      'ok'
+    );
     document.getElementById('fieldCount').textContent =
       `Fields (${fieldsData.length.toLocaleString()})`;
     // Build fast lookup map
