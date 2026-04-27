@@ -219,6 +219,19 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 .kpi.ov { border-color:rgba(239,68,68,0.25); background:rgba(239,68,68,0.08); }
 .kpi.ov .v { color:#ef4444; }
 
+/* Outside tree table */
+.tree-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:9px; }
+.tree-table th { color:var(--muted); text-transform:uppercase; letter-spacing:.8px;
+  padding:5px 8px; border-bottom:1px solid var(--border); text-align:left;
+  font-weight:700; position:sticky; top:0; background:var(--card); }
+.tree-table td { padding:4px 8px; border-bottom:1px solid rgba(31,46,66,0.5);
+  color:var(--text); white-space:nowrap; }
+.tree-table tr:last-child td { border-bottom:none; }
+.tree-table tr:hover td { background:rgba(56,189,248,0.04); }
+.tree-table .re  { color:#f59e0b; }
+.tree-table .orp { color:#ef4444; }
+.tree-table .pnd { color:var(--muted); }
+
 /* Neighbour detect progress bar */
 #nbProgress { font-family:var(--mono); font-size:9px; color:var(--muted);
   padding:4px 12px; border-bottom:1px solid var(--border);
@@ -272,6 +285,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div class="export-item" onclick="closeExportMenu();exportCSV('adjacent')">
         <strong>⬇ Adjacent Fields</strong>
         <span>Fields within ~50 m of another polygon but not overlapping</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('realloc')">
+        <strong>⬇ Re-allocation Report</strong>
+        <span>Every outside tree — where it is vs where it should be</span>
       </div>
     </div>
   </div>
@@ -451,6 +468,30 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div class="lb-m">
         <div class="v" id="lbCentroid">—</div>
         <div class="l">Centroid</div>
+      </div>
+    </div>
+    <!-- Outside tree breakdown -->
+    <div id="lbOutsideSection" style="display:none;border-top:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        padding:8px 14px;cursor:pointer;user-select:none"
+        onclick="toggleOutsideTree()">
+        <span style="font-family:var(--mono);font-size:10px;font-weight:700;
+          color:var(--muted);text-transform:uppercase;letter-spacing:1px">
+          ▸ Outside Trees
+        </span>
+        <div style="display:flex;gap:8px" id="lbOutsideSummary"></div>
+      </div>
+      <div id="lbOutsideBody" style="display:none;max-height:220px;overflow-y:auto;
+        border-top:1px solid var(--border)">
+        <table class="tree-table" id="lbTreeTable">
+          <thead>
+            <tr>
+              <th>Tree Code</th><th>Species</th>
+              <th>Lat</th><th>Lng</th><th>Actual Field</th>
+            </tr>
+          </thead>
+          <tbody id="lbTreeBody"></tbody>
+        </table>
       </div>
     </div>
     <div class="lb-foot">
@@ -746,6 +787,9 @@ async function startNeighbourDetection() {
 
   // Re-render to show badges
   renderPage();
+
+  // Return grid for re-allocation pass to reuse
+  return { grid, bboxes };
 }
 
 function autoLatLng(a, b) {
@@ -755,7 +799,71 @@ function autoLatLng(a, b) {
   return { lat: b, lng: a };
 }
 
-// ── FIELDFORCE FETCH ───────────────────────────────────────────────────────
+// ── RE-ALLOCATION ENGINE ───────────────────────────────────────────────────
+// For every tree outside its tagged field, find which field polygon it
+// actually sits inside (if any). Sets t.actualFieldId on each outside tree:
+//   = same fieldId  → inside (already handled by pip, skipped here)
+//   = other fieldId → re-allocated to a different field
+//   = null          → orphaned (outside every polygon)
+let reallocationDone = false;
+
+async function startReallocation({ grid, bboxes }) {
+  reallocationDone = false;
+  const CELL  = 0.1;
+  const CHUNK = 60;
+  const total = fieldsData.length;
+
+  // Show progress reusing the same bar (recolour to blue)
+  const prog = document.getElementById('nbProgress');
+  const bar  = document.getElementById('nbBar');
+  const txt  = document.getElementById('nbProgressText');
+  bar.style.background = '#38bdf8';
+  bar.style.width = '0%';
+  prog.style.display = 'block';
+
+  for (let i = 0; i < total; i += CHUNK) {
+    const slice = fieldsData.slice(i, i + CHUNK);
+
+    slice.forEach(f => {
+      const trees = treesByField[f.fieldId] || [];
+      trees.forEach(t => {
+        // Skip trees already inside their tagged field
+        if (f.ring && pip(t.lat, t.lng, f.ring)) {
+          t.actualFieldId = f.fieldId;
+          return;
+        }
+        if (t.actualFieldId !== undefined) return; // already resolved
+
+        // Search grid cells around tree position
+        const gr = Math.floor(t.lat / CELL);
+        const gc = Math.floor(t.lng / CELL);
+        let found = null;
+        outer:
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const candidates = grid.get(`${gr + dr}_${gc + dc}`) || [];
+            for (const g of candidates) {
+              if (g.fieldId !== f.fieldId && g.ring && pip(t.lat, t.lng, g.ring)) {
+                found = g.fieldId;
+                break outer;
+              }
+            }
+          }
+        }
+        t.actualFieldId = found; // null = orphaned, string = re-allocated
+      });
+    });
+
+    const pct = Math.round((i + CHUNK) / total * 100);
+    bar.style.width = Math.min(pct, 100) + '%';
+    txt.textContent = `Re-allocating outside trees… ${Math.min(i + CHUNK, total).toLocaleString()} / ${total.toLocaleString()} fields`;
+    await new Promise(res => setTimeout(res, 0));
+  }
+
+  reallocationDone = true;
+  prog.style.display = 'none';
+  renderPage();
+}
 function setStatus(msg, cls = '') {
   const el = document.getElementById('ffStatus');
   el.textContent = msg;
@@ -816,7 +924,7 @@ async function connect() {
     // Load trees
     setStatus('Loading trees…', 'ok');
     const tRows = await dvFetchAll(token,
-      `${DV_API}/ccs_trees?$select=ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
+      `${DV_API}/ccs_trees?$select=ccs_treecode,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value,ccs_species_tree&$filter=statecode eq 0`,
       'Trees'
     );
 
@@ -835,7 +943,11 @@ async function connect() {
       const fid    = guidToId[guid];
       if (!fid) return;
       if (!treesByField[fid]) treesByField[fid] = [];
-      treesByField[fid].push({ lat: coords.lat, lng: coords.lng });
+      treesByField[fid].push({
+        lat: coords.lat, lng: coords.lng,
+        code:    r.ccs_treecode || '',
+        species: r['ccs_species_tree@OData.Community.Display.V1.FormattedValue'] || ''
+      });
       treeCount++;
     });
 
@@ -847,8 +959,8 @@ async function connect() {
     // Build fast lookup map
     fieldByIdMap = new Map(fieldsData.map(f => [f.fieldId, f]));
     render();
-    // Kick off background neighbour detection
-    startNeighbourDetection();
+    // Kick off background neighbour detection, then re-allocation
+    startNeighbourDetection().then(gridData => startReallocation(gridData));
   } catch(e) {
     btn.disabled = false;
     btn.textContent = 'Connect to Fieldforce';
@@ -1175,6 +1287,58 @@ function openLb(idx) {
 
   document.getElementById('lb').classList.add('open');
 
+  // Outside tree breakdown
+  const outsideTrees = ring
+    ? trees.filter(t => !pip(t.lat, t.lng, ring))
+    : [];
+  const outSec = document.getElementById('lbOutsideSection');
+  if (outsideTrees.length === 0) {
+    outSec.style.display = 'none';
+  } else {
+    outSec.style.display = '';
+    document.getElementById('lbOutsideBody').style.display = 'none';
+    document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span').textContent =
+      '▸ Outside Trees';
+
+    const reAllocated = outsideTrees.filter(t => t.actualFieldId && t.actualFieldId !== f.fieldId);
+    const orphaned    = outsideTrees.filter(t => t.actualFieldId === null);
+    const pending     = outsideTrees.filter(t => t.actualFieldId === undefined);
+
+    document.getElementById('lbOutsideSummary').innerHTML = [
+      reAllocated.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
+        background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);
+        border-radius:3px;padding:2px 7px">→ ${reAllocated.length} re-allocated</span>` : '',
+      orphaned.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
+        background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);
+        border-radius:3px;padding:2px 7px">⊗ ${orphaned.length} orphaned</span>` : '',
+      pending.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
+        background:rgba(107,136,168,0.1);color:var(--muted);border:1px solid var(--border);
+        border-radius:3px;padding:2px 7px">⏳ ${pending.length} pending</span>` : ''
+    ].join('');
+
+    // Build tree table rows (cap at 500 to avoid DOM overload)
+    const rows = outsideTrees.slice(0, 500).map(t => {
+      let statusClass = 'pnd', actualLabel = '⏳ Pending';
+      if (t.actualFieldId === null) {
+        statusClass = 'orp'; actualLabel = '⊗ Orphaned';
+      } else if (t.actualFieldId && t.actualFieldId !== f.fieldId) {
+        statusClass = 're'; actualLabel = '→ ' + t.actualFieldId;
+      }
+      return `<tr>
+        <td>${t.code || '—'}</td>
+        <td>${t.species || '—'}</td>
+        <td>${t.lat.toFixed(5)}</td>
+        <td>${t.lng.toFixed(5)}</td>
+        <td class="${statusClass}">${actualLabel}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('lbTreeBody').innerHTML = rows
+      + (outsideTrees.length > 500
+        ? `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:8px">
+            … ${(outsideTrees.length - 500).toLocaleString()} more — use the Re-allocation Export</td></tr>`
+        : '');
+  }
+
   // Build Leaflet map
   const mapEl = document.getElementById('lbMap');
   mapEl.innerHTML = '';
@@ -1234,6 +1398,14 @@ function openLb(idx) {
     lbMap.fitBounds(poly.getBounds(), { padding:[24,24] });
     setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
   }, 60);
+}
+
+function toggleOutsideTree() {
+  const body = document.getElementById('lbOutsideBody');
+  const lbl  = document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  lbl.textContent = (open ? '▾ ' : '▸ ') + 'Outside Trees';
 }
 
 function closeLb() {
@@ -1332,10 +1504,55 @@ function exportCSV(type) {
   const labels = {
     all:'Field_Compliance_Summary', outside:'Has_Trees_Outside',
     inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons',
-    overlapping:'Overlapping_Fields', adjacent:'Adjacent_Fields'
+    overlapping:'Overlapping_Fields', adjacent:'Adjacent_Fields',
+    realloc:'Reallocation_Report'
   };
 
-  // ── Special export: overlapping pairs ─────────────────────────────────────
+  // ── Re-allocation export ───────────────────────────────────────────────────
+  if (type === 'realloc') {
+    const reallocRows = [];
+    fieldsData.forEach(f => {
+      const trees = treesByField[f.fieldId] || [];
+      trees.forEach(t => {
+        if (f.ring && pip(t.lat, t.lng, f.ring)) return; // inside — skip
+        const isRealloc = t.actualFieldId && t.actualFieldId !== f.fieldId;
+        const isOrphan  = t.actualFieldId === null;
+        const status    = isRealloc ? 'Re-allocated' : isOrphan ? 'Orphaned' : 'Pending detection';
+        const actualField = isRealloc ? fieldByIdMap.get(t.actualFieldId) : null;
+        reallocRows.push([
+          t.code    || '',
+          t.species || '',
+          t.lat.toFixed(6),
+          t.lng.toFixed(6),
+          f.fieldId,
+          f.owner   || '',
+          isRealloc ? t.actualFieldId : '',
+          actualField ? (actualField.owner || '') : '',
+          status
+        ]);
+      });
+    });
+
+    const reallocHeaders = [
+      'Tree Code','Species','Lat','Lng',
+      'Tagged Field','Tagged Owner',
+      'Actual Field','Actual Owner',
+      'Status'
+    ];
+    const csv = [reallocHeaders, ...reallocRows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `CCS_Reallocation_Report_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return;
+  }
+
+  // ── Standard exports ───────────────────────────────────────────────────────
   if (type === 'overlapping' || type === 'adjacent') {
     const rel = type === 'overlapping' ? 'overlapping' : 'adjacent';
     const seen = new Set();
