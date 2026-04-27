@@ -212,6 +212,20 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 ::-webkit-scrollbar { width:5px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* Neighbour badges */
+.badge.ov { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); }
+.badge.adj{ background:rgba(245,158,11,0.1); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); }
+.kpi.ov { border-color:rgba(239,68,68,0.25); background:rgba(239,68,68,0.08); }
+.kpi.ov .v { color:#ef4444; }
+
+/* Neighbour detect progress bar */
+#nbProgress { font-family:var(--mono); font-size:9px; color:var(--muted);
+  padding:4px 12px; border-bottom:1px solid var(--border);
+  display:none; background:var(--panel); }
+.nb-bar-wrap { height:3px; background:var(--border); border-radius:2px; margin-top:4px; }
+.nb-bar { height:3px; background:var(--red); border-radius:2px;
+  width:0%; transition:width .3s; }
 </style>
 </head>
 <body>
@@ -224,6 +238,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   <div class="kpi g"><span class="v" id="kpiInside">—</span><span class="l">Inside</span></div>
   <div class="kpi r"><span class="v" id="kpiOutside">—</span><span class="l">Outside</span></div>
   <div class="kpi a"><span class="v" id="kpiLarge">—</span><span class="l">Large poly</span></div>
+  <div class="kpi ov"><span class="v" id="kpiOverlap">—</span><span class="l">Overlapping</span></div>
   <div class="sp"></div>
   <div class="kpi" id="kpiPct" style="font-family:var(--mono);font-size:13px;font-weight:700">—</div>
   <div class="hd"></div>
@@ -274,6 +289,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large">⚠ Large polygons</option>
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
+        <option value="overlapping">⧖ Overlapping fields</option>
+        <option value="adjacent">~ Adjacent fields</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
     </div>
@@ -333,6 +350,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div style="width:1px;height:18px;background:var(--border)"></div>
       <button class="view-btn" onclick="clearFilters()" style="color:var(--amber)">✕ Clear</button>
     </div>
+    <div id="nbProgress">
+      <span id="nbProgressText">Detecting overlapping &amp; adjacent fields…</span>
+      <div class="nb-bar-wrap"><div class="nb-bar" id="nbBar"></div></div>
+    </div>
     <div class="cat-grid" id="catGrid">
       <div class="empty" style="grid-column:1/-1">Connect to Fieldforce to load fields and trees</div>
     </div>
@@ -364,6 +385,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span><span class="dot" style="background:#22c55e"></span>Inside polygon</span>
       <span><span class="dot" style="background:#ef4444"></span>Outside polygon</span>
       <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Field boundary</span>
+      <span id="lbLegendOverlap" style="display:none"><span class="dot" style="background:#ef4444;width:8px;height:8px;border-radius:2px"></span>Overlapping field</span>
+      <span id="lbLegendAdjacent" style="display:none"><span class="dot" style="background:#f59e0b;width:8px;height:8px;border-radius:2px"></span>Adjacent field</span>
     </div>
     <!-- Tree stats row -->
     <div class="lb-stats">
@@ -521,6 +544,9 @@ function updateThresholdLabel() {
 }
 let fieldsData = [];     // { fieldId, owner, geoJSON, ring, guid }
 let treesByField = {};   // fieldId → [{lat, lng}]
+let fieldByIdMap = new Map(); // fieldId → field object (built after load)
+let neighbourMap = new Map(); // fieldId → { overlapping:[], adjacent:[] }
+let neighbourDetectionDone = false;
 
 // ── SPATIAL ────────────────────────────────────────────────────────────────
 function pip(lat, lng, ring) {
@@ -566,6 +592,152 @@ function parseGeoJSON(raw) {
   while ((m = re.exec(s)) !== null)
     pairs.push([parseFloat(m[1]), parseFloat(m[2])]);
   return pairs.length >= 3 ? pairs : null;
+}
+
+// ── NEIGHBOUR DETECTION GEOMETRY ───────────────────────────────────────────
+function bboxOverlap(a, b, bufDeg) {
+  return a.maxLng + bufDeg >= b.minLng - bufDeg &&
+         a.minLng - bufDeg <= b.maxLng + bufDeg &&
+         a.maxLat + bufDeg >= b.minLat - bufDeg &&
+         a.minLat - bufDeg <= b.maxLat + bufDeg;
+}
+
+function segmentsIntersect(p1, p2, p3, p4) {
+  // p1..p4 are [lng, lat]
+  const d1x = p2[0]-p1[0], d1y = p2[1]-p1[1];
+  const d2x = p4[0]-p3[0], d2y = p4[1]-p3[1];
+  const cross = d1x*d2y - d1y*d2x;
+  if (Math.abs(cross) < 1e-12) return false;
+  const t = ((p3[0]-p1[0])*d2y - (p3[1]-p1[1])*d2x) / cross;
+  const u = ((p3[0]-p1[0])*d1y - (p3[1]-p1[1])*d1x) / cross;
+  return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+function polygonsIntersect(ringA, ringB) {
+  // Quick vertex-in-polygon checks first (covers most real cases)
+  for (const c of ringA) { if (pip(c[1], c[0], ringB)) return true; }
+  for (const c of ringB) { if (pip(c[1], c[0], ringA)) return true; }
+  // Edge-edge check (catches crossing without containment — rare for farms)
+  const nA = ringA.length, nB = ringB.length;
+  for (let i = 0; i < nA; i++) {
+    const a1 = ringA[i], a2 = ringA[(i+1)%nA];
+    for (let j = 0; j < nB; j++) {
+      if (segmentsIntersect(a1, a2, ringB[j], ringB[(j+1)%nB])) return true;
+    }
+  }
+  return false;
+}
+
+async function startNeighbourDetection() {
+  neighbourMap.clear();
+  neighbourDetectionDone = false;
+  const ADJ_BUF = 0.00045; // ~50 m in degrees lat/lng
+  const CELL    = 0.1;     // 0.1° grid cell ≈ 11 km
+
+  // Build bounding boxes
+  const bboxes = new Map();
+  fieldsData.forEach(f => {
+    if (!f.ring) return;
+    const lats = f.ring.map(c => c[1]);
+    const lngs = f.ring.map(c => c[0]);
+    bboxes.set(f.fieldId, {
+      minLat: Math.min(...lats), maxLat: Math.max(...lats),
+      minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
+    });
+  });
+
+  // Build spatial grid
+  const grid = new Map();
+  fieldsData.forEach(f => {
+    const bb = bboxes.get(f.fieldId);
+    if (!bb) return;
+    const r0 = Math.floor((bb.minLat - ADJ_BUF) / CELL);
+    const r1 = Math.floor((bb.maxLat + ADJ_BUF) / CELL);
+    const c0 = Math.floor((bb.minLng - ADJ_BUF) / CELL);
+    const c1 = Math.floor((bb.maxLng + ADJ_BUF) / CELL);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const key = `${r}_${c}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(f);
+      }
+    }
+  });
+
+  // Show progress bar
+  const prog = document.getElementById('nbProgress');
+  const bar  = document.getElementById('nbBar');
+  const txt  = document.getElementById('nbProgressText');
+  prog.style.display = 'block';
+
+  // Process in chunks to stay non-blocking
+  const checked = new Set();
+  const CHUNK   = 60;
+  const total   = fieldsData.length;
+  let   overlapCount = 0, adjacentCount = 0;
+
+  for (let i = 0; i < total; i += CHUNK) {
+    const slice = fieldsData.slice(i, i + CHUNK);
+    slice.forEach(f => {
+      const bb = bboxes.get(f.fieldId);
+      if (!bb) return;
+
+      const r0 = Math.floor((bb.minLat - ADJ_BUF) / CELL);
+      const r1 = Math.floor((bb.maxLat + ADJ_BUF) / CELL);
+      const c0 = Math.floor((bb.minLng - ADJ_BUF) / CELL);
+      const c1 = Math.floor((bb.maxLng + ADJ_BUF) / CELL);
+
+      const candidates = new Set();
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          (grid.get(`${r}_${c}`) || []).forEach(g => {
+            if (g.fieldId !== f.fieldId) candidates.add(g);
+          });
+        }
+      }
+
+      candidates.forEach(g => {
+        const pk = f.fieldId < g.fieldId
+          ? `${f.fieldId}|${g.fieldId}` : `${g.fieldId}|${f.fieldId}`;
+        if (checked.has(pk)) return;
+        checked.add(pk);
+
+        const bbG = bboxes.get(g.fieldId);
+        if (!bbG || !bboxOverlap(bb, bbG, ADJ_BUF)) return;
+
+        function ensureEntry(id) {
+          if (!neighbourMap.has(id)) neighbourMap.set(id, {overlapping:[], adjacent:[]});
+          return neighbourMap.get(id);
+        }
+
+        if (polygonsIntersect(f.ring, g.ring)) {
+          ensureEntry(f.fieldId).overlapping.push(g.fieldId);
+          ensureEntry(g.fieldId).overlapping.push(f.fieldId);
+          overlapCount++;
+        } else {
+          ensureEntry(f.fieldId).adjacent.push(g.fieldId);
+          ensureEntry(g.fieldId).adjacent.push(f.fieldId);
+          adjacentCount++;
+        }
+      });
+    });
+
+    // Update progress
+    const pct = Math.round((i + CHUNK) / total * 100);
+    bar.style.width = Math.min(pct, 100) + '%';
+    txt.textContent = `Detecting neighbours… ${Math.min(i + CHUNK, total).toLocaleString()} / ${total.toLocaleString()} fields`;
+    await new Promise(res => setTimeout(res, 0));
+  }
+
+  neighbourDetectionDone = true;
+  prog.style.display = 'none';
+
+  // Update overlap KPI
+  const uniqueOverlap = [...neighbourMap.values()].filter(n => n.overlapping.length > 0).length;
+  document.getElementById('kpiOverlap').textContent = uniqueOverlap.toLocaleString();
+
+  // Re-render to show badges
+  renderPage();
 }
 
 function autoLatLng(a, b) {
@@ -664,7 +836,11 @@ async function connect() {
     setStatus(`✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`, 'ok');
     document.getElementById('fieldCount').textContent =
       `Fields (${fieldsData.length.toLocaleString()})`;
+    // Build fast lookup map
+    fieldByIdMap = new Map(fieldsData.map(f => [f.fieldId, f]));
     render();
+    // Kick off background neighbour detection
+    startNeighbourDetection();
   } catch(e) {
     btn.disabled = false;
     btn.textContent = 'Connect to Fieldforce';
@@ -691,6 +867,10 @@ function updateKPIs() {
   document.getElementById('kpiInside').textContent  = totalIn.toLocaleString();
   document.getElementById('kpiOutside').textContent = totalOut.toLocaleString();
   document.getElementById('kpiLarge').textContent   = largeCount.toLocaleString();
+  // Overlapping KPI — updated by neighbour detection; show placeholder until ready
+  if (!neighbourDetectionDone) {
+    document.getElementById('kpiOverlap').textContent = '…';
+  }
   document.getElementById('btnExport').disabled = false;
   const kpiPct = document.getElementById('kpiPct');
   kpiPct.textContent = pct + '% compliant';
@@ -728,6 +908,14 @@ function render() {
     if (filter === 'large')         return isLarge;
     if (filter === 'large_with')    return isLarge && trees.length > 0;
     if (filter === 'large_without') return isLarge && trees.length === 0;
+    if (filter === 'overlapping') {
+      const nb = neighbourMap.get(f.fieldId);
+      return nb && nb.overlapping.length > 0;
+    }
+    if (filter === 'adjacent') {
+      const nb = neighbourMap.get(f.fieldId);
+      return nb && nb.adjacent.length > 0;
+    }
     if (!f.ring) return filter === '';
     if (filter === 'inside')        return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
     if (filter === 'outside')       return trees.some(t => !pip(t.lat, t.lng, f.ring));
@@ -778,6 +966,11 @@ function renderPage() {
       ? `<span class="badge" style="background:${pctCol}18;color:${pctCol};border:1px solid ${pctCol}44">${pct}%</span>` : '';
     const areaBadge = area !== null
       ? `<span class="badge" style="background:${isLarge?'rgba(245,158,11,0.1)':'rgba(56,189,248,0.08)'};color:${isLarge?'#f59e0b':'var(--muted)'};border:1px solid ${isLarge?'rgba(245,158,11,0.3)':'var(--border)'}">${isLarge?'⚠ ':''}${area.toFixed(1)}ha</span>` : '';
+    const nb = neighbourMap.get(f.fieldId);
+    const overlapBadge = (nb && nb.overlapping.length > 0)
+      ? `<span class="badge ov">⧖ ${nb.overlapping.length} overlap</span>` : '';
+    const adjBadge = (nb && nb.adjacent.length > 0)
+      ? `<span class="badge adj">~ ${nb.adjacent.length} adj</span>` : '';
     const thumb = hasRing ? makeSVG(f, trees)
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
     return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})"
@@ -795,6 +988,8 @@ function renderPage() {
             : `<span class="badge na">No trees</span>`}
           ${!hasRing ? `<span class="badge na">No polygon</span>` : ''}
           ${areaBadge}
+          ${overlapBadge}
+          ${adjBadge}
         </div>
       </div>
     </div>`;
@@ -933,6 +1128,33 @@ function openLb(idx) {
         border:1px solid rgba(245,158,11,0.3);border-radius:3px;
         padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
         ⚠ Large ${m.area.toFixed(1)} ha</span>` : '';
+
+  // Neighbour badges in lightbox header
+  const nb = neighbourMap.get(f.fieldId);
+  const lbOverlapBadge = document.getElementById('lbLargeBadge').parentNode;
+  // Remove any existing neighbour badges
+  ['lbNbOverlapBadge','lbNbAdjBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
+  if (nb && nb.overlapping.length > 0) {
+    const sp = document.createElement('span');
+    sp.id = 'lbNbOverlapBadge';
+    sp.innerHTML = `<span style="background:rgba(239,68,68,0.1);color:#ef4444;
+      border:1px solid rgba(239,68,68,0.3);border-radius:3px;
+      padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
+      ⧖ ${nb.overlapping.length} overlapping</span>`;
+    lbOverlapBadge.insertBefore(sp, document.getElementById('lbLargeBadge'));
+  }
+  if (nb && nb.adjacent.length > 0) {
+    const sp = document.createElement('span');
+    sp.id = 'lbNbAdjBadge';
+    sp.innerHTML = `<span style="background:rgba(245,158,11,0.1);color:#f59e0b;
+      border:1px solid rgba(245,158,11,0.3);border-radius:3px;
+      padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
+      ~ ${nb.adjacent.length} adjacent</span>`;
+    lbOverlapBadge.insertBefore(sp, document.getElementById('lbLargeBadge'));
+  }
   document.getElementById('lbBoundsBadge').innerHTML = m
     ? m.inZambia
       ? `<span style="background:rgba(34,197,94,0.1);color:#22c55e;
@@ -974,6 +1196,32 @@ function openLb(idx) {
         fillOpacity:0.9
       }).addTo(lbMap);
     });
+
+    // Draw neighbour polygons
+    const nb = neighbourMap.get(f.fieldId);
+    let hasOverlapNeighbour = false, hasAdjNeighbour = false;
+    if (nb) {
+      nb.overlapping.forEach(nid => {
+        const nf = fieldByIdMap.get(nid);
+        if (!nf || !nf.ring) return;
+        hasOverlapNeighbour = true;
+        L.polygon(nf.ring.map(c => [c[1], c[0]]), {
+          color:'#ef4444', weight:2, fillColor:'#ef4444',
+          fillOpacity:0.06, dashArray:'5,4'
+        }).addTo(lbMap).bindTooltip(`⧖ ${nid}`, {sticky:true});
+      });
+      nb.adjacent.forEach(nid => {
+        const nf = fieldByIdMap.get(nid);
+        if (!nf || !nf.ring) return;
+        hasAdjNeighbour = true;
+        L.polygon(nf.ring.map(c => [c[1], c[0]]), {
+          color:'#f59e0b', weight:2, fillColor:'#f59e0b',
+          fillOpacity:0.06, dashArray:'5,4'
+        }).addTo(lbMap).bindTooltip(`~ ${nid}`, {sticky:true});
+      });
+    }
+    document.getElementById('lbLegendOverlap').style.display = hasOverlapNeighbour ? '' : 'none';
+    document.getElementById('lbLegendAdjacent').style.display = hasAdjNeighbour ? '' : 'none';
 
     lbMap.fitBounds(poly.getBounds(), { padding:[24,24] });
     setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
