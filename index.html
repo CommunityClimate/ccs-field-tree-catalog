@@ -272,8 +272,30 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="no_trees">No trees recorded</option>
         <option value="no_poly">No polygon</option>
         <option value="large">⚠ Large polygons</option>
+        <option value="large_with">⚠ Large polygons with trees</option>
+        <option value="large_without">⚠ Large polygons without trees</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
+    </div>
+    <div class="sec">
+      <span class="sec-lbl">Date registered</span>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
+        <span style="font-size:10px;color:var(--muted);width:30px;flex-shrink:0">From</span>
+        <input type="date" id="fltDateFrom" onchange="render()"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);
+          border-radius:4px;color:var(--text);font-family:var(--mono);
+          font-size:10px;padding:4px 6px;outline:none"/>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:10px;color:var(--muted);width:30px;flex-shrink:0">To</span>
+        <input type="date" id="fltDateTo" onchange="render()"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);
+          border-radius:4px;color:var(--text);font-family:var(--mono);
+          font-size:10px;padding:4px 6px;outline:none"/>
+      </div>
+      <div style="font-size:9px;color:var(--muted);margin-top:5px;line-height:1.5">
+        Filters by field registration date.
+      </div>
     </div>
     <div class="sec">
       <span class="sec-lbl">Large polygon threshold</span>
@@ -597,16 +619,17 @@ async function connect() {
     // Load fields
     setStatus('Loading fields…', 'ok');
     const fRows = await dvFetchAll(token,
-      `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field&$filter=statecode eq 0`,
+      `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon&$filter=statecode eq 0`,
       'Fields'
     );
 
     fieldsData = fRows.map(r => ({
-      guid:    String(r.ccs_fieldid || '').toLowerCase(),
-      fieldId: String(r.ccs_cssfieldid_field || '').trim(),
-      owner:   String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
-      geoJSON: String(r.ccs_fieldgeojson_field || ''),
-      ring:    null
+      guid:      String(r.ccs_fieldid || '').toLowerCase(),
+      fieldId:   String(r.ccs_cssfieldid_field || '').trim(),
+      owner:     String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
+      geoJSON:   String(r.ccs_fieldgeojson_field || ''),
+      createdOn: r.createdon ? r.createdon.slice(0,10) : '',
+      ring:      null
     })).map(f => { f.ring = parseGeoJSON(f.geoJSON); return f; })
       .filter(f => f.fieldId);
 
@@ -685,17 +708,29 @@ function render() {
 
   if (!fieldsData.length) return;
 
+  const dateFrom = document.getElementById('fltDateFrom')?.value || '';
+  const dateTo   = document.getElementById('fltDateTo')?.value   || '';
+
   visibleCache = fieldsData.filter(f => {
     if (q && !f.fieldId.toLowerCase().includes(q) &&
               !f.owner.toLowerCase().includes(q)) return false;
-    const trees = treesByField[f.fieldId] || [];
+
+    // Date filter — based on field registration date
+    if (dateFrom && f.createdOn && f.createdOn < dateFrom) return false;
+    if (dateTo   && f.createdOn && f.createdOn > dateTo)   return false;
+
+    const trees     = treesByField[f.fieldId] || [];
     const threshold = getLargeThreshold();
-    if (filter === 'no_poly')  return !f.ring;
-    if (filter === 'no_trees') return trees.length === 0;
-    if (filter === 'large')    return f.ring && ringAreaHa(f.ring) > threshold;
+    const isLarge   = f.ring && ringAreaHa(f.ring) > threshold;
+
+    if (filter === 'no_poly')       return !f.ring;
+    if (filter === 'no_trees')      return trees.length === 0;
+    if (filter === 'large')         return isLarge;
+    if (filter === 'large_with')    return isLarge && trees.length > 0;
+    if (filter === 'large_without') return isLarge && trees.length === 0;
     if (!f.ring) return filter === '';
-    if (filter === 'inside')   return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
-    if (filter === 'outside')  return trees.some(t => !pip(t.lat, t.lng, f.ring));
+    if (filter === 'inside')        return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
+    if (filter === 'outside')       return trees.some(t => !pip(t.lat, t.lng, f.ring));
     return true;
   });
 
@@ -751,6 +786,7 @@ function renderPage() {
       <div class="info">
         <div class="fid">${f.fieldId}</div>
         <div class="owner">${f.owner || '—'}</div>
+        ${f.createdOn ? `<div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-bottom:3px">${f.createdOn}</div>` : ''}
         <div class="stats">
           ${trees.length > 0
             ? `<span class="badge in">${inCount} in</span>
@@ -841,6 +877,8 @@ function applyGridClass() {
 function clearFilters() {
   document.getElementById('fltStatus').value = '';
   document.getElementById('fltSearch').value = '';
+  document.getElementById('fltDateFrom').value = '';
+  document.getElementById('fltDateTo').value   = '';
   render();
 }
 
@@ -852,7 +890,8 @@ function openLb(idx) {
   if (!f) return;
 
   document.getElementById('lbTitle').textContent = f.fieldId;
-  document.getElementById('lbSub').textContent   = f.owner || '—';
+  document.getElementById('lbSub').textContent   =
+    [f.owner, f.createdOn ? `Registered: ${f.createdOn}` : ''].filter(Boolean).join(' · ');
 
   const trees  = treesByField[f.fieldId] || [];
   const ring   = f.ring;
@@ -992,7 +1031,7 @@ function exportCSV(type) {
   });
 
   const headers = [
-    'Field ID','Owner','Total Trees','Inside','Outside','Compliance %',
+    'Field ID','Owner','Registered Date','Total Trees','Inside','Outside','Compliance %',
     'Area (ha)','Perimeter (m)','Vertices','Avg Side (m)','Min Side (m)','Max Side (m)',
     'Trees per ha','Centroid Lat','Centroid Lng','Within Zambia','Large Polygon',
     'Flag'
@@ -1010,6 +1049,7 @@ function exportCSV(type) {
     return [
       f.fieldId,
       f.owner || '',
+      f.createdOn || '',
       trees.length,
       inCount,
       outCount,
