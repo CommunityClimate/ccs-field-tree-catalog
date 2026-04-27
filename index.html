@@ -265,6 +265,14 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Large Polygons</strong>
         <span>Fields above the large polygon threshold</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
+        <strong>⬇ Overlapping Fields</strong>
+        <span>Fields whose polygons share area with another field — list of conflicting pairs</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('adjacent')">
+        <strong>⬇ Adjacent Fields</strong>
+        <span>Fields within ~50 m of another polygon but not overlapping</span>
+      </div>
     </div>
   </div>
 </header>
@@ -1323,8 +1331,102 @@ function exportCSV(type) {
 
   const labels = {
     all:'Field_Compliance_Summary', outside:'Has_Trees_Outside',
-    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons'
+    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons',
+    overlapping:'Overlapping_Fields', adjacent:'Adjacent_Fields'
   };
+
+  // ── Special export: overlapping pairs ─────────────────────────────────────
+  if (type === 'overlapping' || type === 'adjacent') {
+    const rel = type === 'overlapping' ? 'overlapping' : 'adjacent';
+    const seen = new Set();
+    const pairRows = [];
+
+    fieldsData.forEach(f => {
+      const nb = neighbourMap.get(f.fieldId);
+      if (!nb || nb[rel].length === 0) return;
+      const trees  = treesByField[f.fieldId] || [];
+      const m      = f.ring ? ringMetrics(f.ring) : null;
+      let inCount = 0, outCount = 0;
+      if (f.ring && trees.length) {
+        trees.forEach(t => pip(t.lat, t.lng, f.ring) ? inCount++ : outCount++);
+      }
+      const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
+      const isLarge = m && m.area > threshold;
+
+      nb[rel].forEach(nid => {
+        // Deduplicate symmetric pairs (A↔B and B↔A → one row)
+        const pk = f.fieldId < nid ? `${f.fieldId}|${nid}` : `${nid}|${f.fieldId}`;
+        if (seen.has(pk)) return;
+        seen.add(pk);
+
+        const nf     = fieldByIdMap.get(nid);
+        const ntrees = treesByField[nid] || [];
+        const nm     = nf && nf.ring ? ringMetrics(nf.ring) : null;
+        let nIn = 0, nOut = 0;
+        if (nf && nf.ring && ntrees.length) {
+          ntrees.forEach(t => pip(t.lat, t.lng, nf.ring) ? nIn++ : nOut++);
+        }
+        const nPct = ntrees.length > 0 ? Math.round(nIn / ntrees.length * 100) : null;
+
+        pairRows.push([
+          // Field A
+          f.fieldId,
+          f.owner || '',
+          f.createdOn || '',
+          trees.length,
+          inCount,
+          outCount,
+          pct !== null ? pct + '%' : '—',
+          m ? m.area.toFixed(2) : '',
+          m ? Math.round(m.perimeter) : '',
+          m ? m.vertices : '',
+          m ? m.cLat.toFixed(6) : '',
+          m ? m.cLng.toFixed(6) : '',
+          isLarge ? 'Yes' : 'No',
+          // Field B
+          nf ? nf.fieldId : nid,
+          nf ? (nf.owner || '') : '',
+          nf ? (nf.createdOn || '') : '',
+          ntrees.length,
+          nIn,
+          nOut,
+          nPct !== null ? nPct + '%' : '—',
+          nm ? nm.area.toFixed(2) : '',
+          nm ? Math.round(nm.perimeter) : '',
+          nm ? nm.vertices : '',
+          nm ? nm.cLat.toFixed(6) : '',
+          nm ? nm.cLng.toFixed(6) : '',
+          (nm && nm.area > threshold) ? 'Yes' : 'No'
+        ]);
+      });
+    });
+
+    const pairHeaders = [
+      'Field A ID','Field A Owner','Field A Registered','Field A Trees',
+      'Field A Inside','Field A Outside','Field A Compliance %',
+      'Field A Area (ha)','Field A Perimeter (m)','Field A Vertices',
+      'Field A Centroid Lat','Field A Centroid Lng','Field A Large Polygon',
+      'Field B ID','Field B Owner','Field B Registered','Field B Trees',
+      'Field B Inside','Field B Outside','Field B Compliance %',
+      'Field B Area (ha)','Field B Perimeter (m)','Field B Vertices',
+      'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon'
+    ];
+
+    const csv = [pairHeaders, ...pairRows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `CCS_${labels[type]}_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return;
+  }
+
+  // ── Standard exports (all / outside / inside / no_trees / large) ──────────
   const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
