@@ -23,6 +23,9 @@
   --red-b:   rgba(239,68,68,0.25);
   --red-bg:  rgba(239,68,68,0.08);
   --amber:   #f59e0b;
+  --amber-b: rgba(245,158,11,0.25);
+  --amber-bg:rgba(245,158,11,0.08);
+  --purple:  #a78bfa;
   --blue:    #38bdf8;
   --blue-b:  rgba(56,189,248,0.25);
   --blue-bg: rgba(56,189,248,0.08);
@@ -168,7 +171,37 @@ input[type=text]:focus { border-color:var(--green); }
 .btn-primary { background:var(--green); color:#000; }
 .btn-sec { background:var(--border); color:var(--text); }
 
-/* ── EMPTY / LOADING ── */
+.kpi.a { border-color:var(--amber-b); background:var(--amber-bg); }
+.kpi.a .v { color:var(--amber); }
+
+/* Metric strip in lightbox */
+.lb-metrics { display:grid; grid-template-columns:repeat(4,1fr);
+  border-top:1px solid var(--border); flex-shrink:0; }
+.lb-m { padding:8px 10px; text-align:center; border-right:1px solid var(--border); }
+.lb-m:last-child { border-right:none; }
+.lb-m .v { font-family:var(--mono); font-size:13px; font-weight:700;
+  line-height:1; margin-bottom:3px; color:var(--text); }
+.lb-m .l { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
+
+/* Export button */
+.btn-export { background:rgba(245,158,11,0.1); color:var(--amber);
+  border:1px solid rgba(245,158,11,0.3); border-radius:4px;
+  padding:5px 10px; font-family:var(--mono); font-size:10px;
+  font-weight:700; cursor:pointer; transition:opacity .15s; }
+.btn-export:hover { opacity:.8; }
+.export-menu { position:fixed; background:var(--panel); border:1px solid var(--border);
+  border-radius:6px; min-width:230px; z-index:9999;
+  box-shadow:0 8px 24px rgba(0,0,0,.5); overflow:hidden; display:none; }
+.export-item { padding:9px 14px; cursor:pointer; font-size:11px;
+  border-bottom:1px solid var(--border); transition:background .12s; }
+.export-item:last-child { border-bottom:none; }
+.export-item:hover { background:var(--card); }
+.export-item strong { display:block; font-family:var(--mono);
+  font-size:10px; margin-bottom:2px; }
+.export-item span { color:var(--muted); font-size:10px; }
+
+/* Slider */
+input[type=range] { width:100%; accent-color:var(--amber); }
 .empty { color:var(--muted); font-family:var(--mono); font-size:11px;
   text-align:center; padding:40px 20px; line-height:2.5; }
 .spinner { width:20px; height:20px; border:2px solid var(--border);
@@ -190,8 +223,35 @@ input[type=text]:focus { border-color:var(--green); }
   <div class="kpi b"><span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
   <div class="kpi g"><span class="v" id="kpiInside">—</span><span class="l">Inside</span></div>
   <div class="kpi r"><span class="v" id="kpiOutside">—</span><span class="l">Outside</span></div>
+  <div class="kpi a"><span class="v" id="kpiLarge">—</span><span class="l">Large poly</span></div>
   <div class="sp"></div>
   <div class="kpi" id="kpiPct" style="font-family:var(--mono);font-size:13px;font-weight:700">—</div>
+  <div class="hd"></div>
+  <div style="position:relative">
+    <button class="btn-export" id="btnExport" onclick="toggleExportMenu(event)" disabled>⬇ Export ▾</button>
+    <div class="export-menu" id="exportMenu">
+      <div class="export-item" onclick="closeExportMenu();exportCSV('all')">
+        <strong>⬇ Field Compliance Summary</strong>
+        <span>All fields — area, perimeter, trees, compliance %</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('outside')">
+        <strong>⬇ Has Trees Outside</strong>
+        <span>Fields where at least one tree is outside the polygon</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('inside')">
+        <strong>⬇ All Trees Inside</strong>
+        <span>Fields where every tree is correctly inside</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('no_trees')">
+        <strong>⬇ No Trees Recorded</strong>
+        <span>Fields with a polygon but zero trees</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('large')">
+        <strong>⬇ Large Polygons</strong>
+        <span>Fields above the large polygon threshold</span>
+      </div>
+    </div>
+  </div>
 </header>
 
 <div class="main">
@@ -211,8 +271,21 @@ input[type=text]:focus { border-color:var(--green); }
         <option value="outside">✗ Has trees outside</option>
         <option value="no_trees">No trees recorded</option>
         <option value="no_poly">No polygon</option>
+        <option value="large">⚠ Large polygons</option>
       </select>
-      <input type="text" id="fltSearch" placeholder="Search field ID…" oninput="render()"/>
+      <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
+    </div>
+    <div class="sec">
+      <span class="sec-lbl">Large polygon threshold</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <input type="range" id="largeThreshold" min="1" max="100" value="10"
+          oninput="updateThresholdLabel();render()"/>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;
+          color:var(--amber);min-width:42px" id="thresholdLabel">10 ha</span>
+      </div>
+      <div style="font-size:9px;color:var(--muted);line-height:1.5">
+        Fields above this area are flagged ⚠ on their card.
+      </div>
     </div>
     <div class="sec">
       <span class="sec-lbl" id="fieldCount">Fields</span>
@@ -252,20 +325,25 @@ input[type=text]:focus { border-color:var(--green); }
 
 <!-- LIGHTBOX -->
 <div class="lb" id="lb" onclick="if(event.target===this)closeLb()">
-  <div class="lb-box">
+  <div class="lb-box" style="width:min(820px,96vw)">
     <div class="lb-hdr">
       <div>
         <div class="lb-title" id="lbTitle">—</div>
         <div class="lb-sub" id="lbSub">—</div>
       </div>
-      <button class="lb-close" onclick="closeLb()">✕</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="lbLargeBadge"></span>
+        <span id="lbBoundsBadge"></span>
+        <button class="lb-close" onclick="closeLb()">✕</button>
+      </div>
     </div>
-    <div class="lb-map" id="lbMap"></div>
+    <div class="lb-map" id="lbMap" style="height:300px"></div>
     <div class="lb-legend">
       <span><span class="dot" style="background:#22c55e"></span>Inside polygon</span>
       <span><span class="dot" style="background:#ef4444"></span>Outside polygon</span>
       <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Field boundary</span>
     </div>
+    <!-- Tree stats row -->
     <div class="lb-stats">
       <div class="lb-stat">
         <div class="v" id="lbTotal" style="color:var(--blue)">—</div>
@@ -282,6 +360,44 @@ input[type=text]:focus { border-color:var(--green); }
       <div class="lb-stat">
         <div class="v" id="lbPct">—</div>
         <div class="l">Compliance</div>
+      </div>
+    </div>
+    <!-- Polygon metrics row -->
+    <div class="lb-metrics">
+      <div class="lb-m">
+        <div class="v" id="lbArea">—</div>
+        <div class="l">Area (ha)</div>
+      </div>
+      <div class="lb-m">
+        <div class="v" id="lbPerimeter">—</div>
+        <div class="l">Perimeter (m)</div>
+      </div>
+      <div class="lb-m">
+        <div class="v" id="lbVertices">—</div>
+        <div class="l">Vertices</div>
+      </div>
+      <div class="lb-m">
+        <div class="v" id="lbAvgSide">—</div>
+        <div class="l">Avg side (m)</div>
+      </div>
+    </div>
+    <!-- Second metrics row -->
+    <div class="lb-metrics" style="border-top:none">
+      <div class="lb-m">
+        <div class="v" id="lbMinSide">—</div>
+        <div class="l">Min side (m)</div>
+      </div>
+      <div class="lb-m">
+        <div class="v" id="lbMaxSide">—</div>
+        <div class="l">Max side (m)</div>
+      </div>
+      <div class="lb-m">
+        <div class="v" id="lbDensity">—</div>
+        <div class="l">Trees / ha</div>
+      </div>
+      <div class="lb-m">
+        <div class="v" id="lbCentroid">—</div>
+        <div class="l">Centroid</div>
       </div>
     </div>
     <div class="lb-foot">
@@ -324,7 +440,63 @@ async function getToken() {
   }
 }
 
-// ── DATA ───────────────────────────────────────────────────────────────────
+// ── POLYGON METRICS ────────────────────────────────────────────────────────
+
+const ZAMBIA = { minLat:-18, maxLat:-8, minLng:22, maxLng:34 };
+
+function ringAreaHa(ring) {
+  if (!ring || ring.length < 3) return 0;
+  const n = ring.length;
+  const R = 6378137;
+  const cLat = ring.reduce((s,c) => s + c[1], 0) / n * Math.PI / 180;
+  const mLat = Math.PI * R / 180;
+  const mLng = mLat * Math.cos(cLat);
+  let area = 0;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    area += (ring[j][0]*mLng + ring[i][0]*mLng) * (ring[j][1]*mLat - ring[i][1]*mLat);
+  }
+  return Math.abs(area / 2) / 10000;
+}
+
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6378137;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function ringMetrics(ring) {
+  if (!ring || ring.length < 3) return null;
+  const n = ring.length;
+  const sides = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    sides.push(haversineM(ring[i][1], ring[i][0], ring[j][1], ring[j][0]));
+  }
+  const perimeter = sides.reduce((a,b) => a + b, 0);
+  const avg = perimeter / sides.length;
+  const min = Math.min(...sides);
+  const max = Math.max(...sides);
+  const area = ringAreaHa(ring);
+  const cLat = ring.reduce((s,c) => s + c[1], 0) / n;
+  const cLng = ring.reduce((s,c) => s + c[0], 0) / n;
+  const inZambia = ring.every(c =>
+    c[1] >= ZAMBIA.minLat && c[1] <= ZAMBIA.maxLat &&
+    c[0] >= ZAMBIA.minLng && c[0] <= ZAMBIA.maxLng
+  );
+  return { area, perimeter, vertices: n, avg, min, max, cLat, cLng, inZambia };
+}
+
+function getLargeThreshold() {
+  return parseInt(document.getElementById('largeThreshold')?.value || 10);
+}
+
+function updateThresholdLabel() {
+  const v = getLargeThreshold();
+  document.getElementById('thresholdLabel').textContent = v + ' ha';
+}
 let fieldsData = [];     // { fieldId, owner, geoJSON, ring, guid }
 let treesByField = {};   // fieldId → [{lat, lng}]
 
@@ -479,14 +651,14 @@ async function connect() {
 }
 
 function updateKPIs() {
-  let totalIn = 0, totalOut = 0;
+  let totalIn = 0, totalOut = 0, largeCount = 0;
+  const threshold = getLargeThreshold();
   fieldsData.forEach(f => {
     const trees = treesByField[f.fieldId] || [];
-    if (!f.ring || !trees.length) return;
-    trees.forEach(t => {
-      if (pip(t.lat, t.lng, f.ring)) totalIn++;
-      else totalOut++;
-    });
+    if (f.ring) {
+      if (ringAreaHa(f.ring) > threshold) largeCount++;
+      trees.forEach(t => pip(t.lat, t.lng, f.ring) ? totalIn++ : totalOut++);
+    }
   });
   const total = totalIn + totalOut;
   const pct = total > 0 ? Math.round(totalIn / total * 100) : 0;
@@ -495,6 +667,8 @@ function updateKPIs() {
   document.getElementById('kpiTrees').textContent   = total.toLocaleString();
   document.getElementById('kpiInside').textContent  = totalIn.toLocaleString();
   document.getElementById('kpiOutside').textContent = totalOut.toLocaleString();
+  document.getElementById('kpiLarge').textContent   = largeCount.toLocaleString();
+  document.getElementById('btnExport').disabled = false;
   const kpiPct = document.getElementById('kpiPct');
   kpiPct.textContent = pct + '% compliant';
   kpiPct.style.color = pctCol;
@@ -515,8 +689,10 @@ function render() {
     if (q && !f.fieldId.toLowerCase().includes(q) &&
               !f.owner.toLowerCase().includes(q)) return false;
     const trees = treesByField[f.fieldId] || [];
+    const threshold = getLargeThreshold();
     if (filter === 'no_poly')  return !f.ring;
     if (filter === 'no_trees') return trees.length === 0;
+    if (filter === 'large')    return f.ring && ringAreaHa(f.ring) > threshold;
     if (!f.ring) return filter === '';
     if (filter === 'inside')   return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
     if (filter === 'outside')  return trees.some(t => !pip(t.lat, t.lng, f.ring));
@@ -553,17 +729,24 @@ function renderPage() {
   grid.innerHTML = page.map(f => {
     const trees   = treesByField[f.fieldId] || [];
     const hasRing = !!f.ring;
+    const threshold = getLargeThreshold();
     let inCount = 0, outCount = 0;
+    let area = null, isLarge = false;
     if (hasRing) {
       trees.forEach(t => pip(t.lat, t.lng, f.ring) ? inCount++ : outCount++);
+      area = ringAreaHa(f.ring);
+      isLarge = area > threshold;
     }
     const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
     const pctCol = pct === null ? '' : pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
     const pctBadge = pct !== null
       ? `<span class="badge" style="background:${pctCol}18;color:${pctCol};border:1px solid ${pctCol}44">${pct}%</span>` : '';
+    const areaBadge = area !== null
+      ? `<span class="badge" style="background:${isLarge?'rgba(245,158,11,0.1)':'rgba(56,189,248,0.08)'};color:${isLarge?'#f59e0b':'var(--muted)'};border:1px solid ${isLarge?'rgba(245,158,11,0.3)':'var(--border)'}">${isLarge?'⚠ ':''}${area.toFixed(1)}ha</span>` : '';
     const thumb = hasRing ? makeSVG(f, trees)
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
-    return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})">
+    return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})"
+      style="${isLarge?'border-color:rgba(245,158,11,0.35)':''}">
       <div class="map-thumb">${thumb}</div>
       <div class="info">
         <div class="fid">${f.fieldId}</div>
@@ -575,6 +758,7 @@ function renderPage() {
                ${pctBadge}`
             : `<span class="badge na">No trees</span>`}
           ${!hasRing ? `<span class="badge na">No polygon</span>` : ''}
+          ${areaBadge}
         </div>
       </div>
     </div>`;
@@ -670,14 +854,14 @@ function openLb(idx) {
   document.getElementById('lbTitle').textContent = f.fieldId;
   document.getElementById('lbSub').textContent   = f.owner || '—';
 
-  const trees   = treesByField[f.fieldId] || [];
-  const ring    = f.ring;
+  const trees  = treesByField[f.fieldId] || [];
+  const ring   = f.ring;
   let inCount = 0, outCount = 0;
   if (ring && trees.length) {
     trees.forEach(t => pip(t.lat, t.lng, ring) ? inCount++ : outCount++);
   }
-  const total = trees.length;
-  const pct   = total > 0 ? Math.round(inCount / total * 100) : null;
+  const total  = trees.length;
+  const pct    = total > 0 ? Math.round(inCount / total * 100) : null;
   const pctCol = pct === null ? 'var(--muted)'
     : pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
 
@@ -687,9 +871,42 @@ function openLb(idx) {
   document.getElementById('lbPct').textContent     = pct !== null ? pct + '%' : '—';
   document.getElementById('lbPct').style.color     = pctCol;
 
+  // Polygon metrics
+  const m = ring ? ringMetrics(ring) : null;
+  const threshold = getLargeThreshold();
+  const isLarge = m && m.area > threshold;
+
+  document.getElementById('lbArea').textContent      = m ? m.area.toFixed(2) : '—';
+  document.getElementById('lbArea').style.color      = isLarge ? '#f59e0b' : 'var(--text)';
+  document.getElementById('lbPerimeter').textContent = m ? Math.round(m.perimeter).toLocaleString() : '—';
+  document.getElementById('lbVertices').textContent  = m ? m.vertices : '—';
+  document.getElementById('lbAvgSide').textContent   = m ? Math.round(m.avg) : '—';
+  document.getElementById('lbMinSide').textContent   = m ? Math.round(m.min) : '—';
+  document.getElementById('lbMaxSide').textContent   = m ? Math.round(m.max) : '—';
+  document.getElementById('lbDensity').textContent   = (m && m.area > 0)
+    ? (total / m.area).toFixed(1) : '—';
+  document.getElementById('lbCentroid').textContent  = m
+    ? `${m.cLat.toFixed(4)}, ${m.cLng.toFixed(4)}` : '—';
+
+  // Badges
+  document.getElementById('lbLargeBadge').innerHTML = isLarge
+    ? `<span style="background:rgba(245,158,11,0.1);color:#f59e0b;
+        border:1px solid rgba(245,158,11,0.3);border-radius:3px;
+        padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
+        ⚠ Large ${m.area.toFixed(1)} ha</span>` : '';
+  document.getElementById('lbBoundsBadge').innerHTML = m
+    ? m.inZambia
+      ? `<span style="background:rgba(34,197,94,0.1);color:#22c55e;
+          border:1px solid rgba(34,197,94,0.3);border-radius:3px;
+          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">✓ Within Zambia</span>`
+      : `<span style="background:rgba(239,68,68,0.1);color:#ef4444;
+          border:1px solid rgba(239,68,68,0.3);border-radius:3px;
+          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">⚠ Outside Zambia bounds</span>`
+    : '';
+
   document.getElementById('lb').classList.add('open');
 
-  // Build map
+  // Build Leaflet map
   const mapEl = document.getElementById('lbMap');
   mapEl.innerHTML = '';
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
@@ -699,7 +916,6 @@ function openLb(idx) {
       mapEl.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px">No polygon geometry</div>';
       return;
     }
-
     lbMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
     L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
       subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21
@@ -707,16 +923,15 @@ function openLb(idx) {
 
     const latLngs = ring.map(c => [c[1], c[0]]);
     const poly = L.polygon(latLngs, {
-      color:'#38bdf8', weight:2, fillColor:'#38bdf8',
+      color: isLarge ? '#f59e0b' : '#38bdf8',
+      weight:2, fillColor: isLarge ? '#f59e0b' : '#38bdf8',
       fillOpacity:0.08, dashArray:'6,4'
     }).addTo(lbMap);
 
-    // All trees as dots
     trees.forEach(t => {
-      const inside = pip(t.lat, t.lng, ring);
       L.circleMarker([t.lat, t.lng], {
         radius:5, color:'rgba(255,255,255,0.4)', weight:1,
-        fillColor: inside ? '#22c55e' : '#ef4444',
+        fillColor: pip(t.lat, t.lng, ring) ? '#22c55e' : '#ef4444',
         fillOpacity:0.9
       }).addTo(lbMap);
     });
@@ -732,8 +947,104 @@ function closeLb() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeLb();
+  if (e.key === 'Escape') { closeLb(); closeExportMenu(); }
 });
+
+// ── EXPORT MENU ────────────────────────────────────────────────────────────
+function toggleExportMenu(e) {
+  const menu = document.getElementById('exportMenu');
+  const btn  = document.getElementById('btnExport');
+  if (menu.style.display !== 'none') { closeExportMenu(); return; }
+  const rect = btn.getBoundingClientRect();
+  menu.style.top   = (rect.bottom + 4) + 'px';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  menu.style.display = 'block';
+  e.stopPropagation();
+}
+function closeExportMenu() {
+  document.getElementById('exportMenu').style.display = 'none';
+}
+document.addEventListener('click', () => closeExportMenu());
+
+// ── EXPORTS ────────────────────────────────────────────────────────────────
+function exportCSV(type) {
+  const threshold = getLargeThreshold();
+
+  const rows = fieldsData.map(f => {
+    const trees  = treesByField[f.fieldId] || [];
+    const ring   = f.ring;
+    let inCount = 0, outCount = 0;
+    if (ring && trees.length) {
+      trees.forEach(t => pip(t.lat, t.lng, ring) ? inCount++ : outCount++);
+    }
+    const m   = ring ? ringMetrics(ring) : null;
+    const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
+    return { f, trees, ring, inCount, outCount, m, pct, isLarge: m && m.area > threshold };
+  });
+
+  // Filter by type
+  const filtered = rows.filter(r => {
+    if (type === 'outside')  return r.outCount > 0;
+    if (type === 'inside')   return r.trees.length > 0 && r.outCount === 0;
+    if (type === 'no_trees') return r.trees.length === 0 && r.ring;
+    if (type === 'large')    return r.isLarge;
+    return true; // 'all'
+  });
+
+  const headers = [
+    'Field ID','Owner','Total Trees','Inside','Outside','Compliance %',
+    'Area (ha)','Perimeter (m)','Vertices','Avg Side (m)','Min Side (m)','Max Side (m)',
+    'Trees per ha','Centroid Lat','Centroid Lng','Within Zambia','Large Polygon',
+    'Flag'
+  ];
+
+  const csvRows = [headers, ...filtered.map(r => {
+    const { f, trees, inCount, outCount, m, pct, isLarge } = r;
+    let flag = '';
+    if (!r.ring)              flag = 'No polygon';
+    else if (trees.length===0)flag = 'No trees recorded';
+    else if (outCount > 0)    flag = 'Has trees outside';
+    else if (isLarge)         flag = `Large polygon (>${threshold}ha)`;
+    if (m && !m.inZambia)     flag += (flag?', ':'') + 'Vertices outside Zambia';
+    if (!flag && pct === 100) flag = 'Clean';
+    return [
+      f.fieldId,
+      f.owner || '',
+      trees.length,
+      inCount,
+      outCount,
+      pct !== null ? pct + '%' : '—',
+      m ? m.area.toFixed(2) : '',
+      m ? Math.round(m.perimeter) : '',
+      m ? m.vertices : '',
+      m ? Math.round(m.avg) : '',
+      m ? Math.round(m.min) : '',
+      m ? Math.round(m.max) : '',
+      (m && m.area > 0) ? (trees.length / m.area).toFixed(1) : '',
+      m ? m.cLat.toFixed(6) : '',
+      m ? m.cLng.toFixed(6) : '',
+      m ? (m.inZambia ? 'Yes' : 'No') : '',
+      isLarge ? 'Yes' : 'No',
+      flag
+    ];
+  })];
+
+  const csv = csvRows.map(r =>
+    r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+
+  const labels = {
+    all:'Field_Compliance_Summary', outside:'Has_Trees_Outside',
+    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons'
+  };
+  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `CCS_${labels[type]}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
 </script>
 </body>
 </html>
