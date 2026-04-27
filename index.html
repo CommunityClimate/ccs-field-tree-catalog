@@ -219,7 +219,15 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 .kpi.ov { border-color:rgba(239,68,68,0.25); background:rgba(239,68,68,0.08); }
 .kpi.ov .v { color:#ef4444; }
 
-/* Outside tree table */
+/* Polygon editor */
+.edit-handle { cursor: grab; }
+.edit-handle:active { cursor: grabbing; }
+.lb-edit-bar { display:none; padding:8px 14px; border-top:1px solid var(--border);
+  background:rgba(245,158,11,0.06); flex-shrink:0;
+  align-items:center; gap:10px; flex-wrap:wrap; }
+.lb-edit-bar.active { display:flex; }
+.edit-status { font-family:var(--mono); font-size:10px; color:var(--amber); flex:1; }
+.edit-compliance { font-family:var(--mono); font-size:11px; font-weight:700; }
 .tree-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:9px; }
 .tree-table th { color:var(--muted); text-transform:uppercase; letter-spacing:.8px;
   padding:5px 8px; border-bottom:1px solid var(--border); text-align:left;
@@ -503,8 +511,21 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         </table>
       </div>
     </div>
+    <!-- Edit mode bar -->
+    <div class="lb-edit-bar" id="lbEditBar">
+      <span class="edit-status" id="lbEditStatus">✎ Edit mode — drag vertices to reshape boundary</span>
+      <span class="edit-compliance" id="lbEditCompliance"></span>
+      <button class="btn" style="background:var(--border);color:var(--text)"
+        onclick="cancelEdit()">✕ Cancel</button>
+      <button class="btn btn-primary" id="lbSaveBtn"
+        onclick="savePolygon()">💾 Save to Fieldforce</button>
+    </div>
     <div class="lb-foot">
       <button class="btn btn-sec" onclick="closeLb()">Close</button>
+      <button class="btn" id="lbEditBtn"
+        style="background:rgba(245,158,11,0.15);color:var(--amber);
+        border:1px solid rgba(245,158,11,0.4);display:none"
+        onclick="startEdit()">✎ Edit Polygon</button>
     </div>
   </div>
 </div>
@@ -935,7 +956,7 @@ async function connect() {
     // Load fields
     setStatus('Loading fields…', 'ok');
     const fRows = await dvFetchAll(token,
-      `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon&$filter=statecode eq 0`,
+      `${DV_API}/ccs_fields?$select=ccs_fieldid,ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon&$filter=statecode eq 0`,
       'Fields'
     );
 
@@ -1334,6 +1355,13 @@ function openLb(idx) {
 
   document.getElementById('lb').classList.add('open');
 
+  // Show edit button only if field has a polygon and a valid GUID for PATCH
+  const editBtn = document.getElementById('lbEditBtn');
+  editBtn.style.display = (ring && f.guid) ? '' : 'none';
+  // Reset edit bar if it was open
+  document.getElementById('lbEditBar').classList.remove('active');
+  document.getElementById('lb').dataset.editIdx = idx;
+
   // Outside tree breakdown
   const outsideTrees = ring
     ? trees.filter(t => !pip(t.lat, t.lng, ring))
@@ -1455,7 +1483,205 @@ function filterTreeTable() {
   });
 }
 
-function toggleOutsideTree() {
+// ── POLYGON EDITOR ─────────────────────────────────────────────────────────
+let editRing        = null;  // working copy of ring being edited [lng,lat][]
+let editOrigRing    = null;  // original ring for cancel
+let editMarkers     = [];    // draggable vertex markers
+let editPolyLayer   = null;  // live polygon layer
+let editTreeDots    = [];    // tree circle markers (kept visible during edit)
+let lbEditFieldIdx  = null;
+
+function startEdit() {
+  const idx = parseInt(document.getElementById('lb').dataset.editIdx);
+  const f   = fieldsData[idx];
+  if (!f || !f.ring) return;
+
+  lbEditFieldIdx = idx;
+  editOrigRing   = f.ring.map(c => [...c]); // deep copy
+  editRing       = f.ring.map(c => [...c]);
+
+  // Switch UI
+  document.getElementById('lbEditBar').classList.add('active');
+  document.getElementById('lbEditBtn').style.display = 'none';
+  document.getElementById('lbEditStatus').textContent =
+    '✎ Edit mode — drag vertices to reshape boundary';
+
+  // Rebuild map in edit mode
+  buildEditMap(f);
+}
+
+function buildEditMap(f) {
+  const mapEl = document.getElementById('lbMap');
+  mapEl.innerHTML = '';
+  if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
+  editMarkers   = [];
+  editTreeDots  = [];
+  editPolyLayer = null;
+
+  lbMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
+  L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21
+  }).addTo(lbMap);
+
+  // Draw editable polygon
+  editPolyLayer = L.polygon(editRing.map(c => [c[1], c[0]]), {
+    color:'#f59e0b', weight:2.5,
+    fillColor:'#f59e0b', fillOpacity:0.08, dashArray:'6,4'
+  }).addTo(lbMap);
+
+  // Tree dots — static, stay visible throughout editing
+  const trees = treesByField[f.fieldId] || [];
+  trees.forEach(t => {
+    const dot = L.circleMarker([t.lat, t.lng], {
+      radius:5, color:'rgba(255,255,255,0.4)', weight:1,
+      fillColor: pip(t.lat, t.lng, editRing) ? '#22c55e' : '#ef4444',
+      fillOpacity:0.9
+    }).addTo(lbMap);
+    editTreeDots.push({ dot, lat:t.lat, lng:t.lng });
+  });
+
+  // Draggable vertex handles
+  editRing.forEach((c, i) => {
+    const marker = L.circleMarker([c[1], c[0]], {
+      radius:7, color:'#f59e0b', weight:2,
+      fillColor:'#fff', fillOpacity:1,
+      className:'edit-handle'
+    }).addTo(lbMap);
+
+    marker.on('mousedown', function(e) {
+      L.DomEvent.stopPropagation(e);
+      lbMap.dragging.disable();
+
+      function onMove(me) {
+        const ll = lbMap.containerPointToLatLng(
+          lbMap.mouseEventToContainerPoint(me.originalEvent)
+        );
+        editRing[i] = [ll.lng, ll.lat];
+        marker.setLatLng([ll.lat, ll.lng]);
+        // Update polygon shape
+        editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
+        // Update tree dot colours live
+        editTreeDots.forEach(td => {
+          td.dot.setStyle({
+            fillColor: pip(td.lat, td.lng, editRing) ? '#22c55e' : '#ef4444'
+          });
+        });
+        // Live compliance update
+        updateEditCompliance(f.fieldId);
+      }
+
+      function onUp() {
+        lbMap.dragging.enable();
+        lbMap.off('mousemove', onMove);
+        lbMap.off('mouseup',   onUp);
+      }
+
+      lbMap.on('mousemove', onMove);
+      lbMap.on('mouseup',   onUp);
+    });
+
+    editMarkers.push(marker);
+  });
+
+  lbMap.fitBounds(editPolyLayer.getBounds(), { padding:[24,24] });
+  setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
+
+  updateEditCompliance(f.fieldId);
+}
+
+function updateEditCompliance(fieldId) {
+  const trees = treesByField[fieldId] || [];
+  if (!trees.length) {
+    document.getElementById('lbEditCompliance').textContent = '';
+    return;
+  }
+  const inCount = trees.filter(t => pip(t.lat, t.lng, editRing)).length;
+  const pct = Math.round(inCount / trees.length * 100);
+  const col = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+  document.getElementById('lbEditCompliance').innerHTML =
+    `<span style="color:${col}">${pct}% compliant (${inCount}/${trees.length} inside)</span>`;
+}
+
+function cancelEdit() {
+  const f = fieldsData[lbEditFieldIdx];
+  editRing = null;
+  document.getElementById('lbEditBar').classList.remove('active');
+  document.getElementById('lbEditBtn').style.display = '';
+  // Rebuild normal read-only map
+  if (f) openLb(lbEditFieldIdx);
+}
+
+async function savePolygon() {
+  const f = fieldsData[lbEditFieldIdx];
+  if (!f || !editRing || !f.guid) return;
+
+  const saveBtn = document.getElementById('lbSaveBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '⏳ Saving…';
+  document.getElementById('lbEditStatus').textContent = 'Saving to Fieldforce…';
+
+  try {
+    const token = await getToken();
+
+    // Build GeoJSON Polygon
+    const geojson = JSON.stringify({
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[...editRing, editRing[0]]] // close the ring
+      },
+      properties: {}
+    });
+
+    const res = await fetch(
+      `${DV_API}/ccs_fields(${f.guid})`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization':  `Bearer ${token}`,
+          'Content-Type':   'application/json',
+          'Accept':         'application/json',
+          'OData-MaxVersion':'4.0',
+          'OData-Version':  '4.0',
+          'If-Match':       '*'
+        },
+        body: JSON.stringify({ ccs_fieldgeojson_field: geojson })
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err}`);
+    }
+
+    // Update in-memory ring so card SVG and KPIs reflect the correction
+    f.ring    = editRing.map(c => [...c]);
+    f.geoJSON = geojson;
+
+    document.getElementById('lbEditStatus').textContent =
+      `✓ Saved — ${f.fieldId} polygon updated`;
+    saveBtn.textContent  = '✓ Saved';
+    saveBtn.style.background = '#22c55e';
+
+    // Exit edit mode and redraw lightbox with new ring
+    document.getElementById('lbEditBar').classList.remove('active');
+    document.getElementById('lbEditBtn').style.display = '';
+    editRing = null;
+
+    // Rebuild lightbox map read-only with corrected ring
+    openLb(lbEditFieldIdx);
+
+    // Refresh KPIs and re-render card
+    updateKPIs();
+    renderPage();
+
+  } catch(e) {
+    document.getElementById('lbEditStatus').textContent = '✖ Save failed: ' + e.message;
+    saveBtn.disabled = false;
+    saveBtn.textContent = '💾 Save to Fieldforce';
+    saveBtn.style.background = '';
+  }
+}
   const body = document.getElementById('lbOutsideBody');
   const lbl  = document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span');
   const open = body.style.display === 'none';
