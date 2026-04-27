@@ -483,6 +483,15 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       </div>
       <div id="lbOutsideBody" style="display:none;max-height:220px;overflow-y:auto;
         border-top:1px solid var(--border)">
+        <div style="padding:5px 8px;border-bottom:1px solid var(--border);background:var(--panel);
+          position:sticky;top:0;z-index:1">
+          <input type="text" id="lbTreeSearch"
+            placeholder="Search tree code, species or actual field…"
+            oninput="filterTreeTable()"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);
+            border-radius:3px;color:var(--text);font-family:var(--mono);
+            font-size:10px;padding:4px 7px;outline:none"/>
+        </div>
         <table class="tree-table" id="lbTreeTable">
           <thead>
             <tr>
@@ -797,6 +806,25 @@ function autoLatLng(a, b) {
   if (b < 0 && a > 0) return { lat: b, lng: a };
   if (Math.abs(a) < 90) return { lat: a, lng: b };
   return { lat: b, lng: a };
+}
+
+// ── CORRECTION ARTIFACT DETECTION ─────────────────────────────────────────
+// Flags overlapping pairs that look like original + corrected version of the
+// same field. Signature: one polygon is largely contained within the other
+// (>70% of vertices inside) AND has noticeably more vertices (more detail).
+function correctionArtifactFlag(ringA, ringB) {
+  if (!ringA || !ringB) return 'Unknown';
+  const aInB = ringA.filter(c => pip(c[1], c[0], ringB)).length / ringA.length;
+  const bInA = ringB.filter(c => pip(c[1], c[0], ringA)).length / ringB.length;
+  const contained = Math.max(aInB, bInA);
+  if (contained < 0.70) return 'No — genuine overlap';
+  const areaA = ringAreaHa(ringA), areaB = ringAreaHa(ringB);
+  const smaller      = areaA <= areaB ? 'A' : 'B';
+  const moreVertices = ringA.length >= ringB.length ? 'A' : 'B';
+  const confidence   = contained >= 0.90 ? 'Likely' : 'Possible';
+  return smaller === moreVertices
+    ? `${confidence} correction artifact — Field ${smaller} is smaller & more detailed (probable corrected version)`
+    : `${confidence} correction artifact — Field ${smaller} is smaller but has fewer vertices`;
 }
 
 // ── RE-ALLOCATION ENGINE ───────────────────────────────────────────────────
@@ -1419,11 +1447,23 @@ function openLb(idx) {
   }, 60);
 }
 
+function filterTreeTable() {
+  const q = document.getElementById('lbTreeSearch').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('#lbTreeBody tr');
+  rows.forEach(row => {
+    row.style.display = !q || row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
 function toggleOutsideTree() {
   const body = document.getElementById('lbOutsideBody');
   const lbl  = document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span');
   const open = body.style.display === 'none';
   body.style.display = open ? '' : 'none';
+  if (open) {
+    const s = document.getElementById('lbTreeSearch');
+    if (s) { s.value = ''; filterTreeTable(); }
+  }
   lbl.textContent = (open ? '▾ ' : '▸ ') + 'Outside Trees';
 }
 
@@ -1604,6 +1644,11 @@ function exportCSV(type) {
         }
         const nPct = ntrees.length > 0 ? Math.round(nIn / ntrees.length * 100) : null;
 
+        // Correction artifact check (only for overlapping pairs)
+        const artifactFlag = type === 'overlapping'
+          ? correctionArtifactFlag(f.ring, nf ? nf.ring : null)
+          : '—';
+
         pairRows.push([
           // Field A
           f.fieldId,
@@ -1632,7 +1677,8 @@ function exportCSV(type) {
           nm ? nm.vertices : '',
           nm ? nm.cLat.toFixed(6) : '',
           nm ? nm.cLng.toFixed(6) : '',
-          (nm && nm.area > threshold) ? 'Yes' : 'No'
+          (nm && nm.area > threshold) ? 'Yes' : 'No',
+          artifactFlag
         ]);
       });
     });
@@ -1645,7 +1691,8 @@ function exportCSV(type) {
       'Field B ID','Field B Owner','Field B Registered','Field B Trees',
       'Field B Inside','Field B Outside','Field B Compliance %',
       'Field B Area (ha)','Field B Perimeter (m)','Field B Vertices',
-      'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon'
+      'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon',
+      'Correction Artifact'
     ];
 
     const csv = [pairHeaders, ...pairRows]
