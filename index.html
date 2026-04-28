@@ -1682,6 +1682,8 @@ async function savePolygon() {
     saveBtn.style.background = '';
   }
 }
+
+function toggleOutsideTree() {
   const body = document.getElementById('lbOutsideBody');
   const lbl  = document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span');
   const open = body.style.display === 'none';
