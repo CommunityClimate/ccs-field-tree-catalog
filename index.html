@@ -547,7 +547,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
               <th>Tree Code</th><th>Species</th>
               <th>Lat</th><th>Lng</th>
               <th>Dist (m)</th><th>Accuracy (m)</th>
-              <th>Code→Field</th><th>Actual Field</th><th>Flag</th>
+              <th>Assigned By</th><th>Code→Field</th>
+              <th>Actual Field</th><th>Flag</th>
             </tr>
           </thead>
           <tbody id="lbTreeBody"></tbody>
@@ -1044,48 +1045,70 @@ async function connect() {
     const guidToId = {};
     fieldsData.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
 
+    // Build fieldId set for fast lookup
+    const fieldIdSet = new Set(fieldsData.map(f => f.fieldId));
+
     // Deduplicate trees by ccs_treecode — keep newest modifiedon
     const treeMap = new Map();
     tRows.forEach(r => {
       const code = r.ccs_treecode;
-      if (!code) return; // no code — keep as-is, handled below
+      if (!code) return;
       const existing = treeMap.get(code);
       if (!existing || r.modifiedon > existing.modifiedon) {
         treeMap.set(code, r);
       }
     });
-    // Re-combine: deduplicated coded rows + any rows with no tree code
-    const noCode  = tRows.filter(r => !r.ccs_treecode);
+    const noCode     = tRows.filter(r => !r.ccs_treecode);
     const dedupedRows = [...treeMap.values(), ...noCode];
     const dupesDropped = tRows.length - dedupedRows.length;
 
     treesByField = {};
     let treeCount = 0;
+    let assignedByCode = 0, assignedByGuid = 0, assignedNeither = 0;
+
     dedupedRows.forEach(r => {
       const lat = parseFloat(r.ccs_treelatitude_tree);
       const lng = parseFloat(r.ccs_treelongitude_tree);
       if (isNaN(lat) || isNaN(lng)) return;
       const coords = autoLatLng(lat, lng);
-      const guid   = (r['_ccs_field_tree_value'] || '').toLowerCase();
-      const fid    = guidToId[guid];
-      if (!fid) return;
-      if (!treesByField[fid]) treesByField[fid] = [];
 
-      // Extract field ID embedded in tree code: TRE-{owner}-{field}-{fieldNr}-{treeNr}
-      // → FLD-{owner}-{field}-{fieldNr}
-      const code = r.ccs_treecode || '';
+      // ── PRIMARY: derive field from tree code ──────────────────────────────
+      const code  = r.ccs_treecode || '';
       const parts = code.split('-');
       const codeFieldId = parts.length >= 4
         ? `FLD-${parts[1]}-${parts[2]}-${parts[3]}` : null;
-      const codeGuidMismatch = codeFieldId && codeFieldId !== fid;
 
+      // ── FALLBACK: GUID link ───────────────────────────────────────────────
+      const guid      = (r['_ccs_field_tree_value'] || '').toLowerCase();
+      const guidFieldId = guidToId[guid] || null;
+
+      // Use tree code if it resolves to a known field, otherwise fall back to GUID
+      let fid, assignMethod;
+      if (codeFieldId && fieldIdSet.has(codeFieldId)) {
+        fid = codeFieldId;
+        assignMethod = 'code';
+        assignedByCode++;
+      } else if (guidFieldId) {
+        fid = guidFieldId;
+        assignMethod = 'guid';
+        assignedByGuid++;
+      } else {
+        assignedNeither++;
+        return; // can't assign — skip
+      }
+
+      const codeGuidMismatch = codeFieldId && guidFieldId && codeFieldId !== guidFieldId;
+
+      if (!treesByField[fid]) treesByField[fid] = [];
       treesByField[fid].push({
         lat: coords.lat, lng: coords.lng,
         code,
         species:          r['ccs_species_tree@OData.Community.Display.V1.FormattedValue'] || '',
         accuracy:         r.ccs_accuracyreading != null ? parseFloat(r.ccs_accuracyreading) : null,
         codeFieldId,
-        codeGuidMismatch  // tree code says it belongs to a different field than GUID link
+        guidFieldId,
+        assignMethod,     // 'code' | 'guid'
+        codeGuidMismatch
       });
       treeCount++;
     });
@@ -1102,11 +1125,18 @@ async function connect() {
     });
     window._catalogCodeGuidMismatches = codeGuidMismatches;
 
+    window._catalogAssignedByCode   = assignedByCode;
+    window._catalogAssignedByGuid   = assignedByGuid;
+    window._catalogAssignedNeither  = assignedNeither;
+
     updateKPIs();
     setStatus(
       `✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`
-      + (dupesDropped > 0 ? ` · ${dupesDropped.toLocaleString()} duplicates removed` : '')
-      + (codeGuidMismatches > 0 ? ` · ⚠ ${codeGuidMismatches.toLocaleString()} code/field mismatches` : ''),
+      + (dupesDropped > 0 ? ` · ${dupesDropped.toLocaleString()} dupes removed` : '')
+      + ` · ${assignedByCode.toLocaleString()} by code`
+      + (assignedByGuid > 0 ? ` · ${assignedByGuid.toLocaleString()} by GUID` : '')
+      + (assignedNeither > 0 ? ` · ⚠ ${assignedNeither.toLocaleString()} unassigned` : '')
+      + (codeGuidMismatches > 0 ? ` · ⚠ ${codeGuidMismatches.toLocaleString()} mismatches` : ''),
       'ok'
     );
     document.getElementById('fieldCount').textContent =
@@ -1514,6 +1544,10 @@ function openLb(idx) {
             : `<td style="color:var(--muted)">✓ Match</td>`)
         : `<td style="color:var(--muted)">—</td>`;
 
+      const assignCell = t.assignMethod === 'guid'
+        ? `<td style="color:#f59e0b" title="Tree code did not resolve — using GUID fallback">⚠ GUID</td>`
+        : `<td style="color:var(--muted)">Code</td>`;
+
       return `<tr>
         <td>${t.code || '—'}</td>
         <td>${t.species || '—'}</td>
@@ -1521,6 +1555,7 @@ function openLb(idx) {
         <td>${t.lng.toFixed(5)}</td>
         ${distCol}
         ${accCol}
+        ${assignCell}
         ${codeFieldCell}
         <td class="${statusClass}">${actualLabel}</td>
         ${rogueCell}
@@ -1857,6 +1892,11 @@ function runCrossCheck() {
     ['GPS Accuracy',    found.accuracy != null ? `${found.accuracy}m ${found.accuracy > 50 ? warn : tick}` : '—'],
     ['Tagged Field',    f ? f.fieldId : '—'],
     ['Field Owner',     f ? (f.owner || '—') : '—'],
+    ['Assignment Method', found.assignMethod === 'code'
+      ? `${tick} Tree code (authoritative)`
+      : found.assignMethod === 'guid'
+      ? `${warn} GUID fallback (tree code did not resolve to a known field)`
+      : '—'],
     ['Code→Field',      found.codeFieldId
       ? (found.codeGuidMismatch
           ? `${found.codeFieldId} ${cross} <span style="color:#ef4444">MISMATCH — code says ${found.codeFieldId}, GUID links to ${f?.fieldId}</span>`
@@ -1908,6 +1948,9 @@ function exportHeader(type, count) {
     `# Trees loaded: ${Object.values(treesByField).reduce((s,a)=>s+a.length,0).toLocaleString()}`,
     `# Duplicates removed: ${(window._catalogDupesDropped||0).toLocaleString()}`,
     `# Code/field mismatches: ${(window._catalogCodeGuidMismatches||0).toLocaleString()}`,
+    `# Trees assigned by tree code: ${(window._catalogAssignedByCode||0).toLocaleString()}`,
+    `# Trees assigned by GUID (code fallback): ${(window._catalogAssignedByGuid||0).toLocaleString()}`,
+    `# Trees unassigned: ${(window._catalogAssignedNeither||0).toLocaleString()}`,
     `# Records in this export: ${count}`,
     ``
   ].join('\n');
