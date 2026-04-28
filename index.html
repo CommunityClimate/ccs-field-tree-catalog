@@ -298,6 +298,18 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Re-allocation Report</strong>
         <span>Every outside tree — where it is vs where it should be</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('audit')">
+        <strong>⬇ Audit Trail</strong>
+        <span>Every outside tree with raw coords, polygon vertices, pip result — independently verifiable</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('codemismatch')">
+        <strong>⬇ Code / Field Mismatches</strong>
+        <span>Trees where the field encoded in the tree code disagrees with the GUID link</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();openCrossCheck()">
+        <strong>🔍 Cross-Check Tree</strong>
+        <span>Look up any tree code — raw coordinates, polygon, pip result step-by-step</span>
+      </div>
     </div>
   </div>
 </header>
@@ -395,6 +407,35 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnPrev" onclick="changePage(-1)" disabled>← Prev</button>
       <span style="color:var(--muted)" id="pageInfo">—</span>
       <button class="view-btn" id="btnNext" onclick="changePage(1)" disabled>Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- CROSS-CHECK MODAL -->
+<div class="lb" id="ccModal" onclick="if(event.target===this)closeCrossCheck()">
+  <div class="lb-box" style="width:min(700px,96vw)">
+    <div class="lb-hdr">
+      <div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue)">
+          🔍 Tree Cross-Check Tool
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          Enter a tree code to verify raw coordinates, polygon, and pip result
+        </div>
+      </div>
+      <button class="lb-close" onclick="closeCrossCheck()">✕</button>
+    </div>
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px">
+      <input type="text" id="ccInput"
+        placeholder="e.g. TRE-C4Q2Z-W8F4J-001-0387"
+        style="flex:1;background:var(--bg);border:1px solid var(--border);
+        border-radius:4px;color:var(--text);font-family:var(--mono);
+        font-size:11px;padding:6px 10px;outline:none"/>
+      <button class="btn btn-primary" onclick="runCrossCheck()">Check</button>
+    </div>
+    <div id="ccResult" style="padding:14px;max-height:500px;overflow-y:auto;
+      font-family:var(--mono);font-size:10px;line-height:1.8">
+      <span style="color:var(--muted)">Enter a tree code above and press Check.</span>
     </div>
   </div>
 </div>
@@ -506,7 +547,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
               <th>Tree Code</th><th>Species</th>
               <th>Lat</th><th>Lng</th>
               <th>Dist (m)</th><th>Accuracy (m)</th>
-              <th>Actual Field</th><th>Flag</th>
+              <th>Code→Field</th><th>Actual Field</th><th>Flag</th>
             </tr>
           </thead>
           <tbody id="lbTreeBody"></tbody>
@@ -1029,20 +1070,43 @@ async function connect() {
       const fid    = guidToId[guid];
       if (!fid) return;
       if (!treesByField[fid]) treesByField[fid] = [];
+
+      // Extract field ID embedded in tree code: TRE-{owner}-{field}-{fieldNr}-{treeNr}
+      // → FLD-{owner}-{field}-{fieldNr}
+      const code = r.ccs_treecode || '';
+      const parts = code.split('-');
+      const codeFieldId = parts.length >= 4
+        ? `FLD-${parts[1]}-${parts[2]}-${parts[3]}` : null;
+      const codeGuidMismatch = codeFieldId && codeFieldId !== fid;
+
       treesByField[fid].push({
         lat: coords.lat, lng: coords.lng,
-        code:     r.ccs_treecode || '',
-        species:  r['ccs_species_tree@OData.Community.Display.V1.FormattedValue'] || '',
-        accuracy: r.ccs_accuracyreading != null ? parseFloat(r.ccs_accuracyreading) : null
+        code,
+        species:          r['ccs_species_tree@OData.Community.Display.V1.FormattedValue'] || '',
+        accuracy:         r.ccs_accuracyreading != null ? parseFloat(r.ccs_accuracyreading) : null,
+        codeFieldId,
+        codeGuidMismatch  // tree code says it belongs to a different field than GUID link
       });
       treeCount++;
     });
 
     // KPIs
+    const loadedAt = new Date().toISOString();
+    window._catalogLoadedAt = loadedAt;
+    window._catalogDupesDropped = dupesDropped;
+
+    // Count code-vs-guid mismatches across all trees
+    let codeGuidMismatches = 0;
+    Object.values(treesByField).forEach(trees => {
+      trees.forEach(t => { if (t.codeGuidMismatch) codeGuidMismatches++; });
+    });
+    window._catalogCodeGuidMismatches = codeGuidMismatches;
+
     updateKPIs();
     setStatus(
       `✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`
-      + (dupesDropped > 0 ? ` · ${dupesDropped.toLocaleString()} duplicates removed` : ''),
+      + (dupesDropped > 0 ? ` · ${dupesDropped.toLocaleString()} duplicates removed` : '')
+      + (codeGuidMismatches > 0 ? ` · ⚠ ${codeGuidMismatches.toLocaleString()} code/field mismatches` : ''),
       'ok'
     );
     document.getElementById('fieldCount').textContent =
@@ -1443,6 +1507,13 @@ function openLb(idx) {
       const accCol = t.accuracy != null && t.accuracy > ROGUE_ACC_M
         ? `<td style="color:#f59e0b">${accStr}</td>`
         : `<td>${accStr}</td>`;
+      const codeFieldCell = t.codeFieldId
+        ? (t.codeGuidMismatch
+            ? `<td title="Tree code says ${t.codeFieldId} but GUID links to ${f.fieldId}"
+                style="color:#ef4444;font-weight:700">⚠ ${t.codeFieldId}</td>`
+            : `<td style="color:var(--muted)">✓ Match</td>`)
+        : `<td style="color:var(--muted)">—</td>`;
+
       return `<tr>
         <td>${t.code || '—'}</td>
         <td>${t.species || '—'}</td>
@@ -1450,6 +1521,7 @@ function openLb(idx) {
         <td>${t.lng.toFixed(5)}</td>
         ${distCol}
         ${accCol}
+        ${codeFieldCell}
         <td class="${statusClass}">${actualLabel}</td>
         ${rogueCell}
       </tr>`;
@@ -1730,6 +1802,117 @@ async function savePolygon() {
   }
 }
 
+// ── CROSS-CHECK TOOL ───────────────────────────────────────────────────────
+function openCrossCheck() {
+  document.getElementById('ccModal').classList.add('open');
+  document.getElementById('ccInput').focus();
+}
+function closeCrossCheck() {
+  document.getElementById('ccModal').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLb(); closeExportMenu(); closeCrossCheck(); }
+  if (e.key === 'Enter' && document.getElementById('ccModal').classList.contains('open')) {
+    runCrossCheck();
+  }
+});
+
+function runCrossCheck() {
+  const query = document.getElementById('ccInput').value.trim().toUpperCase();
+  const out   = document.getElementById('ccResult');
+  if (!query) { out.innerHTML = '<span style="color:var(--muted)">Enter a tree code.</span>'; return; }
+
+  // Find the tree
+  let found = null, foundField = null;
+  for (const [fid, trees] of Object.entries(treesByField)) {
+    for (const t of trees) {
+      if (t.code.toUpperCase() === query) { found = t; foundField = fieldByIdMap.get(fid); break; }
+    }
+    if (found) break;
+  }
+
+  if (!found) {
+    out.innerHTML = `<span style="color:#ef4444">Tree code <b>${query}</b> not found in loaded data.</span>`;
+    return;
+  }
+
+  const f      = foundField;
+  const ring   = f ? f.ring : null;
+  const inside = ring ? pip(found.lat, found.lng, ring) : null;
+  const distM  = (f && ring) ? Math.round(haversineM(found.lat, found.lng,
+    ring.reduce((s,c)=>s+c[1],0)/ring.length,
+    ring.reduce((s,c)=>s+c[0],0)/ring.length)) : null;
+  const rf     = (f && ring) ? rogueFlag(found, ring.reduce((s,c)=>s+c[1],0)/ring.length,
+    ring.reduce((s,c)=>s+c[0],0)/ring.length) : null;
+
+  const tick  = '<span style="color:#22c55e">✓</span>';
+  const cross = '<span style="color:#ef4444">✗</span>';
+  const warn  = '<span style="color:#f59e0b">⚠</span>';
+
+  const rows = [
+    ['Tree Code',       found.code],
+    ['Species',         found.species || '—'],
+    ['Raw Latitude',    `${found.lat} &nbsp;<span style="color:var(--muted)">(ccs_treelatitude_tree)</span>`],
+    ['Raw Longitude',   `${found.lng} &nbsp;<span style="color:var(--muted)">(ccs_treelongitude_tree)</span>`],
+    ['GPS Accuracy',    found.accuracy != null ? `${found.accuracy}m ${found.accuracy > 50 ? warn : tick}` : '—'],
+    ['Tagged Field',    f ? f.fieldId : '—'],
+    ['Field Owner',     f ? (f.owner || '—') : '—'],
+    ['Code→Field',      found.codeFieldId
+      ? (found.codeGuidMismatch
+          ? `${found.codeFieldId} ${cross} <span style="color:#ef4444">MISMATCH — code says ${found.codeFieldId}, GUID links to ${f?.fieldId}</span>`
+          : `${found.codeFieldId} ${tick} Match`)
+      : '—'],
+    ['Polygon Vertices', ring ? ring.length : 'No polygon'],
+    ['Polygon Coords',  ring
+      ? '<br>' + ring.map((c,i) =>
+          `&nbsp;&nbsp;[${i}] lng=${c[0].toFixed(7)}, lat=${c[1].toFixed(7)}`
+        ).join('<br>')
+      : 'No polygon'],
+    ['Distance from Centroid', distM != null ? `${distM.toLocaleString()}m ${distM > 1000 ? cross + ' ROGUE' : tick}` : '—'],
+    ['pip() Result',    inside === null ? '— (no polygon)' :
+      inside
+        ? `${tick} <span style="color:#22c55e">INSIDE polygon</span>`
+        : `${cross} <span style="color:#ef4444">OUTSIDE polygon</span>`],
+    ['Rogue GPS Flag',  rf ? `${cross} ${rf.flag} — ${rf.reason}` : `${tick} No rogue flag`],
+    ['Actual Field',    found.actualFieldId === undefined ? '⏳ Pending detection'
+      : found.actualFieldId === null ? `${cross} Orphaned — outside every polygon`
+      : found.actualFieldId === f?.fieldId ? `${tick} Inside tagged field`
+      : `→ ${found.actualFieldId}`],
+    ['Data loaded at',  window._catalogLoadedAt || '—'],
+  ];
+
+  out.innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      ${rows.map(([k,v]) => `
+        <tr style="border-bottom:1px solid rgba(31,46,66,0.6)">
+          <td style="color:var(--muted);padding:4px 8px;white-space:nowrap;
+            width:40%;vertical-align:top">${k}</td>
+          <td style="color:var(--text);padding:4px 8px">${v}</td>
+        </tr>`).join('')}
+    </table>
+    <div style="margin-top:12px;padding:8px;background:rgba(56,189,248,0.05);
+      border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:9px">
+      To independently verify: paste the polygon coords into geojson.io as a GeoJSON Polygon,
+      then drop a marker at (${found.lat}, ${found.lng}) — it should ${inside ? 'be inside' : 'be outside'} the polygon.
+    </div>`;
+}
+
+// ── EXPORT HELPERS ─────────────────────────────────────────────────────────
+function exportHeader(type, count) {
+  const ts = window._catalogLoadedAt || new Date().toISOString();
+  return [
+    `# CCS Field Tree Catalog — ${type}`,
+    `# Generated: ${new Date().toUTCString()}`,
+    `# Data loaded from Fieldforce at: ${ts}`,
+    `# Fields loaded: ${fieldsData.length.toLocaleString()}`,
+    `# Trees loaded: ${Object.values(treesByField).reduce((s,a)=>s+a.length,0).toLocaleString()}`,
+    `# Duplicates removed: ${(window._catalogDupesDropped||0).toLocaleString()}`,
+    `# Code/field mismatches: ${(window._catalogCodeGuidMismatches||0).toLocaleString()}`,
+    `# Records in this export: ${count}`,
+    ``
+  ].join('\n');
+}
+
 function toggleOutsideTree() {
   const body = document.getElementById('lbOutsideBody');
   const lbl  = document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span');
@@ -1746,10 +1929,6 @@ function closeLb() {
   document.getElementById('lb').classList.remove('open');
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
 }
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLb(); closeExportMenu(); }
-});
 
 // ── EXPORT MENU ────────────────────────────────────────────────────────────
 function toggleExportMenu(e) {
@@ -1839,7 +2018,8 @@ function exportCSV(type) {
     all:'Field_Compliance_Summary', outside:'Has_Trees_Outside',
     inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons',
     overlapping:'Overlapping_Fields', adjacent:'Adjacent_Fields',
-    realloc:'Reallocation_Report'
+    realloc:'Reallocation_Report', audit:'Audit_Trail',
+    codemismatch:'Code_Field_Mismatches'
   };
 
   // ── Re-allocation export ───────────────────────────────────────────────────
@@ -1885,11 +2065,125 @@ function exportCSV(type) {
     const csv = [reallocHeaders, ...reallocRows]
       .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
       .join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + exportHeader('Re-allocation Report', reallocRows.length) + csv],
+      { type:'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;
     a.download = `CCS_Reallocation_Report_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return;
+  }
+
+  // ── Audit trail export ────────────────────────────────────────────────────
+  if (type === 'audit') {
+    const auditRows = [];
+    fieldsData.forEach(f => {
+      const trees = treesByField[f.fieldId] || [];
+      const ring  = f.ring;
+      const cm    = ring ? ringMetrics(ring) : null;
+      const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
+      const polyCoords = ring
+        ? ring.map(c => `[lng=${c[0].toFixed(7)} lat=${c[1].toFixed(7)}]`).join(' | ')
+        : '';
+      trees.forEach(t => {
+        if (ring && pip(t.lat, t.lng, ring)) return; // inside — skip
+        const distM  = ring ? Math.round(haversineM(t.lat, t.lng, cLat, cLng)) : '';
+        const rf     = ring ? rogueFlag(t, cLat, cLng) : null;
+        const inside = ring ? pip(t.lat, t.lng, ring) : null;
+        auditRows.push([
+          t.code || '',
+          t.species || '',
+          t.lat.toFixed(7),
+          t.lng.toFixed(7),
+          t.accuracy != null ? Math.round(t.accuracy) : '',
+          f.fieldId,
+          f.owner || '',
+          t.codeFieldId || '',
+          t.codeGuidMismatch ? 'MISMATCH' : 'OK',
+          ring ? ring.length : '',
+          polyCoords,
+          cLat ? cLat.toFixed(7) : '',
+          cLng ? cLng.toFixed(7) : '',
+          distM,
+          inside === null ? 'No polygon' : inside ? 'INSIDE' : 'OUTSIDE',
+          rf ? rf.flag + ' — ' + rf.reason : 'OK',
+          t.actualFieldId === undefined ? 'Pending'
+            : t.actualFieldId === null ? 'Orphaned'
+            : t.actualFieldId !== f.fieldId ? 'Re-allocated: ' + t.actualFieldId
+            : 'Inside tagged field',
+          window._catalogLoadedAt || ''
+        ]);
+      });
+    });
+    const auditHeaders = [
+      'Tree Code','Species','Raw Lat','Raw Lng','GPS Accuracy (m)',
+      'Tagged Field','Tagged Owner',
+      'Code→Field','Code/GUID Check',
+      'Polygon Vertices','Polygon Coordinates',
+      'Centroid Lat','Centroid Lng','Dist from Centroid (m)',
+      'pip() Result','Rogue Flag','Allocation Status','Data Loaded At'
+    ];
+    const csvBody = [auditHeaders, ...auditRows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + exportHeader('Audit Trail', auditRows.length) + csvBody],
+      { type:'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url;
+    a.download = `CCS_Audit_Trail_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return;
+  }
+
+  // ── Code / field mismatch export ─────────────────────────────────────────
+  if (type === 'codemismatch') {
+    const mmRows = [];
+    fieldsData.forEach(f => {
+      const trees = treesByField[f.fieldId] || [];
+      const ring  = f.ring;
+      const cm    = ring ? ringMetrics(ring) : null;
+      const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
+      trees.forEach(t => {
+        if (!t.codeGuidMismatch) return;
+        const inside = ring ? pip(t.lat, t.lng, ring) : null;
+        const distM  = ring ? Math.round(haversineM(t.lat, t.lng, cLat, cLng)) : '';
+        mmRows.push([
+          t.code || '',
+          t.species || '',
+          t.lat.toFixed(7),
+          t.lng.toFixed(7),
+          t.accuracy != null ? Math.round(t.accuracy) : '',
+          t.codeFieldId || '',
+          f.fieldId,
+          f.owner || '',
+          inside === null ? 'No polygon' : inside ? 'Inside GUID field' : 'Outside GUID field',
+          distM,
+          t.actualFieldId === undefined ? 'Pending'
+            : t.actualFieldId === null ? 'Orphaned'
+            : 'Re-allocated: ' + t.actualFieldId,
+          window._catalogLoadedAt || ''
+        ]);
+      });
+    });
+    const mmHeaders = [
+      'Tree Code','Species','Lat','Lng','GPS Accuracy (m)',
+      'Field from Tree Code','GUID-Linked Field','GUID Field Owner',
+      'pip() vs GUID Field','Dist from GUID Centroid (m)',
+      'Re-allocation Status','Data Loaded At'
+    ];
+    const csvBody = [mmHeaders, ...mmRows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + exportHeader('Code/Field Mismatches', mmRows.length) + csvBody],
+      { type:'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url;
+    a.download = `CCS_Code_Field_Mismatches_${new Date().toISOString().slice(0,10)}.csv`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     return;
