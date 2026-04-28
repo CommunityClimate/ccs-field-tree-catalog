@@ -253,6 +253,13 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   color:var(--text); white-space:nowrap; }
 .tree-table tr:last-child td { border-bottom:none; }
 .tree-table tr:hover td { background:rgba(56,189,248,0.04); }
+.tree-table tr.selected td { background:rgba(56,189,248,0.12) !important; }
+.tree-table tr { cursor:pointer; }
+@keyframes treePulse {
+  0%   { r: 5;  opacity: 1; }
+  50%  { r: 14; opacity: 0.5; }
+  100% { r: 5;  opacity: 1; }
+}
 .tree-table .re  { color:#f59e0b; }
 .tree-table .orp { color:#ef4444; }
 .tree-table .pnd { color:var(--muted); }
@@ -1696,7 +1703,7 @@ function openLb(idx) {
     ].join('');
 
     // Build tree table rows
-    const rows = outsideTrees.slice(0, 500).map(t => {
+    const rows = outsideTrees.slice(0, 500).map((t, i) => {
       let statusClass = 'pnd', actualLabel = '⏳ Pending';
       if (t.actualFieldId === null) {
         statusClass = 'orp'; actualLabel = '⊗ Orphaned';
@@ -1721,12 +1728,11 @@ function openLb(idx) {
                 style="color:#ef4444;font-weight:700">⚠ ${t.codeFieldId}</td>`
             : `<td style="color:var(--muted)">✓ Match</td>`)
         : `<td style="color:var(--muted)">—</td>`;
-
       const assignCell = t.assignMethod === 'guid'
         ? `<td style="color:#f59e0b" title="Tree code did not resolve — using GUID fallback">⚠ GUID</td>`
         : `<td style="color:var(--muted)">Code</td>`;
 
-      return `<tr>
+      return `<tr data-tidx="${i}" onclick="focusTreeOnMap(${i})" title="Click to locate on map">
         <td>${t.code || '—'}</td>
         <td>${t.species || '—'}</td>
         <td>${t.lat.toFixed(5)}</td>
@@ -1745,6 +1751,9 @@ function openLb(idx) {
             … ${(outsideTrees.length - 500).toLocaleString()} more — use the Re-allocation Export</td></tr>`
         : '');
   }
+
+  // Store outside trees ref for row click focusing
+  window._lbOutsideTrees = outsideTrees.slice(0, 500);
 
   // Build Leaflet map
   const mapEl = document.getElementById('lbMap');
@@ -1768,12 +1777,22 @@ function openLb(idx) {
       fillOpacity:0.08, dashArray:'6,4'
     }).addTo(lbMap);
 
+    window._lbTreeMarkers = {};
+    const outsideList = window._lbOutsideTrees || [];
     trees.forEach(t => {
-      L.circleMarker([t.lat, t.lng], {
+      const insideRing = ring ? pip(t.lat, t.lng, ring) : false;
+      const marker = L.circleMarker([t.lat, t.lng], {
         radius:5, color:'rgba(255,255,255,0.4)', weight:1,
-        fillColor: pip(t.lat, t.lng, ring) ? '#22c55e' : '#ef4444',
+        fillColor: insideRing ? '#22c55e' : '#ef4444',
         fillOpacity:0.9
       }).addTo(lbMap);
+      // Map marker to outside tree index for row click focusing
+      if (!insideRing) {
+        const idx = outsideList.findIndex(
+          ot => ot.code === t.code && ot.lat === t.lat && ot.lng === t.lng
+        );
+        if (idx >= 0) window._lbTreeMarkers[idx] = marker;
+      }
     });
 
     // Draw neighbour polygons
@@ -2376,7 +2395,53 @@ async function savePolygon() {
   }
 }
 
-// ── CROSS-CHECK TOOL ───────────────────────────────────────────────────────
+// ── TREE ROW → MAP FOCUS ───────────────────────────────────────────────────
+let _lbFocusMarker = null;
+
+function focusTreeOnMap(idx) {
+  const t      = (window._lbOutsideTrees || [])[idx];
+  const marker = (window._lbTreeMarkers  || {})[idx];
+  if (!t || !lbMap) return;
+
+  // Highlight selected row
+  document.querySelectorAll('#lbTreeBody tr').forEach(r => r.classList.remove('selected'));
+  const row = document.querySelector(`#lbTreeBody tr[data-tidx="${idx}"]`);
+  if (row) row.classList.add('selected');
+
+  // Pan map to tree
+  lbMap.setView([t.lat, t.lng], Math.max(lbMap.getZoom(), 18), { animate:true });
+
+  // Remove previous pulse marker
+  if (_lbFocusMarker) { try { lbMap.removeLayer(_lbFocusMarker); } catch(e){} }
+
+  // Add pulsing highlight ring
+  _lbFocusMarker = L.circleMarker([t.lat, t.lng], {
+    radius: 14, color:'#fff', weight:2,
+    fillColor:'transparent', fillOpacity:0,
+    className:'tree-pulse-ring'
+  }).addTo(lbMap);
+
+  // Animate: shrink back after 1.5s
+  let r = 14;
+  const interval = setInterval(() => {
+    r = Math.max(5, r - 1);
+    try { _lbFocusMarker.setRadius(r); } catch(e) {}
+    if (r <= 5) {
+      clearInterval(interval);
+      try { lbMap.removeLayer(_lbFocusMarker); } catch(e){}
+      _lbFocusMarker = null;
+    }
+  }, 80);
+
+  // Also make the original marker flash white briefly
+  if (marker) {
+    const origColor = marker.options.fillColor;
+    marker.setStyle({ fillColor:'#ffffff', radius:9 });
+    setTimeout(() => {
+      try { marker.setStyle({ fillColor: origColor, radius:5 }); } catch(e){}
+    }, 600);
+  }
+}
 function openCrossCheck() {
   document.getElementById('ccModal').classList.add('open');
   document.getElementById('ccInput').focus();
