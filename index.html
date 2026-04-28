@@ -228,7 +228,24 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 .lb-edit-bar.active { display:flex; }
 .edit-status { font-family:var(--mono); font-size:10px; color:var(--amber); flex:1; }
 .edit-compliance { font-family:var(--mono); font-size:11px; font-weight:700; }
-.tree-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:9px; }
+/* Auto-correct preview */
+.ac-bar { display:none; padding:8px 14px; border-top:1px solid var(--border);
+  background:rgba(34,197,94,0.05); flex-shrink:0;
+  align-items:center; gap:10px; flex-wrap:wrap; }
+.ac-bar.active { display:flex; }
+.ac-stats { display:flex; gap:16px; flex:1; flex-wrap:wrap; }
+.ac-stat  { display:flex; flex-direction:column; font-family:var(--mono); font-size:10px; }
+.ac-stat .l { color:var(--muted); font-size:9px; }
+.ac-stat .v { font-weight:700; }
+.ac-gain  { color:#22c55e; }
+.ac-buffer{ display:flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:10px; color:var(--muted); }
+.ac-buffer button { width:22px; height:22px; border-radius:4px;
+  background:var(--border); color:var(--text); border:none;
+  cursor:pointer; font-size:13px; line-height:1; }
+.ac-buffer button:hover { background:var(--blue); color:#fff; }
+
+/* Outside tree table */
 .tree-table th { color:var(--muted); text-transform:uppercase; letter-spacing:.8px;
   padding:5px 8px; border-bottom:1px solid var(--border); text-align:left;
   font-weight:700; position:sticky; top:0; background:var(--card); }
@@ -309,6 +326,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div class="export-item" onclick="closeExportMenu();openCrossCheck()">
         <strong>🔍 Cross-Check Tree</strong>
         <span>Look up any tree code — raw coordinates, polygon, pip result step-by-step</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('bulkac')">
+        <strong>⬡ Bulk Auto-Correct Preview</strong>
+        <span>All fields with outside trees — current vs projected compliance after hull correction</span>
       </div>
     </div>
   </div>
@@ -555,6 +576,20 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         </table>
       </div>
     </div>
+    <!-- Auto-correct preview bar -->
+    <div class="ac-bar" id="lbAcBar">
+      <div class="ac-stats" id="lbAcStats"></div>
+      <div class="ac-buffer">
+        Buffer:
+        <button onclick="adjustBuffer(-1)">−</button>
+        <span id="lbAcBufVal" style="min-width:30px;text-align:center;color:var(--text)">5m</span>
+        <button onclick="adjustBuffer(1)">+</button>
+      </div>
+      <button class="btn" style="background:var(--border);color:var(--text)"
+        onclick="cancelAutoCorrect()">✕ Discard</button>
+      <button class="btn btn-primary" id="lbAcSaveBtn"
+        onclick="savePolygon()">✓ Apply to Fieldforce</button>
+    </div>
     <!-- Edit mode bar -->
     <div class="lb-edit-bar" id="lbEditBar">
       <span class="edit-status" id="lbEditStatus">✎ Edit mode — drag vertices to reshape boundary</span>
@@ -566,6 +601,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     </div>
     <div class="lb-foot">
       <button class="btn btn-sec" onclick="closeLb()">Close</button>
+      <button class="btn" id="lbAcBtn"
+        style="background:rgba(34,197,94,0.15);color:#22c55e;
+        border:1px solid rgba(34,197,94,0.4);display:none"
+        onclick="startAutoCorrect()">⬡ Auto-Correct Preview</button>
       <button class="btn" id="lbEditBtn"
         style="background:rgba(245,158,11,0.15);color:var(--amber);
         border:1px solid rgba(245,158,11,0.4);display:none"
@@ -1526,8 +1565,13 @@ function openLb(idx) {
   // Show edit button only if field has a polygon and a valid GUID for PATCH
   const editBtn = document.getElementById('lbEditBtn');
   editBtn.style.display = (ring && f.guid) ? '' : 'none';
-  // Reset edit bar if it was open
+  // Show auto-correct button if field has outside trees and a guid
+  const outsideCount = ring ? trees.filter(t => !pip(t.lat, t.lng, ring)).length : 0;
+  const acBtn = document.getElementById('lbAcBtn');
+  acBtn.style.display = (outsideCount > 0 && f.guid) ? '' : 'none';
+  // Reset bars
   document.getElementById('lbEditBar').classList.remove('active');
+  document.getElementById('lbAcBar').classList.remove('active');
   document.getElementById('lb').dataset.editIdx = idx;
 
   // Outside tree breakdown
@@ -1688,7 +1732,197 @@ function filterTreeTable() {
   });
 }
 
-// ── POLYGON EDITOR ─────────────────────────────────────────────────────────
+// ── CONVEX HULL (Gift Wrapping) ────────────────────────────────────────────
+function cross(O, A, B) {
+  return (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
+}
+function convexHull(points) {
+  const n = points.length;
+  if (n < 3) return points;
+  const pts = points.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+  const lower = [], upper = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0)
+      lower.pop();
+    lower.push(p);
+  }
+  for (let i = pts.length-1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0)
+      upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
+// Buffer polygon outward by metres (approximate using degree conversion)
+function bufferRingM(ring, metres) {
+  if (metres <= 0) return ring;
+  const degPerM = 1 / 111320; // ~1m in degrees lat
+  const cLat    = ring.reduce((s,c) => s + c[1], 0) / ring.length;
+  const degLng  = degPerM / Math.cos(cLat * Math.PI / 180);
+  const cx = ring.reduce((s,c) => s + c[0], 0) / ring.length;
+  const cy = ring.reduce((s,c) => s + c[1], 0) / ring.length;
+  return ring.map(c => {
+    const dx = c[0] - cx, dy = c[1] - cy;
+    const len = Math.sqrt((dx/degLng)**2 + (dy/degPerM)**2);
+    if (len === 0) return c;
+    return [
+      c[0] + (dx / len) * metres * degLng,
+      c[1] + (dy / len) * metres * degPerM
+    ];
+  });
+}
+
+// ── AUTO-CORRECT PREVIEW ───────────────────────────────────────────────────
+let acBufferM   = 5;
+let acHullRing  = null;  // raw hull without buffer
+let acFieldIdx  = null;
+let acOrigLayer = null;
+let acHullLayer = null;
+
+function startAutoCorrect() {
+  const idx = parseInt(document.getElementById('lb').dataset.editIdx);
+  const f   = fieldsData[idx];
+  if (!f) return;
+  acFieldIdx = idx;
+  acBufferM  = 5;
+  document.getElementById('lbAcBufVal').textContent = acBufferM + 'm';
+  document.getElementById('lbAcBar').classList.add('active');
+  document.getElementById('lbAcBtn').style.display  = 'none';
+  document.getElementById('lbEditBtn').style.display = 'none';
+  buildAutoCorrectPreview(f);
+}
+
+function buildAutoCorrectPreview(f) {
+  const trees = treesByField[f.fieldId] || [];
+  const ring  = f.ring;
+  const cm    = ring ? ringMetrics(ring) : null;
+  const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
+
+  // Filter clean trees — exclude rogue GPS
+  const cleanTrees = trees.filter(t => !rogueFlag(t, cLat, cLng));
+  const rogueCt    = trees.length - cleanTrees.length;
+
+  // Compute convex hull from clean tree [lng, lat] points
+  const pts  = cleanTrees.map(t => [t.lng, t.lat]);
+  const hull = convexHull(pts);
+  acHullRing = hull;
+
+  // Apply buffer
+  const buffered = bufferRingM(hull, acBufferM);
+
+  // Rebuild map with preview layers
+  const mapEl = document.getElementById('lbMap');
+  mapEl.innerHTML = '';
+  if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
+
+  lbMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
+  L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21
+  }).addTo(lbMap);
+
+  // Original polygon — blue dashed
+  if (ring) {
+    acOrigLayer = L.polygon(ring.map(c => [c[1], c[0]]), {
+      color:'#38bdf8', weight:2, fillColor:'#38bdf8',
+      fillOpacity:0.05, dashArray:'6,4'
+    }).addTo(lbMap).bindTooltip('Current polygon', {sticky:true});
+  }
+
+  // Proposed hull — green solid
+  acHullLayer = L.polygon(buffered.map(c => [c[1], c[0]]), {
+    color:'#22c55e', weight:2.5, fillColor:'#22c55e', fillOpacity:0.08
+  }).addTo(lbMap).bindTooltip('Proposed polygon', {sticky:true});
+
+  // Tree dots — coloured against proposed hull
+  trees.forEach(t => {
+    const insideNew = pip(t.lat, t.lng, buffered);
+    const isRogue   = !!rogueFlag(t, cLat, cLng);
+    L.circleMarker([t.lat, t.lng], {
+      radius: isRogue ? 6 : 5,
+      color: isRogue ? '#f59e0b' : 'rgba(255,255,255,0.4)',
+      weight: isRogue ? 2 : 1,
+      fillColor: isRogue ? '#f59e0b' : insideNew ? '#22c55e' : '#ef4444',
+      fillOpacity: 0.9
+    }).addTo(lbMap).bindTooltip(
+      isRogue ? `🚨 Rogue: ${t.code}` : t.code, {sticky:true}
+    );
+  });
+
+  // Fit to both layers
+  const bounds = acHullLayer.getBounds();
+  if (ring) bounds.extend(acOrigLayer.getBounds());
+  lbMap.fitBounds(bounds, { padding:[24,24] });
+  setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
+
+  // Update stats
+  updateAcStats(f, buffered, rogueCt);
+
+  // Wire the save button to use auto-correct ring
+  editRing = buffered.map(c => [...c]);
+  lbEditFieldIdx = acFieldIdx;
+}
+
+function updateAcStats(f, buffered, rogueCt) {
+  const trees   = treesByField[f.fieldId] || [];
+  const ring    = f.ring;
+  const oldIn   = ring ? trees.filter(t => pip(t.lat, t.lng, ring)).length : 0;
+  const oldOut  = trees.length - oldIn;
+  const oldPct  = trees.length ? Math.round(oldIn/trees.length*100) : 0;
+  const newIn   = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
+  const newOut  = trees.length - newIn;
+  const newPct  = trees.length ? Math.round(newIn/trees.length*100) : 0;
+  const gain    = newPct - oldPct;
+  const newArea = ringAreaHa(buffered);
+
+  document.getElementById('lbAcStats').innerHTML = `
+    <div class="ac-stat">
+      <span class="l">Current compliance</span>
+      <span class="v">${oldPct}% (${oldIn} in / ${oldOut} out)</span>
+    </div>
+    <div class="ac-stat">
+      <span class="l">Proposed compliance</span>
+      <span class="v ac-gain">${newPct}% (${newIn} in / ${newOut} out)
+        ${gain > 0 ? `<span style="color:#22c55e">+${gain}%</span>` : ''}</span>
+    </div>
+    <div class="ac-stat">
+      <span class="l">Hull vertices</span>
+      <span class="v">${buffered.length}</span>
+    </div>
+    <div class="ac-stat">
+      <span class="l">Proposed area</span>
+      <span class="v">${newArea.toFixed(2)} ha</span>
+    </div>
+    ${rogueCt > 0 ? `<div class="ac-stat">
+      <span class="l">Rogue trees excluded</span>
+      <span class="v" style="color:#f59e0b">⚠ ${rogueCt}</span>
+    </div>` : ''}`;
+}
+
+function adjustBuffer(delta) {
+  acBufferM = Math.max(0, Math.min(20, acBufferM + delta));
+  document.getElementById('lbAcBufVal').textContent = acBufferM + 'm';
+  const f        = fieldsData[acFieldIdx];
+  const buffered = bufferRingM(acHullRing, acBufferM);
+  // Update hull layer
+  acHullLayer.setLatLngs(buffered.map(c => [c[1], c[0]]));
+  // Update tree dot colours
+  const trees  = treesByField[f.fieldId] || [];
+  const cm     = f.ring ? ringMetrics(f.ring) : null;
+  const cLat   = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
+  const rogueCt = trees.filter(t => rogueFlag(t, cLat, cLng)).length;
+  updateAcStats(f, buffered, rogueCt);
+  // Update editRing for save
+  editRing = buffered.map(c => [...c]);
+}
+
+function cancelAutoCorrect() {
+  acHullRing = null; acFieldIdx = null; editRing = null;
+  document.getElementById('lbAcBar').classList.remove('active');
+  openLb(parseInt(document.getElementById('lb').dataset.editIdx));
+}
 let editRing        = null;  // working copy of ring being edited [lng,lat][]
 let editOrigRing    = null;  // original ring for cancel
 let editMarkers     = [];    // draggable vertex markers
@@ -2115,7 +2349,7 @@ function exportCSV(type) {
     inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons',
     overlapping:'Overlapping_Fields', adjacent:'Adjacent_Fields',
     realloc:'Reallocation_Report', audit:'Audit_Trail',
-    codemismatch:'Code_Field_Mismatches'
+    codemismatch:'Code_Field_Mismatches', bulkac:'Bulk_AutoCorrect_Preview'
   };
 
   // ── Re-allocation export ───────────────────────────────────────────────────
@@ -2168,6 +2402,71 @@ function exportCSV(type) {
     const a    = document.createElement('a');
     a.href = url;
     a.download = `CCS_Reallocation_Report_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return;
+  }
+
+  // ── Bulk auto-correct preview export ──────────────────────────────────────
+  if (type === 'bulkac') {
+    const acRows = [];
+    fieldsData.forEach(f => {
+      if (!f.ring || !f.guid) return;
+      if (ringAreaHa(f.ring) > threshold) return; // skip large
+      const trees = treesByField[f.fieldId] || [];
+      if (!trees.length) return;
+      const cm   = ringMetrics(f.ring);
+      const cLat = cm.cLat, cLng = cm.cLng;
+      const oldIn  = trees.filter(t => pip(t.lat, t.lng, f.ring)).length;
+      const oldOut = trees.length - oldIn;
+      if (oldOut === 0) return; // all inside — no correction needed
+      const oldPct = Math.round(oldIn / trees.length * 100);
+
+      // Compute hull with default 5m buffer
+      const cleanPts = trees
+        .filter(t => !rogueFlag(t, cLat, cLng))
+        .map(t => [t.lng, t.lat]);
+      if (cleanPts.length < 3) return;
+      const hull     = convexHull(cleanPts);
+      const buffered = bufferRingM(hull, 5);
+      const newIn    = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
+      const newOut   = trees.length - newIn;
+      const newPct   = Math.round(newIn / trees.length * 100);
+      const gain     = newPct - oldPct;
+      const rogueCt  = trees.length - cleanPts.length;
+
+      acRows.push([
+        f.fieldId, f.owner || '', f.createdOn || '',
+        trees.length, oldIn, oldOut, oldPct + '%',
+        newIn, newOut, newPct + '%',
+        gain > 0 ? '+' + gain + '%' : gain + '%',
+        hull.length, ringAreaHa(f.ring).toFixed(2),
+        ringAreaHa(buffered).toFixed(2),
+        rogueCt, 5
+      ]);
+    });
+
+    // Sort by biggest gain first
+    acRows.sort((a, b) => parseFloat(b[10]) - parseFloat(a[10]));
+
+    const acHeaders = [
+      'Field ID','Owner','Registered',
+      'Total Trees','Current Inside','Current Outside','Current Compliance %',
+      'Projected Inside','Projected Outside','Projected Compliance %',
+      'Gain','Hull Vertices','Current Area (ha)','Projected Area (ha)',
+      'Rogue Trees Excluded','Buffer (m)'
+    ];
+    const csvBody = [acHeaders, ...acRows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(
+      ['\uFEFF' + exportHeader('Bulk Auto-Correct Preview', acRows.length) + csvBody],
+      { type:'text/csv;charset=utf-8;' }
+    );
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url;
+    a.download = `CCS_Bulk_AutoCorrect_Preview_${new Date().toISOString().slice(0,10)}.csv`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     return;
