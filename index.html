@@ -432,6 +432,81 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   </div>
 </div>
 
+<!-- AUTO-CORRECT WARNING MODAL -->
+<div class="lb" id="acWarnModal" onclick="if(event.target===this)closeAcWarn()"
+  style="z-index:10001">
+  <div class="lb-box" style="width:min(520px,96vw)">
+    <div class="lb-hdr">
+      <div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#ef4444">
+          ⚠ Confirm Polygon Replacement
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          This action cannot be undone
+        </div>
+      </div>
+      <button class="lb-close" onclick="closeAcWarn()">✕</button>
+    </div>
+    <div style="padding:14px;font-size:11px;line-height:1.8;color:var(--text)">
+      <p style="margin:0 0 12px">
+        You are about to <strong>permanently replace</strong> the polygon for:
+      </p>
+      <div style="background:var(--panel);border:1px solid var(--border);
+        border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:10px;
+        margin-bottom:14px">
+        <div><span style="color:var(--muted)">Method:</span>
+          &nbsp;<span id="acWarnMode" style="color:#38bdf8;font-weight:700"></span></div>
+        <div><span style="color:var(--muted)">Field:</span>
+          &nbsp;<span id="acWarnField" style="color:var(--blue);font-weight:700"></span></div>
+        <div><span style="color:var(--muted)">Owner:</span>
+          &nbsp;<span id="acWarnOwner"></span></div>
+        <div><span style="color:var(--muted)">Current area:</span>
+          &nbsp;<span id="acWarnOldArea"></span>
+          &nbsp;→&nbsp;
+          <span style="color:var(--muted)">Proposed area:</span>
+          &nbsp;<span id="acWarnNewArea" style="color:#22c55e;font-weight:700"></span></div>
+        <div><span style="color:var(--muted)">Projected compliance:</span>
+          &nbsp;<span id="acWarnNewPct" style="color:#22c55e;font-weight:700"></span></div>
+        <div><span style="color:var(--muted)">Hull vertices:</span>
+          &nbsp;<span id="acWarnVerts"></span>
+          &nbsp;&nbsp;<span style="color:var(--muted)">Buffer:</span>
+          &nbsp;<span id="acWarnBuf"></span></div>
+      </div>
+      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);
+        border-radius:6px;padding:10px 14px;margin-bottom:14px">
+        <div style="font-weight:700;color:#ef4444;margin-bottom:6px">
+          ⚠ Important — read before proceeding:
+        </div>
+        <ul style="margin:0;padding-left:16px;color:var(--muted);line-height:2">
+          <li>In <strong style="color:var(--text)">Selective mode</strong>:
+            original vertices are preserved — only the tight edges are expanded.
+            In <strong style="color:var(--text)">Hull mode</strong>:
+            the original polygon is completely discarded</li>
+          <li>The new polygon is a <strong style="color:var(--text)">convex hull</strong>
+            drawn from tree GPS coordinates — any part of the field with
+            <strong style="color:var(--text)">no trees planted yet</strong>
+            will not be included</li>
+          <li>Future trees planted outside the new hull will appear
+            <strong style="color:var(--text)">outside polygon</strong>
+            until the boundary is corrected again</li>
+          <li>If the satellite image shows the field extends
+            <strong style="color:var(--text)">beyond the green polygon</strong>,
+            use <strong style="color:var(--text)">✎ Edit Polygon</strong> instead</li>
+        </ul>
+      </div>
+      <p style="margin:0;color:var(--muted);font-size:10px">
+        Verify the green polygon on the satellite map covers the full
+        planted area before proceeding.
+      </p>
+    </div>
+    <div class="lb-foot">
+      <button class="btn btn-sec" onclick="closeAcWarn()">✕ Cancel — go back</button>
+      <button class="btn btn-primary" style="background:#22c55e"
+        onclick="proceedAutoCorrect()">✓ I understand — apply polygon</button>
+    </div>
+  </div>
+</div>
+
 <!-- CROSS-CHECK MODAL -->
 <div class="lb" id="ccModal" onclick="if(event.target===this)closeCrossCheck()">
   <div class="lb-box" style="width:min(800px,96vw)">
@@ -579,16 +654,24 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     <!-- Auto-correct preview bar -->
     <div class="ac-bar" id="lbAcBar">
       <div class="ac-stats" id="lbAcStats"></div>
-      <div class="ac-buffer">
-        Buffer:
-        <button onclick="adjustBuffer(-1)">−</button>
-        <span id="lbAcBufVal" style="min-width:30px;text-align:center;color:var(--text)">5m</span>
-        <button onclick="adjustBuffer(1)">+</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <button id="lbAcModeBtn"
+          onclick="toggleAcMode()"
+          style="font-family:var(--mono);font-size:9px;font-weight:700;
+          padding:3px 9px;border-radius:4px;cursor:pointer;
+          background:rgba(56,189,248,0.15);color:#38bdf8;
+          border:1px solid rgba(56,189,248,0.4)">⬡ Selective mode</button>
+        <div class="ac-buffer">
+          Buffer:
+          <button onclick="adjustBuffer(-1)">−</button>
+          <span id="lbAcBufVal" style="min-width:30px;text-align:center;color:var(--text)">5m</span>
+          <button onclick="adjustBuffer(1)">+</button>
+        </div>
       </div>
       <button class="btn" style="background:var(--border);color:var(--text)"
         onclick="cancelAutoCorrect()">✕ Discard</button>
       <button class="btn btn-primary" id="lbAcSaveBtn"
-        onclick="savePolygon()">✓ Apply to Fieldforce</button>
+        onclick="confirmAutoCorrect()">✓ Apply to Fieldforce</button>
     </div>
     <!-- Edit mode bar -->
     <div class="lb-edit-bar" id="lbEditBar">
@@ -1775,9 +1858,96 @@ function bufferRingM(ring, metres) {
   });
 }
 
-// ── AUTO-CORRECT PREVIEW ───────────────────────────────────────────────────
+// ── SELECTIVE BOUNDARY EXPANSION ──────────────────────────────────────────
+// Expands only the edges where outside trees require it.
+// Original vertices are preserved — only the tight edges grow.
+
+function ptSegClosest(px, py, ax, ay, bx, by) {
+  const dx = bx-ax, dy = by-ay;
+  const lenSq = dx*dx + dy*dy;
+  if (lenSq === 0) return { t:0, x:ax, y:ay };
+  const t = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / lenSq));
+  return { t, x: ax+t*dx, y: ay+t*dy };
+}
+
+function edgeOutwardNormal(ring, ei) {
+  const n  = ring.length;
+  const a  = ring[ei], b = ring[(ei+1)%n];
+  const dx = b[0]-a[0], dy = b[1]-a[1];
+  const len = Math.sqrt(dx*dx + dy*dy);
+  if (len === 0) return [0, 0];
+  // Two candidate normals
+  let nx = -dy/len, ny = dx/len;
+  // Pick the one pointing away from centroid
+  const cx = ring.reduce((s,c) => s+c[0], 0) / n;
+  const cy = ring.reduce((s,c) => s+c[1], 0) / n;
+  const mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2;
+  const dot = (mx+nx-cx)*(mx+nx-cx) + (my+ny-cy)*(my+ny-cy);
+  const dot2= (mx-nx-cx)*(mx-nx-cx) + (my-ny-cy)*(my-ny-cy);
+  if (dot < dot2) { nx = -nx; ny = -ny; }
+  return [nx, ny];
+}
+
+function selectiveExpand(ring, outsideTrees, bufferDeg) {
+  if (!outsideTrees.length) return ring.map(c => [...c]);
+
+  const n = ring.length;
+
+  // Assign each outside tree to its nearest edge
+  const edgeMap = new Map(); // edgeIdx → [{tree, projT, perpDist}]
+  outsideTrees.forEach(t => {
+    let minDist = Infinity, minEi = 0, minProj = null;
+    for (let i = 0; i < n; i++) {
+      const a = ring[i], b = ring[(i+1)%n];
+      const proj = ptSegClosest(t.lng, t.lat, a[0], a[1], b[0], b[1]);
+      const d = Math.sqrt((t.lng-proj.x)**2 + (t.lat-proj.y)**2);
+      if (d < minDist) { minDist = d; minEi = i; minProj = proj; }
+    }
+    if (!edgeMap.has(minEi)) edgeMap.set(minEi, []);
+    edgeMap.get(minEi).push({ tree:t, projT:minProj.t, perpDist:minDist });
+  });
+
+  // Process edges — insert new vertices where trees are outside
+  // Work from highest index to lowest so insertions don't shift earlier indices
+  let newRing = ring.map(c => [...c]);
+  const edgeIndices = [...edgeMap.keys()].sort((a,b) => b-a);
+
+  edgeIndices.forEach(ei => {
+    const assignments = edgeMap.get(ei);
+    const rn  = newRing.length;
+    const a   = newRing[ei], b = newRing[(ei+1)%rn];
+    const [nx, ny] = edgeOutwardNormal(newRing, ei);
+
+    // Sort trees along the edge by projection parameter
+    const sorted = assignments
+      .slice()
+      .sort((x,y) => x.projT - y.projT);
+
+    // Build new vertices: for each tree, project onto edge then push outward
+    const newVerts = sorted.map(({ tree, projT, perpDist }) => {
+      const px = a[0] + projT*(b[0]-a[0]);
+      const py = a[1] + projT*(b[1]-a[1]);
+      const push = perpDist + bufferDeg;
+      return [px + nx*push, py + ny*push];
+    });
+
+    // Deduplicate very close new vertices (within 1m in degrees)
+    const deduped = newVerts.filter((v, i) => {
+      if (i === 0) return true;
+      const prev = newVerts[i-1];
+      return Math.sqrt((v[0]-prev[0])**2 + (v[1]-prev[1])**2) > 0.00001;
+    });
+
+    // Insert after position ei (before ei+1)
+    newRing.splice(ei+1, 0, ...deduped);
+  });
+
+  return newRing;
+}
 let acBufferM   = 5;
-let acHullRing  = null;  // raw hull without buffer
+let acHullRing  = null;  // raw convex hull without buffer
+let acSelRing   = null;  // raw selective expansion without buffer
+let acMode      = 'selective'; // 'selective' | 'hull'
 let acFieldIdx  = null;
 let acOrigLayer = null;
 let acHullLayer = null;
@@ -1788,9 +1958,10 @@ function startAutoCorrect() {
   if (!f) return;
   acFieldIdx = idx;
   acBufferM  = 5;
+  acMode     = 'selective';
   document.getElementById('lbAcBufVal').textContent = acBufferM + 'm';
   document.getElementById('lbAcBar').classList.add('active');
-  document.getElementById('lbAcBtn').style.display  = 'none';
+  document.getElementById('lbAcBtn').style.display   = 'none';
   document.getElementById('lbEditBtn').style.display = 'none';
   buildAutoCorrectPreview(f);
 }
@@ -1802,18 +1973,30 @@ function buildAutoCorrectPreview(f) {
   const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
 
   // Filter clean trees — exclude rogue GPS
-  const cleanTrees = trees.filter(t => !rogueFlag(t, cLat, cLng));
-  const rogueCt    = trees.length - cleanTrees.length;
+  const cleanTrees  = trees.filter(t => !rogueFlag(t, cLat, cLng));
+  const rogueCt     = trees.length - cleanTrees.length;
+  const outsideTrees = ring
+    ? cleanTrees.filter(t => !pip(t.lat, t.lng, ring))
+    : cleanTrees;
 
-  // Compute convex hull from clean tree [lng, lat] points
+  // Compute both rings (raw, before buffer)
+  const degPerM = 1 / 111320;
+  const bufDeg  = acBufferM * degPerM;
+
+  // Selective expansion — preserve original vertices, expand only tight edges
+  acSelRing  = ring ? selectiveExpand(ring, outsideTrees, bufDeg) : null;
+
+  // Convex hull — full replacement from all clean trees
   const pts  = cleanTrees.map(t => [t.lng, t.lat]);
-  const hull = convexHull(pts);
-  acHullRing = hull;
+  acHullRing = pts.length >= 3 ? convexHull(pts) : null;
 
-  // Apply buffer
-  const buffered = bufferRingM(hull, acBufferM);
+  // Active ring based on mode
+  const activeRaw = acMode === 'selective' ? acSelRing : acHullRing;
+  const buffered  = activeRaw
+    ? (acMode === 'selective' ? activeRaw : bufferRingM(activeRaw, acBufferM))
+    : null;
 
-  // Rebuild map with preview layers
+  // Rebuild map
   const mapEl = document.getElementById('lbMap');
   mapEl.innerHTML = '';
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
@@ -1831,18 +2014,23 @@ function buildAutoCorrectPreview(f) {
     }).addTo(lbMap).bindTooltip('Current polygon', {sticky:true});
   }
 
-  // Proposed hull — green solid
-  acHullLayer = L.polygon(buffered.map(c => [c[1], c[0]]), {
-    color:'#22c55e', weight:2.5, fillColor:'#22c55e', fillOpacity:0.08
-  }).addTo(lbMap).bindTooltip('Proposed polygon', {sticky:true});
+  // Proposed polygon — green solid
+  if (buffered) {
+    acHullLayer = L.polygon(buffered.map(c => [c[1], c[0]]), {
+      color:'#22c55e', weight:2.5, fillColor:'#22c55e', fillOpacity:0.08
+    }).addTo(lbMap).bindTooltip(
+      acMode === 'selective' ? 'Proposed (selective expansion)' : 'Proposed (convex hull)',
+      {sticky:true}
+    );
+  }
 
-  // Tree dots — coloured against proposed hull
+  // Tree dots — coloured against proposed polygon
   trees.forEach(t => {
-    const insideNew = pip(t.lat, t.lng, buffered);
+    const insideNew = buffered ? pip(t.lat, t.lng, buffered) : false;
     const isRogue   = !!rogueFlag(t, cLat, cLng);
     L.circleMarker([t.lat, t.lng], {
       radius: isRogue ? 6 : 5,
-      color: isRogue ? '#f59e0b' : 'rgba(255,255,255,0.4)',
+      color:  isRogue ? '#f59e0b' : 'rgba(255,255,255,0.4)',
       weight: isRogue ? 2 : 1,
       fillColor: isRogue ? '#f59e0b' : insideNew ? '#22c55e' : '#ef4444',
       fillOpacity: 0.9
@@ -1851,49 +2039,58 @@ function buildAutoCorrectPreview(f) {
     );
   });
 
-  // Fit to both layers
-  const bounds = acHullLayer.getBounds();
-  if (ring) bounds.extend(acOrigLayer.getBounds());
-  lbMap.fitBounds(bounds, { padding:[24,24] });
+  // Fit bounds
+  const bounds = acHullLayer
+    ? acHullLayer.getBounds()
+    : acOrigLayer ? acOrigLayer.getBounds() : null;
+  if (bounds) {
+    if (acOrigLayer) bounds.extend(acOrigLayer.getBounds());
+    lbMap.fitBounds(bounds, { padding:[24,24] });
+  }
   setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
 
-  // Update stats
-  updateAcStats(f, buffered, rogueCt);
-
-  // Wire the save button to use auto-correct ring
-  editRing = buffered.map(c => [...c]);
+  if (buffered) {
+    updateAcStats(f, buffered, rogueCt, outsideTrees.length);
+    editRing = buffered.map(c => [...c]);
+  }
   lbEditFieldIdx = acFieldIdx;
 }
 
-function updateAcStats(f, buffered, rogueCt) {
-  const trees   = treesByField[f.fieldId] || [];
-  const ring    = f.ring;
-  const oldIn   = ring ? trees.filter(t => pip(t.lat, t.lng, ring)).length : 0;
-  const oldOut  = trees.length - oldIn;
-  const oldPct  = trees.length ? Math.round(oldIn/trees.length*100) : 0;
-  const newIn   = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
-  const newOut  = trees.length - newIn;
-  const newPct  = trees.length ? Math.round(newIn/trees.length*100) : 0;
-  const gain    = newPct - oldPct;
+function updateAcStats(f, buffered, rogueCt, outsideTreesCt) {
+  const trees  = treesByField[f.fieldId] || [];
+  const ring   = f.ring;
+  const oldIn  = ring ? trees.filter(t => pip(t.lat, t.lng, ring)).length : 0;
+  const oldOut = trees.length - oldIn;
+  const oldPct = trees.length ? Math.round(oldIn/trees.length*100) : 0;
+  const newIn  = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
+  const newOut = trees.length - newIn;
+  const newPct = trees.length ? Math.round(newIn/trees.length*100) : 0;
+  const gain   = newPct - oldPct;
   const newArea = ringAreaHa(buffered);
+  const modeLabel = acMode === 'selective'
+    ? `Selective (${ring ? ring.length : 0}→${buffered.length} vertices)`
+    : `Convex hull (${buffered.length} vertices)`;
 
   document.getElementById('lbAcStats').innerHTML = `
+    <div class="ac-stat">
+      <span class="l">Mode</span>
+      <span class="v" style="color:${acMode==='selective'?'#38bdf8':'#a78bfa'}">${modeLabel}</span>
+    </div>
     <div class="ac-stat">
       <span class="l">Current compliance</span>
       <span class="v">${oldPct}% (${oldIn} in / ${oldOut} out)</span>
     </div>
     <div class="ac-stat">
       <span class="l">Proposed compliance</span>
-      <span class="v ac-gain">${newPct}% (${newIn} in / ${newOut} out)
-        ${gain > 0 ? `<span style="color:#22c55e">+${gain}%</span>` : ''}</span>
-    </div>
-    <div class="ac-stat">
-      <span class="l">Hull vertices</span>
-      <span class="v">${buffered.length}</span>
+      <span class="v">${newPct}%
+        (${newIn} in / ${newOut} out)
+        ${gain > 0 ? `<span class="ac-gain">+${gain}%</span>` : ''}</span>
     </div>
     <div class="ac-stat">
       <span class="l">Proposed area</span>
-      <span class="v">${newArea.toFixed(2)} ha</span>
+      <span class="v">${newArea.toFixed(3)} ha
+        <span style="color:var(--muted)">(was ${ring ? ringAreaHa(ring).toFixed(3) : '—'} ha)</span>
+      </span>
     </div>
     ${rogueCt > 0 ? `<div class="ac-stat">
       <span class="l">Rogue trees excluded</span>
@@ -1904,20 +2101,77 @@ function updateAcStats(f, buffered, rogueCt) {
 function adjustBuffer(delta) {
   acBufferM = Math.max(0, Math.min(20, acBufferM + delta));
   document.getElementById('lbAcBufVal').textContent = acBufferM + 'm';
-  const f        = fieldsData[acFieldIdx];
-  const buffered = bufferRingM(acHullRing, acBufferM);
-  // Update hull layer
-  acHullLayer.setLatLngs(buffered.map(c => [c[1], c[0]]));
-  // Update tree dot colours
-  const trees  = treesByField[f.fieldId] || [];
-  const cm     = f.ring ? ringMetrics(f.ring) : null;
-  const cLat   = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
-  const rogueCt = trees.filter(t => rogueFlag(t, cLat, cLng)).length;
-  updateAcStats(f, buffered, rogueCt);
-  // Update editRing for save
-  editRing = buffered.map(c => [...c]);
+  const f   = fieldsData[acFieldIdx];
+  const cm  = f.ring ? ringMetrics(f.ring) : null;
+  const cLat = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
+  const trees = treesByField[f.fieldId] || [];
+  const cleanTrees = trees.filter(t => !rogueFlag(t, cLat, cLng));
+  const outsideTrees = f.ring
+    ? cleanTrees.filter(t => !pip(t.lat, t.lng, f.ring))
+    : cleanTrees;
+  const rogueCt = trees.length - cleanTrees.length;
+  const degPerM = 1 / 111320;
+  const bufDeg  = acBufferM * degPerM;
+
+  let buffered;
+  if (acMode === 'selective') {
+    // Recompute selective expansion with new buffer
+    acSelRing = f.ring ? selectiveExpand(f.ring, outsideTrees, bufDeg) : null;
+    buffered  = acSelRing;
+  } else {
+    buffered = acHullRing ? bufferRingM(acHullRing, acBufferM) : null;
+  }
+
+  if (buffered && acHullLayer) {
+    acHullLayer.setLatLngs(buffered.map(c => [c[1], c[0]]));
+    updateAcStats(f, buffered, rogueCt, outsideTrees.length);
+    editRing = buffered.map(c => [...c]);
+  }
 }
 
+function toggleAcMode() {
+  acMode = acMode === 'selective' ? 'hull' : 'selective';
+  const btn = document.getElementById('lbAcModeBtn');
+  btn.textContent = acMode === 'selective'
+    ? '⬡ Selective mode' : '◎ Hull mode';
+  btn.style.background = acMode === 'selective'
+    ? 'rgba(56,189,248,0.15)' : 'rgba(167,139,250,0.15)';
+  btn.style.color = acMode === 'selective' ? '#38bdf8' : '#a78bfa';
+  btn.style.borderColor = acMode === 'selective'
+    ? 'rgba(56,189,248,0.4)' : 'rgba(167,139,250,0.4)';
+  buildAutoCorrectPreview(fieldsData[acFieldIdx]);
+}
+
+function confirmAutoCorrect() {
+  const f = fieldsData[acFieldIdx];
+  if (!f) return;
+  const trees    = treesByField[f.fieldId] || [];
+  const buffered = bufferRingM(acHullRing, acBufferM);
+  const newIn    = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
+  const newPct   = trees.length ? Math.round(newIn / trees.length * 100) : 0;
+  const newArea  = ringAreaHa(buffered).toFixed(2);
+  const oldArea  = f.ring ? ringAreaHa(f.ring).toFixed(2) : '—';
+
+  document.getElementById('acWarnField').textContent  = f.fieldId;
+  document.getElementById('acWarnOwner').textContent  = f.owner || '—';
+  document.getElementById('acWarnOldArea').textContent = oldArea + ' ha';
+  document.getElementById('acWarnNewArea').textContent = newArea + ' ha';
+  document.getElementById('acWarnNewPct').textContent  = newPct + '%';
+  document.getElementById('acWarnVerts').textContent   = buffered.length + ' vertices';
+  document.getElementById('acWarnBuf').textContent     = acBufferM + 'm';
+  document.getElementById('acWarnMode').textContent    =
+    acMode === 'selective' ? 'Selective expansion (original vertices preserved)' : 'Convex hull (full replacement)';
+  document.getElementById('acWarnModal').classList.add('open');
+}
+
+function closeAcWarn() {
+  document.getElementById('acWarnModal').classList.remove('open');
+}
+
+function proceedAutoCorrect() {
+  closeAcWarn();
+  savePolygon();
+}
 function cancelAutoCorrect() {
   acHullRing = null; acFieldIdx = null; editRing = null;
   document.getElementById('lbAcBar').classList.remove('active');
@@ -2131,7 +2385,7 @@ function closeCrossCheck() {
   document.getElementById('ccModal').classList.remove('open');
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLb(); closeExportMenu(); closeCrossCheck(); }
+  if (e.key === 'Escape') { closeLb(); closeExportMenu(); closeCrossCheck(); closeAcWarn(); }
   if (e.key === 'Enter' && document.getElementById('ccModal').classList.contains('open')) {
     runCrossCheck();
   }
