@@ -1156,19 +1156,32 @@ async function connect() {
 
 function updateKPIs() {
   let totalIn = 0, totalOut = 0, largeCount = 0;
+  let largeExcludedFields = 0, largeExcludedTrees = 0;
   const threshold = getLargeThreshold();
   fieldsData.forEach(f => {
     const trees = treesByField[f.fieldId] || [];
     if (f.ring) {
-      if (ringAreaHa(f.ring) > threshold) largeCount++;
+      const isLarge = ringAreaHa(f.ring) > threshold;
+      if (isLarge) {
+        largeCount++;
+        largeExcludedFields++;
+        largeExcludedTrees += trees.length;
+        return; // ← exclude large fields from compliance KPIs entirely
+      }
       trees.forEach(t => pip(t.lat, t.lng, f.ring) ? totalIn++ : totalOut++);
     }
   });
-  const total = totalIn + totalOut;
-  const pct = total > 0 ? Math.round(totalIn / total * 100) : 0;
-  const pctCol = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
-  document.getElementById('kpiFields').textContent  = fieldsData.length.toLocaleString();
+  const total   = totalIn + totalOut;
+  const pct     = total > 0 ? Math.round(totalIn / total * 100) : 0;
+  const pctCol  = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+  const eligibleFields = fieldsData.length - largeExcludedFields;
+
+  document.getElementById('kpiFields').textContent  = eligibleFields.toLocaleString();
+  document.getElementById('kpiFields').parentNode.querySelector('.l').textContent =
+    `Fields (excl. ${largeExcludedFields} large)`;
   document.getElementById('kpiTrees').textContent   = total.toLocaleString();
+  document.getElementById('kpiTrees').parentNode.querySelector('.l').textContent =
+    `Trees (excl. ${largeExcludedTrees.toLocaleString()})`;
   document.getElementById('kpiInside').textContent  = totalIn.toLocaleString();
   document.getElementById('kpiOutside').textContent = totalOut.toLocaleString();
   document.getElementById('kpiLarge').textContent   = largeCount.toLocaleString();
@@ -1180,6 +1193,9 @@ function updateKPIs() {
   const kpiPct = document.getElementById('kpiPct');
   kpiPct.textContent = pct + '% compliant';
   kpiPct.style.color = pctCol;
+  // Store for exports
+  window._largeExcludedFields = largeExcludedFields;
+  window._largeExcludedTrees  = largeExcludedTrees;
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
@@ -1951,6 +1967,7 @@ function exportHeader(type, count) {
     `# Trees assigned by tree code: ${(window._catalogAssignedByCode||0).toLocaleString()}`,
     `# Trees assigned by GUID (code fallback): ${(window._catalogAssignedByGuid||0).toLocaleString()}`,
     `# Trees unassigned: ${(window._catalogAssignedNeither||0).toLocaleString()}`,
+    `# Large fields excluded from compliance: ${(window._largeExcludedFields||0).toLocaleString()} fields · ${(window._largeExcludedTrees||0).toLocaleString()} trees`,
     `# Records in this export: ${count}`,
     ``
   ].join('\n');
@@ -2069,6 +2086,7 @@ function exportCSV(type) {
   if (type === 'realloc') {
     const reallocRows = [];
     fieldsData.forEach(f => {
+      if (f.ring && ringAreaHa(f.ring) > threshold) return; // exclude large
       const trees  = treesByField[f.fieldId] || [];
       const cm     = f.ring ? ringMetrics(f.ring) : null;
       const centLat = cm ? cm.cLat : 0;
@@ -2123,6 +2141,7 @@ function exportCSV(type) {
   if (type === 'audit') {
     const auditRows = [];
     fieldsData.forEach(f => {
+      if (f.ring && ringAreaHa(f.ring) > threshold) return; // exclude large
       const trees = treesByField[f.fieldId] || [];
       const ring  = f.ring;
       const cm    = ring ? ringMetrics(ring) : null;
