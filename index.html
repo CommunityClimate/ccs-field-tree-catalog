@@ -1052,7 +1052,9 @@ async function connect() {
       'Fields'
     );
 
-    fieldsData = fRows.map(r => ({
+    const IS_TEST_USER = /^testuser[\s_]/i;
+
+    const allFields = fRows.map(r => ({
       guid:      String(r.ccs_fieldid || '').toLowerCase(),
       fieldId:   String(r.ccs_cssfieldid_field || '').trim(),
       owner:     String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
@@ -1061,6 +1063,9 @@ async function connect() {
       ring:      null
     })).map(f => { f.ring = parseGeoJSON(f.geoJSON); return f; })
       .filter(f => f.fieldId);
+
+    const testFieldCount = allFields.filter(f => IS_TEST_USER.test(f.owner)).length;
+    fieldsData = allFields.filter(f => !IS_TEST_USER.test(f.owner));
 
     // Load trees
     setStatus('Loading trees…', 'ok');
@@ -1143,8 +1148,9 @@ async function connect() {
 
     // KPIs
     const loadedAt = new Date().toISOString();
-    window._catalogLoadedAt = loadedAt;
-    window._catalogDupesDropped = dupesDropped;
+    window._catalogLoadedAt       = loadedAt;
+    window._catalogDupesDropped   = dupesDropped;
+    window._catalogTestFields     = testFieldCount;
 
     // Count code-vs-guid mismatches across all trees
     let codeGuidMismatches = 0;
@@ -1160,9 +1166,10 @@ async function connect() {
     updateKPIs();
     setStatus(
       `✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`
-      + (dupesDropped > 0 ? ` · ${dupesDropped.toLocaleString()} dupes removed` : '')
+      + (dupesDropped > 0    ? ` · ${dupesDropped.toLocaleString()} dupes removed` : '')
+      + (testFieldCount > 0  ? ` · ${testFieldCount.toLocaleString()} test fields excluded` : '')
       + ` · ${assignedByCode.toLocaleString()} by code`
-      + (assignedByGuid > 0 ? ` · ${assignedByGuid.toLocaleString()} by GUID` : '')
+      + (assignedByGuid > 0  ? ` · ${assignedByGuid.toLocaleString()} by GUID` : '')
       + (assignedNeither > 0 ? ` · ⚠ ${assignedNeither.toLocaleString()} unassigned` : '')
       + (codeGuidMismatches > 0 ? ` · ⚠ ${codeGuidMismatches.toLocaleString()} mismatches` : ''),
       'ok'
@@ -1995,6 +2002,7 @@ function exportHeader(type, count) {
     `# Trees assigned by tree code: ${(window._catalogAssignedByCode||0).toLocaleString()}`,
     `# Trees assigned by GUID (code fallback): ${(window._catalogAssignedByGuid||0).toLocaleString()}`,
     `# Trees unassigned: ${(window._catalogAssignedNeither||0).toLocaleString()}`,
+    `# Test user fields excluded: ${(window._catalogTestFields||0).toLocaleString()}`,
     `# Large fields excluded from compliance: ${(window._largeExcludedFields||0).toLocaleString()} fields · ${(window._largeExcludedTrees||0).toLocaleString()} trees`,
     `# Records in this export: ${count}`,
     ``
