@@ -986,18 +986,46 @@ function setStatus(msg, cls = '') {
 async function dvFetchAll(token, url, label) {
   const rows = [];
   let page = 0;
+  const MAX_RETRIES = 4;
+
   while (url) {
     page++;
     setStatus(`⬇ ${label}: page ${page} (${rows.length.toLocaleString()} so far)…`, 'ok');
-    const res = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json',
-        'OData-MaxVersion': '4.0', 'OData-Version': '4.0',
-        'Prefer': 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+
+    let res, lastErr;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        res = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'OData-MaxVersion': '4.0', 'OData-Version': '4.0',
+            'Prefer': 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+          }
+        });
+        if (res.ok) { lastErr = null; break; }
+        // 500/429/503 — wait and retry
+        lastErr = `HTTP ${res.status}`;
+        const wait = attempt * 3000; // 3s, 6s, 9s, 12s
+        setStatus(`⚠ ${label} page ${page}: ${lastErr} — retry ${attempt}/${MAX_RETRIES} in ${wait/1000}s…`, 'ok');
+        await new Promise(r => setTimeout(r, wait));
+      } catch(e) {
+        lastErr = e.message;
+        const wait = attempt * 3000;
+        setStatus(`⚠ ${label} page ${page}: ${lastErr} — retry ${attempt}/${MAX_RETRIES} in ${wait/1000}s…`, 'ok');
+        await new Promise(r => setTimeout(r, wait));
       }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }
+
+    if (lastErr) {
+      // All retries failed — skip this page and continue rather than crashing
+      console.warn(`dvFetchAll: skipping ${label} page ${page} after ${MAX_RETRIES} retries: ${lastErr}`);
+      setStatus(`⚠ ${label} page ${page} skipped after retries — continuing…`, 'ok');
+      await new Promise(r => setTimeout(r, 1000));
+      // Can't advance nextLink without a response — stop pagination
+      break;
+    }
+
     const data = await res.json();
     rows.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
