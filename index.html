@@ -3186,7 +3186,23 @@ function exportCSV(type) {
           : embRel === 'partial' ? 'Partial overlap'
           : '—';
 
+        // Priority score — higher = fix this pair first
+        // Formula: outside trees at risk × relationship weight
+        // Embedded = weight 3 (clearest error, most trees recoverable)
+        // Correction artifact = weight 2 (easy fix, deactivate old polygon)
+        // Partial overlap = weight 1
+        const relWeight = embRel !== 'none' ? 3
+          : artifactFlag.startsWith('Likely') ? 2
+          : artifactFlag.startsWith('Possible') ? 1.5 : 1;
+        const treesAtRisk = outCount + nOut;
+        const priorityScore = Math.round(treesAtRisk * relWeight);
+        const priorityLabel = priorityScore >= 100 ? 'Critical'
+          : priorityScore >= 50 ? 'High'
+          : priorityScore >= 20 ? 'Medium' : 'Low';
+
         pairRows.push([
+          priorityScore,
+          priorityLabel,
           // Field A
           f.fieldId,
           f.owner || '',
@@ -3216,12 +3232,17 @@ function exportCSV(type) {
           nm ? nm.cLng.toFixed(6) : '',
           (nm && nm.area > threshold) ? 'Yes' : 'No',
           artifactFlag,
-          embeddedFlag
+          embeddedFlag,
+          treesAtRisk
         ]);
       });
     });
 
+    // Sort by priority score descending — highest impact first
+    pairRows.sort((a, b) => b[0] - a[0]);
+
     const pairHeaders = [
+      'Priority Score','Priority Level',
       'Field A ID','Field A Owner','Field A Registered','Field A Trees',
       'Field A Inside','Field A Outside','Field A Compliance %',
       'Field A Area (ha)','Field A Perimeter (m)','Field A Vertices',
@@ -3230,7 +3251,7 @@ function exportCSV(type) {
       'Field B Inside','Field B Outside','Field B Compliance %',
       'Field B Area (ha)','Field B Perimeter (m)','Field B Vertices',
       'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon',
-      'Correction Artifact','Embedded Relationship'
+      'Correction Artifact','Embedded Relationship','Trees at Risk'
     ];
 
     const csv = [pairHeaders, ...pairRows]
