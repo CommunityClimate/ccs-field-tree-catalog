@@ -364,6 +364,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large_without">⚠ Large polygons without trees</option>
         <option value="overlapping">⧖ Overlapping fields</option>
         <option value="adjacent">~ Adjacent fields</option>
+        <option value="embedded">⊂ Embedded fields (polygon inside another)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
     </div>
@@ -563,6 +564,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span><span class="dot" style="background:#ef4444"></span>Outside polygon</span>
       <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Field boundary</span>
       <span id="lbLegendOverlap" style="display:none"><span class="dot" style="background:#ef4444;width:8px;height:8px;border-radius:2px"></span>Overlapping field</span>
+      <span id="lbLegendEmbedded" style="display:none"><span class="dot" style="background:#a78bfa;width:8px;height:8px;border-radius:2px"></span>Embedded field</span>
       <span id="lbLegendAdjacent" style="display:none"><span class="dot" style="background:#f59e0b;width:8px;height:8px;border-radius:2px"></span>Adjacent field</span>
     </div>
     <!-- Tree stats row -->
@@ -1041,7 +1043,24 @@ function correctionArtifactFlag(ringA, ringB) {
     : `${confidence} correction artifact — Field ${smaller} is smaller but has fewer vertices`;
 }
 
-// ── RE-ALLOCATION ENGINE ───────────────────────────────────────────────────
+// ── EMBEDDED POLYGON DETECTION ─────────────────────────────────────────────
+// Returns true if ringA is >80% contained within ringB
+// (i.e. B is the "dominating" polygon that swallows A)
+function isEmbedded(ringA, ringB, threshold = 0.80) {
+  if (!ringA || !ringB) return false;
+  const inside = ringA.filter(c => pip(c[1], c[0], ringB)).length;
+  return inside / ringA.length >= threshold;
+}
+
+function embeddedRelation(ringA, ringB) {
+  // Returns: 'A_in_B', 'B_in_A', 'partial', 'none'
+  if (!ringA || !ringB) return 'none';
+  const aInB = ringA.filter(c => pip(c[1], c[0], ringB)).length / ringA.length;
+  const bInA = ringB.filter(c => pip(c[1], c[0], ringA)).length / ringB.length;
+  if (aInB >= 0.80) return 'A_in_B';
+  if (bInA >= 0.80) return 'B_in_A';
+  return 'partial';
+}
 // For every tree outside its tagged field, find which field polygon it
 // actually sits inside (if any). Sets t.actualFieldId on each outside tree:
 //   = same fieldId  → inside (already handled by pip, skipped here)
@@ -1401,6 +1420,14 @@ function render() {
       const nb = neighbourMap.get(f.fieldId);
       return nb && nb.adjacent.length > 0;
     }
+    if (filter === 'embedded') {
+      const nb = neighbourMap.get(f.fieldId);
+      if (!nb || !f.ring) return false;
+      return nb.overlapping.some(nid => {
+        const nf = fieldByIdMap.get(nid);
+        return nf && nf.ring && embeddedRelation(f.ring, nf.ring) !== 'none';
+      });
+    }
     if (!f.ring) return filter === '';
     if (filter === 'inside')        return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
     if (filter === 'outside')       return trees.some(t => !pip(t.lat, t.lng, f.ring));
@@ -1623,12 +1650,26 @@ function openLb(idx) {
     if (el) el.remove();
   });
   if (nb && nb.overlapping.length > 0) {
+    // Count embedded relationships
+    const embCount = nb.overlapping.filter(nid => {
+      const nf = fieldByIdMap.get(nid);
+      return nf && nf.ring && embeddedRelation(f.ring, nf.ring) !== 'none';
+    }).length;
     const sp = document.createElement('span');
     sp.id = 'lbNbOverlapBadge';
-    sp.innerHTML = `<span style="background:rgba(239,68,68,0.1);color:#ef4444;
-      border:1px solid rgba(239,68,68,0.3);border-radius:3px;
-      padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
-      ⧖ ${nb.overlapping.length} overlapping</span>`;
+    sp.innerHTML = embCount > 0
+      ? `<span style="background:rgba(167,139,250,0.1);color:#a78bfa;
+          border:1px solid rgba(167,139,250,0.3);border-radius:3px;
+          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
+          ⊂ ${embCount} embedded</span>
+         <span style="background:rgba(239,68,68,0.1);color:#ef4444;
+          border:1px solid rgba(239,68,68,0.3);border-radius:3px;
+          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700;margin-left:4px">
+          ⧖ ${nb.overlapping.length - embCount} overlapping</span>`
+      : `<span style="background:rgba(239,68,68,0.1);color:#ef4444;
+          border:1px solid rgba(239,68,68,0.3);border-radius:3px;
+          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
+          ⧖ ${nb.overlapping.length} overlapping</span>`;
     lbOverlapBadge.insertBefore(sp, document.getElementById('lbLargeBadge'));
   }
   if (nb && nb.adjacent.length > 0) {
@@ -1795,30 +1836,105 @@ function openLb(idx) {
       }
     });
 
-    // Draw neighbour polygons
+    // Draw neighbour polygons with embedded detection
     const nb = neighbourMap.get(f.fieldId);
-    let hasOverlapNeighbour = false, hasAdjNeighbour = false;
+    let hasOverlapNeighbour = false, hasAdjNeighbour = false, hasEmbedded = false;
     if (nb) {
       nb.overlapping.forEach(nid => {
         const nf = fieldByIdMap.get(nid);
         if (!nf || !nf.ring) return;
         hasOverlapNeighbour = true;
-        L.polygon(nf.ring.map(c => [c[1], c[0]]), {
-          color:'#ef4444', weight:2, fillColor:'#ef4444',
-          fillOpacity:0.06, dashArray:'5,4'
-        }).addTo(lbMap).bindTooltip(`⧖ ${nid}`, {sticky:true});
+
+        // Check embedded relationship
+        const rel = embeddedRelation(f.ring, nf.ring);
+        const isEmb = rel !== 'none';
+        if (isEmb) hasEmbedded = true;
+
+        // Colour: purple = embedded, red = overlapping
+        const col = isEmb ? '#a78bfa' : '#ef4444';
+        const embLabel = rel === 'A_in_B'
+          ? `⊂ This field is inside ${nid}`
+          : rel === 'B_in_A'
+          ? `⊃ ${nid} is inside this field`
+          : `⧖ Overlaps ${nid}`;
+
+        const poly = L.polygon(nf.ring.map(c => [c[1], c[0]]), {
+          color: col, weight: isEmb ? 2.5 : 2,
+          fillColor: col, fillOpacity: isEmb ? 0.08 : 0.06,
+          dashArray: isEmb ? null : '5,4'
+        }).addTo(lbMap);
+
+        // Click popup with field info and Edit button
+        const nfIdx = fieldsData.indexOf(nf);
+        poly.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          const popup = L.popup({ maxWidth:280, className:'nb-popup' })
+            .setLatLng(e.latlng)
+            .setContent(`
+              <div style="font-family:monospace;font-size:11px;line-height:1.7">
+                <div style="font-weight:700;color:${col}">${embLabel}</div>
+                <div style="color:#888;margin-top:2px">${nf.owner || '—'}</div>
+                <div style="color:#888">${nf.createdOn || ''}</div>
+                ${nfIdx >= 0 && nf.guid
+                  ? `<div style="margin-top:8px">
+                      <button onclick="closeLb();setTimeout(()=>openLb(${nfIdx}),100)"
+                        style="background:#a78bfa;color:#fff;border:none;
+                        border-radius:4px;padding:4px 10px;cursor:pointer;
+                        font-family:monospace;font-size:11px;font-weight:700;
+                        margin-right:6px">Open field</button>
+                      <button onclick="closeLb();setTimeout(()=>{openLb(${nfIdx});setTimeout(startEdit,300)},100)"
+                        style="background:#f59e0b;color:#000;border:none;
+                        border-radius:4px;padding:4px 10px;cursor:pointer;
+                        font-family:monospace;font-size:11px;font-weight:700">✎ Edit polygon</button>
+                    </div>`
+                  : ''}
+              </div>`)
+            .openOn(lbMap);
+        });
+
+        poly.bindTooltip(embLabel, { sticky:true });
       });
+
       nb.adjacent.forEach(nid => {
         const nf = fieldByIdMap.get(nid);
         if (!nf || !nf.ring) return;
         hasAdjNeighbour = true;
-        L.polygon(nf.ring.map(c => [c[1], c[0]]), {
+        const nfIdx = fieldsData.indexOf(nf);
+        const poly = L.polygon(nf.ring.map(c => [c[1], c[0]]), {
           color:'#f59e0b', weight:2, fillColor:'#f59e0b',
           fillOpacity:0.06, dashArray:'5,4'
-        }).addTo(lbMap).bindTooltip(`~ ${nid}`, {sticky:true});
+        }).addTo(lbMap);
+
+        poly.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          L.popup({ maxWidth:260 })
+            .setLatLng(e.latlng)
+            .setContent(`
+              <div style="font-family:monospace;font-size:11px;line-height:1.7">
+                <div style="font-weight:700;color:#f59e0b">~ Adjacent: ${nid}</div>
+                <div style="color:#888">${nf.owner || '—'}</div>
+                ${nfIdx >= 0 && nf.guid
+                  ? `<div style="margin-top:8px">
+                      <button onclick="closeLb();setTimeout(()=>openLb(${nfIdx}),100)"
+                        style="background:#f59e0b;color:#000;border:none;
+                        border-radius:4px;padding:4px 10px;cursor:pointer;
+                        font-family:monospace;font-size:11px;font-weight:700;
+                        margin-right:6px">Open field</button>
+                      <button onclick="closeLb();setTimeout(()=>{openLb(${nfIdx});setTimeout(startEdit,300)},100)"
+                        style="background:#f59e0b;color:#000;border:none;
+                        border-radius:4px;padding:4px 10px;cursor:pointer;
+                        font-family:monospace;font-size:11px;font-weight:700">✎ Edit polygon</button>
+                    </div>`
+                  : ''}
+              </div>`)
+            .openOn(lbMap);
+        });
+
+        poly.bindTooltip(`~ ${nid}`, { sticky:true });
       });
     }
-    document.getElementById('lbLegendOverlap').style.display = hasOverlapNeighbour ? '' : 'none';
+    document.getElementById('lbLegendOverlap').style.display  = hasOverlapNeighbour ? '' : 'none';
+    document.getElementById('lbLegendEmbedded').style.display = hasEmbedded ? '' : 'none';
     document.getElementById('lbLegendAdjacent').style.display = hasAdjNeighbour ? '' : 'none';
 
     lbMap.fitBounds(poly.getBounds(), { padding:[24,24] });
@@ -3062,6 +3178,14 @@ function exportCSV(type) {
           ? correctionArtifactFlag(f.ring, nf ? nf.ring : null)
           : '—';
 
+        // Embedded relationship
+        const embRel = type === 'overlapping' && nf && nf.ring
+          ? embeddedRelation(f.ring, nf.ring) : 'none';
+        const embeddedFlag = embRel === 'A_in_B' ? 'Field A inside Field B'
+          : embRel === 'B_in_A' ? 'Field B inside Field A'
+          : embRel === 'partial' ? 'Partial overlap'
+          : '—';
+
         pairRows.push([
           // Field A
           f.fieldId,
@@ -3091,7 +3215,8 @@ function exportCSV(type) {
           nm ? nm.cLat.toFixed(6) : '',
           nm ? nm.cLng.toFixed(6) : '',
           (nm && nm.area > threshold) ? 'Yes' : 'No',
-          artifactFlag
+          artifactFlag,
+          embeddedFlag
         ]);
       });
     });
@@ -3105,7 +3230,7 @@ function exportCSV(type) {
       'Field B Inside','Field B Outside','Field B Compliance %',
       'Field B Area (ha)','Field B Perimeter (m)','Field B Vertices',
       'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon',
-      'Correction Artifact'
+      'Correction Artifact','Embedded Relationship'
     ];
 
     const csv = [pairHeaders, ...pairRows]
