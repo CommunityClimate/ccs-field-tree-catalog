@@ -682,7 +682,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     </div>
     <!-- Edit mode bar -->
     <div class="lb-edit-bar" id="lbEditBar">
-      <span class="edit-status" id="lbEditStatus">✎ Edit mode — drag vertices to reshape boundary</span>
+      <span class="edit-status" id="lbEditStatus">✎ Edit mode — drag vertices · right-click vertex to delete · click edge midpoint to add</span>
       <span class="edit-compliance" id="lbEditCompliance"></span>
       <button class="btn" style="background:var(--border);color:var(--text)"
         onclick="cancelEdit()">✕ Cancel</button>
@@ -2259,8 +2259,8 @@ function buildEditMap(f) {
   const mapEl = document.getElementById('lbMap');
   mapEl.innerHTML = '';
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
-  editMarkers   = [];
-  editTreeDots  = [];
+  editMarkers  = [];
+  editTreeDots = [];
   editPolyLayer = null;
 
   lbMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
@@ -2274,7 +2274,7 @@ function buildEditMap(f) {
     fillColor:'#f59e0b', fillOpacity:0.08, dashArray:'6,4'
   }).addTo(lbMap);
 
-  // Tree dots — static, stay visible throughout editing
+  // Tree dots
   const trees = treesByField[f.fieldId] || [];
   trees.forEach(t => {
     const dot = L.circleMarker([t.lat, t.lng], {
@@ -2285,53 +2285,105 @@ function buildEditMap(f) {
     editTreeDots.push({ dot, lat:t.lat, lng:t.lng });
   });
 
-  // Draggable vertex handles
+  rebuildEditHandles(f);
+
+  lbMap.fitBounds(editPolyLayer.getBounds(), { padding:[24,24] });
+  setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
+  updateEditCompliance(f.fieldId);
+}
+
+function rebuildEditHandles(f) {
+  // Remove all existing handles
+  editMarkers.forEach(m => { try { lbMap.removeLayer(m); } catch(e){} });
+  editMarkers = [];
+
+  const n = editRing.length;
+
+  // ── Vertex handles (drag to move, right-click to delete) ────────────────
   editRing.forEach((c, i) => {
     const marker = L.circleMarker([c[1], c[0]], {
-      radius:7, color:'#f59e0b', weight:2,
+      radius:8, color:'#f59e0b', weight:2,
       fillColor:'#fff', fillOpacity:1,
       className:'edit-handle'
     }).addTo(lbMap);
 
+    // Drag to move
     marker.on('mousedown', function(e) {
       L.DomEvent.stopPropagation(e);
       lbMap.dragging.disable();
-
       function onMove(me) {
         const ll = lbMap.containerPointToLatLng(
-          lbMap.mouseEventToContainerPoint(me.originalEvent)
-        );
+          lbMap.mouseEventToContainerPoint(me.originalEvent));
         editRing[i] = [ll.lng, ll.lat];
         marker.setLatLng([ll.lat, ll.lng]);
-        // Update polygon shape
         editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
-        // Update tree dot colours live
         editTreeDots.forEach(td => {
           td.dot.setStyle({
             fillColor: pip(td.lat, td.lng, editRing) ? '#22c55e' : '#ef4444'
           });
         });
-        // Live compliance update
         updateEditCompliance(f.fieldId);
       }
-
       function onUp() {
         lbMap.dragging.enable();
         lbMap.off('mousemove', onMove);
-        lbMap.off('mouseup',   onUp);
+        lbMap.off('mouseup', onUp);
       }
-
       lbMap.on('mousemove', onMove);
-      lbMap.on('mouseup',   onUp);
+      lbMap.on('mouseup', onUp);
     });
+
+    // Right-click to delete vertex
+    marker.on('contextmenu', function(e) {
+      L.DomEvent.stopPropagation(e);
+      if (editRing.length <= 3) {
+        alert('A polygon must have at least 3 vertices.');
+        return;
+      }
+      editRing.splice(i, 1);
+      editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
+      editTreeDots.forEach(td => {
+        td.dot.setStyle({
+          fillColor: pip(td.lat, td.lng, editRing) ? '#22c55e' : '#ef4444'
+        });
+      });
+      updateEditCompliance(f.fieldId);
+      rebuildEditHandles(f);
+    });
+
+    // Tooltip hint
+    marker.bindTooltip('Drag to move · Right-click to delete',
+      { direction:'top', offset:[0,-10], opacity:0.85 });
 
     editMarkers.push(marker);
   });
 
-  lbMap.fitBounds(editPolyLayer.getBounds(), { padding:[24,24] });
-  setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
+  // ── Midpoint handles (click to insert new vertex) ─────────────────────
+  editRing.forEach((c, i) => {
+    const next = editRing[(i+1) % n];
+    const mx   = (c[0] + next[0]) / 2;
+    const my   = (c[1] + next[1]) / 2;
 
-  updateEditCompliance(f.fieldId);
+    const mid = L.circleMarker([my, mx], {
+      radius:5, color:'#f59e0b', weight:1.5,
+      fillColor:'#f59e0b', fillOpacity:0.35,
+      className:'edit-handle'
+    }).addTo(lbMap);
+
+    mid.bindTooltip('Click to add vertex here',
+      { direction:'top', offset:[0,-8], opacity:0.85 });
+
+    mid.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      // Insert new vertex after i
+      editRing.splice(i+1, 0, [mx, my]);
+      editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
+      updateEditCompliance(f.fieldId);
+      rebuildEditHandles(f);
+    });
+
+    editMarkers.push(mid);
+  });
 }
 
 function updateEditCompliance(fieldId) {
