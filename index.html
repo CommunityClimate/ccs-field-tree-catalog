@@ -1961,7 +1961,9 @@ function selectiveExpand(ring, outsideTrees, bufferDeg) {
   }
 
   // Build new ring: for each vertex i, it is the intersection of
-  // edge (i-1) and edge (i), both potentially shifted
+  // edge (i-1) and edge (i), both potentially shifted.
+  // Special case: if only ONE adjacent edge is shifted, move the vertex
+  // purely in that edge's outward normal direction — avoids sharp points.
   const newRing = [];
   for (let i = 0; i < n; i++) {
     const prevEi = (i - 1 + n) % n;
@@ -1971,10 +1973,10 @@ function selectiveExpand(ring, outsideTrees, bufferDeg) {
     const currShift = shifts[currEi];
 
     if (prevShift === 0 && currShift === 0) {
-      // Neither adjacent edge was shifted — vertex stays exactly as-is
+      // Neither adjacent edge shifted — vertex stays exactly as-is
       newRing.push([...ring[i]]);
-    } else {
-      // At least one adjacent edge shifted — recompute intersection
+    } else if (prevShift > 0 && currShift > 0) {
+      // Both adjacent edges shifted — compute clean intersection
       const prev = shiftedEdge(ring, prevEi, prevShift);
       const curr = shiftedEdge(ring, currEi, currShift);
       const pt   = lineIntersect(
@@ -1982,6 +1984,13 @@ function selectiveExpand(ring, outsideTrees, bufferDeg) {
         curr.ax, curr.ay, curr.bx, curr.by
       );
       newRing.push(pt);
+    } else {
+      // Only ONE adjacent edge shifted — move vertex purely in that
+      // edge's outward normal direction to avoid sharp pointed corners
+      const shift  = prevShift > 0 ? prevShift : currShift;
+      const ei     = prevShift > 0 ? prevEi    : currEi;
+      const [nx, ny] = edgeOutwardNormal(ring, ei);
+      newRing.push([ring[i][0] + nx*shift, ring[i][1] + ny*shift]);
     }
   }
 
