@@ -365,8 +365,22 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="overlapping">⧖ Overlapping fields</option>
         <option value="adjacent">~ Adjacent fields</option>
         <option value="embedded">⊂ Embedded fields (polygon inside another)</option>
+        <option value="isolated">⬡ Isolated fields (no neighbours)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
+    </div>
+    <div class="sec">
+      <span class="sec-lbl">Max neighbours (overlap + adjacent)</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <input type="range" id="maxNeighbours" min="0" max="20" value="20"
+          oninput="updateNeighbourLabel();render()"/>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;
+          color:var(--blue);min-width:42px" id="neighbourLabel">Any</span>
+      </div>
+      <div style="font-size:9px;color:var(--muted);line-height:1.5">
+        Slide to 0 to show only isolated fields.<br>
+        Slide left to reduce neighbour clutter.
+      </div>
     </div>
     <div class="sec">
       <span class="sec-lbl">Date registered</span>
@@ -795,6 +809,15 @@ function getLargeThreshold() {
 function updateThresholdLabel() {
   const v = getLargeThreshold();
   document.getElementById('thresholdLabel').textContent = v + ' ha';
+}
+
+function getMaxNeighbours() {
+  return parseInt(document.getElementById('maxNeighbours')?.value ?? 20);
+}
+
+function updateNeighbourLabel() {
+  const v = getMaxNeighbours();
+  document.getElementById('neighbourLabel').textContent = v >= 20 ? 'Any' : v.toString();
 }
 let fieldsData = [];     // { fieldId, owner, geoJSON, ring, guid }
 let treesByField = {};   // fieldId → [{lat, lng}]
@@ -1428,6 +1451,18 @@ function render() {
         return nf && nf.ring && embeddedRelation(f.ring, nf.ring) !== 'none';
       });
     }
+    if (filter === 'isolated') {
+      const nb = neighbourMap.get(f.fieldId);
+      return !nb || (nb.overlapping.length === 0 && nb.adjacent.length === 0);
+    }
+
+    // Max neighbours slider — applied to ALL filter results
+    const maxNb = getMaxNeighbours();
+    if (maxNb < 20) {
+      const nb = neighbourMap.get(f.fieldId);
+      const total = nb ? nb.overlapping.length + nb.adjacent.length : 0;
+      if (total > maxNb) return false;
+    }
     if (!f.ring) return filter === '';
     if (filter === 'inside')        return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
     if (filter === 'outside')       return trees.some(t => !pip(t.lat, t.lng, f.ring));
@@ -1586,6 +1621,8 @@ function clearFilters() {
   document.getElementById('fltSearch').value = '';
   document.getElementById('fltDateFrom').value = '';
   document.getElementById('fltDateTo').value   = '';
+  const nb = document.getElementById('maxNeighbours');
+  if (nb) { nb.value = 20; updateNeighbourLabel(); }
   render();
 }
 
