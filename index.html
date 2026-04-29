@@ -1915,90 +1915,75 @@ function selectiveExpand(ring, outsideTrees, bufferDeg) {
   // Assign each outside tree to its nearest edge
   const edgeMap = new Map();
   outsideTrees.forEach(t => {
-    let minDist = Infinity, minEi = 0, minProjT = 0, minPerpDist = 0;
+    let minDist = Infinity, minEi = 0, minPerpDist = 0;
     for (let i = 0; i < n; i++) {
       const a = ring[i], b = ring[(i+1)%n];
       const proj = ptSegClosest(t.lng, t.lat, a[0], a[1], b[0], b[1]);
       const d = Math.sqrt((t.lng-proj.x)**2 + (t.lat-proj.y)**2);
-      if (d < minDist) {
-        minDist = d; minEi = i; minProjT = proj.t; minPerpDist = d;
-      }
+      if (d < minDist) { minDist = d; minEi = i; minPerpDist = d; }
     }
     if (!edgeMap.has(minEi)) edgeMap.set(minEi, []);
-    edgeMap.get(minEi).push({ tree:t, projT:minProjT, perpDist:minPerpDist });
+    edgeMap.get(minEi).push(minPerpDist);
   });
 
-  // Process edges highest→lowest index so splices don't shift earlier indices
-  let newRing = ring.map(c => [...c]);
-  const edgeIndices = [...edgeMap.keys()].sort((a,b) => b-a);
+  // For each affected edge: shift it outward by max tree distance + buffer
+  // keeping it perfectly parallel to the original.
+  // Then recompute the two corner intersections with neighbouring edges.
+  // All other vertices are copied verbatim.
 
-  edgeIndices.forEach(ei => {
-    const assignments = edgeMap.get(ei);
-    const rn = newRing.length;
-    // Original edge endpoints — NEVER MOVED
-    const a  = newRing[ei];
-    const b  = newRing[(ei+1)%rn];
-    const [nx, ny] = edgeOutwardNormal(newRing, ei);
-
-    // Sort trees along edge by projection parameter
-    const sorted = assignments.slice().sort((x,y) => x.projT - y.projT);
-
-    // For each tree: insert three vertices forming a clean outward bump
-    // that rejoins the original edge line on both sides:
-    //   left anchor  → on original edge, slightly left of tree projection
-    //   apex         → tree position + buffer, pushed outward
-    //   right anchor → on original edge, slightly right of tree projection
-    // This guarantees the original edge line is rejoined exactly.
-    const FLANK = bufferDeg * 0.5; // half-buffer flank width along edge
-    const edgeLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-    const flankT  = edgeLen > 0 ? Math.min(FLANK / edgeLen, 0.08) : 0.02;
-
-    const bumps = [];
-    sorted.forEach(({ projT, perpDist }) => {
-      const push = perpDist + bufferDeg;
-      // Apex: projection point pushed outward
-      const apexX = a[0] + projT*(b[0]-a[0]) + nx*push;
-      const apexY = a[1] + projT*(b[1]-a[1]) + ny*push;
-      // Left anchor: on original edge, flankT before apex
-      const lt = Math.max(0, projT - flankT);
-      const lx = a[0] + lt*(b[0]-a[0]);
-      const ly = a[1] + lt*(b[1]-a[1]);
-      // Right anchor: on original edge, flankT after apex
-      const rt = Math.min(1, projT + flankT);
-      const rx = a[0] + rt*(b[0]-a[0]);
-      const ry = a[1] + rt*(b[1]-a[1]);
-      bumps.push({ lt, lx, ly, apexX, apexY, rt, rx, ry });
-    });
-
-    // Merge overlapping bumps (when two trees are very close on same edge)
-    const merged = [];
-    bumps.forEach(bump => {
-      if (merged.length && bump.lt <= merged[merged.length-1].rt) {
-        // Overlapping — extend the previous bump's right anchor and take max apex
-        const prev = merged[merged.length-1];
-        prev.rt   = Math.max(prev.rt, bump.rt);
-        prev.rx   = a[0] + prev.rt*(b[0]-a[0]);
-        prev.ry   = a[1] + prev.rt*(b[1]-a[1]);
-        // Keep apex with largest outward push
-        const prevPush = Math.sqrt((prev.apexX-a[0]-0.5*(b[0]-a[0]))**2 +
-                                   (prev.apexY-a[1]-0.5*(b[1]-a[1]))**2);
-        const thisPush = Math.sqrt((bump.apexX-a[0]-0.5*(b[0]-a[0]))**2 +
-                                   (bump.apexY-a[1]-0.5*(b[1]-a[1]))**2);
-        if (thisPush > prevPush) { prev.apexX = bump.apexX; prev.apexY = bump.apexY; }
-      } else {
-        merged.push({ ...bump });
-      }
-    });
-
-    // Build insertion: [left anchor, apex, right anchor] per merged bump
-    // inserted between original vertices a and b — a and b are UNCHANGED
-    const insertVerts = [];
-    merged.forEach(({ lx, ly, apexX, apexY, rx, ry }) => {
-      insertVerts.push([lx, ly], [apexX, apexY], [rx, ry]);
-    });
-
-    newRing.splice(ei+1, 0, ...insertVerts);
+  // Build shift amounts per edge (0 = unaffected)
+  const shifts = new Array(n).fill(0);
+  edgeMap.forEach((dists, ei) => {
+    shifts[ei] = Math.max(...dists) + bufferDeg;
   });
+
+  // Helper: intersect two infinite lines defined by point+normal offset
+  function shiftedEdge(ring, ei, shift) {
+    const a = ring[ei], b = ring[(ei+1)%n];
+    const [nx, ny] = edgeOutwardNormal(ring, ei);
+    return {
+      ax: a[0] + nx*shift, ay: a[1] + ny*shift,
+      bx: b[0] + nx*shift, by: b[1] + ny*shift,
+      nx, ny
+    };
+  }
+
+  function lineIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    const dxAB = bx-ax, dyAB = by-ay;
+    const dxCD = dx-cx, dyCD = dy-cy;
+    const denom = dxAB*dyCD - dyAB*dxCD;
+    if (Math.abs(denom) < 1e-12) {
+      // Parallel — return midpoint of closest approach
+      return [(ax+cx)/2, (ay+cy)/2];
+    }
+    const t = ((cx-ax)*dyCD - (cy-ay)*dxCD) / denom;
+    return [ax + t*dxAB, ay + t*dyAB];
+  }
+
+  // Build new ring: for each vertex i, it is the intersection of
+  // edge (i-1) and edge (i), both potentially shifted
+  const newRing = [];
+  for (let i = 0; i < n; i++) {
+    const prevEi = (i - 1 + n) % n;
+    const currEi = i;
+
+    const prevShift = shifts[prevEi];
+    const currShift = shifts[currEi];
+
+    if (prevShift === 0 && currShift === 0) {
+      // Neither adjacent edge was shifted — vertex stays exactly as-is
+      newRing.push([...ring[i]]);
+    } else {
+      // At least one adjacent edge shifted — recompute intersection
+      const prev = shiftedEdge(ring, prevEi, prevShift);
+      const curr = shiftedEdge(ring, currEi, currShift);
+      const pt   = lineIntersect(
+        prev.ax, prev.ay, prev.bx, prev.by,
+        curr.ax, curr.ay, curr.bx, curr.by
+      );
+      newRing.push(pt);
+    }
+  }
 
   return newRing;
 }
