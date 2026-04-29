@@ -1913,52 +1913,91 @@ function selectiveExpand(ring, outsideTrees, bufferDeg) {
   const n = ring.length;
 
   // Assign each outside tree to its nearest edge
-  const edgeMap = new Map(); // edgeIdx → [{tree, projT, perpDist}]
+  const edgeMap = new Map();
   outsideTrees.forEach(t => {
-    let minDist = Infinity, minEi = 0, minProj = null;
+    let minDist = Infinity, minEi = 0, minProjT = 0, minPerpDist = 0;
     for (let i = 0; i < n; i++) {
       const a = ring[i], b = ring[(i+1)%n];
       const proj = ptSegClosest(t.lng, t.lat, a[0], a[1], b[0], b[1]);
       const d = Math.sqrt((t.lng-proj.x)**2 + (t.lat-proj.y)**2);
-      if (d < minDist) { minDist = d; minEi = i; minProj = proj; }
+      if (d < minDist) {
+        minDist = d; minEi = i; minProjT = proj.t; minPerpDist = d;
+      }
     }
     if (!edgeMap.has(minEi)) edgeMap.set(minEi, []);
-    edgeMap.get(minEi).push({ tree:t, projT:minProj.t, perpDist:minDist });
+    edgeMap.get(minEi).push({ tree:t, projT:minProjT, perpDist:minPerpDist });
   });
 
-  // Process edges — insert new vertices where trees are outside
-  // Work from highest index to lowest so insertions don't shift earlier indices
+  // Process edges highest→lowest index so splices don't shift earlier indices
   let newRing = ring.map(c => [...c]);
   const edgeIndices = [...edgeMap.keys()].sort((a,b) => b-a);
 
   edgeIndices.forEach(ei => {
     const assignments = edgeMap.get(ei);
-    const rn  = newRing.length;
-    const a   = newRing[ei], b = newRing[(ei+1)%rn];
+    const rn = newRing.length;
+    // Original edge endpoints — NEVER MOVED
+    const a  = newRing[ei];
+    const b  = newRing[(ei+1)%rn];
     const [nx, ny] = edgeOutwardNormal(newRing, ei);
 
-    // Sort trees along the edge by projection parameter
-    const sorted = assignments
-      .slice()
-      .sort((x,y) => x.projT - y.projT);
+    // Sort trees along edge by projection parameter
+    const sorted = assignments.slice().sort((x,y) => x.projT - y.projT);
 
-    // Build new vertices: for each tree, project onto edge then push outward
-    const newVerts = sorted.map(({ tree, projT, perpDist }) => {
-      const px = a[0] + projT*(b[0]-a[0]);
-      const py = a[1] + projT*(b[1]-a[1]);
+    // For each tree: insert three vertices forming a clean outward bump
+    // that rejoins the original edge line on both sides:
+    //   left anchor  → on original edge, slightly left of tree projection
+    //   apex         → tree position + buffer, pushed outward
+    //   right anchor → on original edge, slightly right of tree projection
+    // This guarantees the original edge line is rejoined exactly.
+    const FLANK = bufferDeg * 0.5; // half-buffer flank width along edge
+    const edgeLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
+    const flankT  = edgeLen > 0 ? Math.min(FLANK / edgeLen, 0.08) : 0.02;
+
+    const bumps = [];
+    sorted.forEach(({ projT, perpDist }) => {
       const push = perpDist + bufferDeg;
-      return [px + nx*push, py + ny*push];
+      // Apex: projection point pushed outward
+      const apexX = a[0] + projT*(b[0]-a[0]) + nx*push;
+      const apexY = a[1] + projT*(b[1]-a[1]) + ny*push;
+      // Left anchor: on original edge, flankT before apex
+      const lt = Math.max(0, projT - flankT);
+      const lx = a[0] + lt*(b[0]-a[0]);
+      const ly = a[1] + lt*(b[1]-a[1]);
+      // Right anchor: on original edge, flankT after apex
+      const rt = Math.min(1, projT + flankT);
+      const rx = a[0] + rt*(b[0]-a[0]);
+      const ry = a[1] + rt*(b[1]-a[1]);
+      bumps.push({ lt, lx, ly, apexX, apexY, rt, rx, ry });
     });
 
-    // Deduplicate very close new vertices (within 1m in degrees)
-    const deduped = newVerts.filter((v, i) => {
-      if (i === 0) return true;
-      const prev = newVerts[i-1];
-      return Math.sqrt((v[0]-prev[0])**2 + (v[1]-prev[1])**2) > 0.00001;
+    // Merge overlapping bumps (when two trees are very close on same edge)
+    const merged = [];
+    bumps.forEach(bump => {
+      if (merged.length && bump.lt <= merged[merged.length-1].rt) {
+        // Overlapping — extend the previous bump's right anchor and take max apex
+        const prev = merged[merged.length-1];
+        prev.rt   = Math.max(prev.rt, bump.rt);
+        prev.rx   = a[0] + prev.rt*(b[0]-a[0]);
+        prev.ry   = a[1] + prev.rt*(b[1]-a[1]);
+        // Keep apex with largest outward push
+        const prevPush = Math.sqrt((prev.apexX-a[0]-0.5*(b[0]-a[0]))**2 +
+                                   (prev.apexY-a[1]-0.5*(b[1]-a[1]))**2);
+        const thisPush = Math.sqrt((bump.apexX-a[0]-0.5*(b[0]-a[0]))**2 +
+                                   (bump.apexY-a[1]-0.5*(b[1]-a[1]))**2);
+        if (thisPush > prevPush) { prev.apexX = bump.apexX; prev.apexY = bump.apexY; }
+      } else {
+        merged.push({ ...bump });
+      }
     });
 
-    // Insert after position ei (before ei+1)
-    newRing.splice(ei+1, 0, ...deduped);
+    // Build insertion: [left anchor, apex, right anchor] per merged bump
+    // inserted between original vertices a and b — a and b are UNCHANGED
+    const insertVerts = [];
+    merged.forEach(({ lx, ly, apexX, apexY, rx, ry }) => {
+      insertVerts.push([lx, ly], [apexX, apexY], [rx, ry]);
+    });
+
+    newRing.splice(ei+1, 0, ...insertVerts);
   });
 
   return newRing;
