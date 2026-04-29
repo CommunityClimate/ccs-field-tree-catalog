@@ -2108,20 +2108,47 @@ function buildAutoCorrectPreview(f) {
   lbEditFieldIdx = acFieldIdx;
 }
 
+const AC_AREA_WARN_PCT  = 130; // amber warning above 130% of original
+const AC_AREA_BLOCK_PCT = 200; // red block above 200% of original
+
 function updateAcStats(f, buffered, rogueCt, outsideTreesCt) {
-  const trees  = treesByField[f.fieldId] || [];
-  const ring   = f.ring;
-  const oldIn  = ring ? trees.filter(t => pip(t.lat, t.lng, ring)).length : 0;
-  const oldOut = trees.length - oldIn;
-  const oldPct = trees.length ? Math.round(oldIn/trees.length*100) : 0;
-  const newIn  = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
-  const newOut = trees.length - newIn;
-  const newPct = trees.length ? Math.round(newIn/trees.length*100) : 0;
-  const gain   = newPct - oldPct;
+  const trees   = treesByField[f.fieldId] || [];
+  const ring    = f.ring;
+  const oldIn   = ring ? trees.filter(t => pip(t.lat, t.lng, ring)).length : 0;
+  const oldOut  = trees.length - oldIn;
+  const oldPct  = trees.length ? Math.round(oldIn/trees.length*100) : 0;
+  const newIn   = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
+  const newOut  = trees.length - newIn;
+  const newPct  = trees.length ? Math.round(newIn/trees.length*100) : 0;
+  const gain    = newPct - oldPct;
   const newArea = ringAreaHa(buffered);
+  const oldArea = ring ? ringAreaHa(ring) : null;
+  const areaPct = oldArea ? Math.round(newArea / oldArea * 100) : 100;
+  const areaIncrease = areaPct - 100;
+
   const modeLabel = acMode === 'selective'
     ? `Selective (${ring ? ring.length : 0}→${buffered.length} vertices)`
     : `Convex hull (${buffered.length} vertices)`;
+
+  // Area warning level
+  let areaColor = 'var(--text)', areaWarn = '';
+  const saveBtn = document.getElementById('lbAcSaveBtn');
+  if (areaPct >= AC_AREA_BLOCK_PCT) {
+    areaColor = '#ef4444';
+    areaWarn  = `<span style="color:#ef4444;font-weight:700">
+      ✖ +${areaIncrease}% — exceeds 200% limit. Reduce buffer or use Edit Polygon.</span>`;
+    if (saveBtn) { saveBtn.disabled = true;
+      saveBtn.style.opacity = '0.4'; saveBtn.style.cursor = 'not-allowed'; }
+  } else if (areaPct >= AC_AREA_WARN_PCT) {
+    areaColor = '#f59e0b';
+    areaWarn  = `<span style="color:#f59e0b;font-weight:700">
+      ⚠ +${areaIncrease}% — review on satellite before applying</span>`;
+    if (saveBtn) { saveBtn.disabled = false;
+      saveBtn.style.opacity = '1'; saveBtn.style.cursor = ''; }
+  } else {
+    if (saveBtn) { saveBtn.disabled = false;
+      saveBtn.style.opacity = '1'; saveBtn.style.cursor = ''; }
+  }
 
   document.getElementById('lbAcStats').innerHTML = `
     <div class="ac-stat">
@@ -2140,8 +2167,10 @@ function updateAcStats(f, buffered, rogueCt, outsideTreesCt) {
     </div>
     <div class="ac-stat">
       <span class="l">Proposed area</span>
-      <span class="v">${newArea.toFixed(3)} ha
-        <span style="color:var(--muted)">(was ${ring ? ringAreaHa(ring).toFixed(3) : '—'} ha)</span>
+      <span class="v" style="color:${areaColor}">
+        ${newArea.toFixed(3)} ha
+        <span style="color:var(--muted)">(was ${oldArea ? oldArea.toFixed(3) : '—'} ha)</span>
+        ${areaWarn}
       </span>
     </div>
     ${rogueCt > 0 ? `<div class="ac-stat">
@@ -2838,6 +2867,9 @@ function exportCSV(type) {
       const newPct   = Math.round(newIn / trees.length * 100);
       const gain     = newPct - oldPct;
       const rogueCt  = trees.length - cleanPts.length;
+      const areaPct  = Math.round(ringAreaHa(buffered) / ringAreaHa(f.ring) * 100);
+      const areaFlag = areaPct >= 200 ? 'BLOCKED >200%'
+                     : areaPct >= 130 ? `WARN +${areaPct-100}%` : 'OK';
 
       acRows.push([
         f.fieldId, f.owner || '', f.createdOn || '',
@@ -2846,6 +2878,7 @@ function exportCSV(type) {
         gain > 0 ? '+' + gain + '%' : gain + '%',
         hull.length, ringAreaHa(f.ring).toFixed(2),
         ringAreaHa(buffered).toFixed(2),
+        areaPct + '%', areaFlag,
         rogueCt, 5
       ]);
     });
@@ -2858,6 +2891,7 @@ function exportCSV(type) {
       'Total Trees','Current Inside','Current Outside','Current Compliance %',
       'Projected Inside','Projected Outside','Projected Compliance %',
       'Gain','Hull Vertices','Current Area (ha)','Projected Area (ha)',
+      'Area Increase %','Area Flag',
       'Rogue Trees Excluded','Buffer (m)'
     ];
     const csvBody = [acHeaders, ...acRows]
