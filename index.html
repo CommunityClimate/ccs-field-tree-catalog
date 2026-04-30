@@ -2424,7 +2424,9 @@ function confirmAutoCorrect() {
   const f = fieldsData[acFieldIdx];
   if (!f) return;
   const trees    = treesByField[f.fieldId] || [];
-  const buffered = bufferRingM(acHullRing, acBufferM);
+  const activeRaw = acMode === 'selective' ? acSelRing : acHullRing;
+  if (!activeRaw) return;
+  const buffered = acMode === 'selective' ? activeRaw : bufferRingM(activeRaw, acBufferM);
   const newIn    = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
   const newPct   = trees.length ? Math.round(newIn / trees.length * 100) : 0;
   const newArea  = ringAreaHa(buffered).toFixed(2);
