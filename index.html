@@ -2107,91 +2107,80 @@ function edgeOutwardNormal(ring, ei) {
 function selectiveExpand(ring, outsideTrees, bufferDeg) {
   if (!outsideTrees.length) return ring.map(c => [...c]);
 
-  const n = ring.length;
+  // Run up to 3 passes — catches trees in corner dead zones
+  let currentRing = ring.map(c => [...c]);
+  for (let pass = 0; pass < 3; pass++) {
+    // Find trees still outside the current ring
+    const stillOutside = outsideTrees.filter(t => !pip(t.lat, t.lng, currentRing));
+    if (!stillOutside.length) break; // all inside — done
 
-  // Assign each outside tree to its nearest edge
-  const edgeMap = new Map();
-  outsideTrees.forEach(t => {
-    let minDist = Infinity, minEi = 0, minPerpDist = 0;
-    for (let i = 0; i < n; i++) {
-      const a = ring[i], b = ring[(i+1)%n];
-      const proj = ptSegClosest(t.lng, t.lat, a[0], a[1], b[0], b[1]);
-      const d = Math.sqrt((t.lng-proj.x)**2 + (t.lat-proj.y)**2);
-      if (d < minDist) { minDist = d; minEi = i; minPerpDist = d; }
-    }
-    if (!edgeMap.has(minEi)) edgeMap.set(minEi, []);
-    edgeMap.get(minEi).push(minPerpDist);
-  });
+    const n = currentRing.length;
 
-  // For each affected edge: shift it outward by max tree distance + buffer
-  // keeping it perfectly parallel to the original.
-  // Then recompute the two corner intersections with neighbouring edges.
-  // All other vertices are copied verbatim.
+    // Assign each remaining outside tree to its nearest edge
+    const edgeMap = new Map();
+    stillOutside.forEach(t => {
+      let minDist = Infinity, minEi = 0, minPerpDist = 0;
+      for (let i = 0; i < n; i++) {
+        const a = currentRing[i], b = currentRing[(i+1)%n];
+        const proj = ptSegClosest(t.lng, t.lat, a[0], a[1], b[0], b[1]);
+        const d = Math.sqrt((t.lng-proj.x)**2 + (t.lat-proj.y)**2);
+        if (d < minDist) { minDist = d; minEi = i; minPerpDist = d; }
+      }
+      if (!edgeMap.has(minEi)) edgeMap.set(minEi, []);
+      edgeMap.get(minEi).push(minPerpDist);
+    });
 
-  // Build shift amounts per edge (0 = unaffected)
-  const shifts = new Array(n).fill(0);
-  edgeMap.forEach((dists, ei) => {
-    shifts[ei] = Math.max(...dists) + bufferDeg;
-  });
+    // Shift amounts per edge
+    const shifts = new Array(n).fill(0);
+    edgeMap.forEach((dists, ei) => {
+      shifts[ei] = Math.max(...dists) + bufferDeg;
+    });
 
-  // Helper: intersect two infinite lines defined by point+normal offset
-  function shiftedEdge(ring, ei, shift) {
-    const a = ring[ei], b = ring[(ei+1)%n];
-    const [nx, ny] = edgeOutwardNormal(ring, ei);
-    return {
-      ax: a[0] + nx*shift, ay: a[1] + ny*shift,
-      bx: b[0] + nx*shift, by: b[1] + ny*shift,
-      nx, ny
-    };
-  }
-
-  function lineIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
-    const dxAB = bx-ax, dyAB = by-ay;
-    const dxCD = dx-cx, dyCD = dy-cy;
-    const denom = dxAB*dyCD - dyAB*dxCD;
-    if (Math.abs(denom) < 1e-12) {
-      // Parallel — return midpoint of closest approach
-      return [(ax+cx)/2, (ay+cy)/2];
-    }
-    const t = ((cx-ax)*dyCD - (cy-ay)*dxCD) / denom;
-    return [ax + t*dxAB, ay + t*dyAB];
-  }
-
-  // Build new ring: for each vertex i, it is the intersection of
-  // edge (i-1) and edge (i), both potentially shifted.
-  // Special case: if only ONE adjacent edge is shifted, move the vertex
-  // purely in that edge's outward normal direction — avoids sharp points.
-  const newRing = [];
-  for (let i = 0; i < n; i++) {
-    const prevEi = (i - 1 + n) % n;
-    const currEi = i;
-
-    const prevShift = shifts[prevEi];
-    const currShift = shifts[currEi];
-
-    if (prevShift === 0 && currShift === 0) {
-      // Neither adjacent edge shifted — vertex stays exactly as-is
-      newRing.push([...ring[i]]);
-    } else if (prevShift > 0 && currShift > 0) {
-      // Both adjacent edges shifted — compute clean intersection
-      const prev = shiftedEdge(ring, prevEi, prevShift);
-      const curr = shiftedEdge(ring, currEi, currShift);
-      const pt   = lineIntersect(
-        prev.ax, prev.ay, prev.bx, prev.by,
-        curr.ax, curr.ay, curr.bx, curr.by
-      );
-      newRing.push(pt);
-    } else {
-      // Only ONE adjacent edge shifted — move vertex purely in that
-      // edge's outward normal direction to avoid sharp pointed corners
-      const shift  = prevShift > 0 ? prevShift : currShift;
-      const ei     = prevShift > 0 ? prevEi    : currEi;
+    // Helper: shifted edge
+    function shiftedEdge(ring, ei, shift) {
+      const a = ring[ei], b = ring[(ei+1)%n];
       const [nx, ny] = edgeOutwardNormal(ring, ei);
-      newRing.push([ring[i][0] + nx*shift, ring[i][1] + ny*shift]);
+      return {
+        ax: a[0] + nx*shift, ay: a[1] + ny*shift,
+        bx: b[0] + nx*shift, by: b[1] + ny*shift
+      };
     }
-  }
 
-  return newRing;
+    function lineIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+      const dxAB = bx-ax, dyAB = by-ay;
+      const dxCD = dx-cx, dyCD = dy-cy;
+      const denom = dxAB*dyCD - dyAB*dxCD;
+      if (Math.abs(denom) < 1e-12) return [(ax+cx)/2, (ay+cy)/2];
+      const t = ((cx-ax)*dyCD - (cy-ay)*dxCD) / denom;
+      return [ax + t*dxAB, ay + t*dyAB];
+    }
+
+    // Build new ring for this pass
+    const newRing = [];
+    for (let i = 0; i < n; i++) {
+      const prevEi = (i - 1 + n) % n;
+      const currEi = i;
+      const prevShift = shifts[prevEi];
+      const currShift = shifts[currEi];
+
+      if (prevShift === 0 && currShift === 0) {
+        newRing.push([...currentRing[i]]);
+      } else if (prevShift > 0 && currShift > 0) {
+        const prev = shiftedEdge(currentRing, prevEi, prevShift);
+        const curr = shiftedEdge(currentRing, currEi, currShift);
+        const pt   = lineIntersect(prev.ax, prev.ay, prev.bx, prev.by,
+                                   curr.ax, curr.ay, curr.bx, curr.by);
+        newRing.push(pt);
+      } else {
+        const shift    = prevShift > 0 ? prevShift : currShift;
+        const ei       = prevShift > 0 ? prevEi    : currEi;
+        const [nx, ny] = edgeOutwardNormal(currentRing, ei);
+        newRing.push([currentRing[i][0] + nx*shift, currentRing[i][1] + ny*shift]);
+      }
+    }
+    currentRing = newRing;
+  }
+  return currentRing;
 }
 let acBufferM   = 5;
 let acHullRing  = null;  // raw convex hull without buffer
