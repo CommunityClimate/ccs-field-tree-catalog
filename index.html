@@ -565,6 +565,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div>
         <div class="lb-title" id="lbTitle">—</div>
         <div class="lb-sub" id="lbSub">—</div>
+        <div class="lb-sub" id="lbAudit" style="margin-top:3px;font-size:9px;
+          color:var(--muted);font-family:var(--mono)">—</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span id="lbLargeBadge"></span>
@@ -1219,18 +1221,23 @@ async function connect() {
     // Load fields
     setStatus('Loading fields…', 'ok');
     const fRows = await dvFetchAll(token,
-      `${DV_API}/ccs_fields?$select=ccs_fieldid,ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon&$filter=statecode eq 0`,
+      `${DV_API}/ccs_fields?$select=ccs_fieldid,ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon,modifiedon,_createdby_value,_modifiedby_value&$filter=statecode eq 0`,
       'Fields'
     );
 
     const IS_TEST_USER = /^testuser[\s_]/i;
 
     const allFields = fRows.map(r => ({
-      guid:      String(r.ccs_fieldid || '').toLowerCase(),
-      fieldId:   String(r.ccs_cssfieldid_field || '').trim(),
-      owner:     String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
-      geoJSON:   String(r.ccs_fieldgeojson_field || ''),
-      createdOn: r.createdon ? r.createdon.slice(0,10) : '',
+      guid:       String(r.ccs_fieldid || '').toLowerCase(),
+      fieldId:    String(r.ccs_cssfieldid_field || '').trim(),
+      owner:      String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
+      geoJSON:    String(r.ccs_fieldgeojson_field || ''),
+      createdOn:  r.createdon ? r.createdon.slice(0,10) : '',
+      createdOnFmt: r['createdon@OData.Community.Display.V1.FormattedValue'] || '',
+      createdBy:  r['_createdby_value@OData.Community.Display.V1.FormattedValue'] || '',
+      modifiedOn: r.modifiedon ? r.modifiedon.slice(0,10) : '',
+      modifiedOnFmt: r['modifiedon@OData.Community.Display.V1.FormattedValue'] || '',
+      modifiedBy: r['_modifiedby_value@OData.Community.Display.V1.FormattedValue'] || '',
       ring:      null
     })).map(f => { f.ring = parseGeoJSON(f.geoJSON); return f; })
       .filter(f => f.fieldId);
@@ -1636,6 +1643,14 @@ function openLb(idx) {
   document.getElementById('lbTitle').textContent = f.fieldId;
   document.getElementById('lbSub').textContent   =
     [f.owner, f.createdOn ? `Registered: ${f.createdOn}` : ''].filter(Boolean).join(' · ');
+
+  // Audit trail row
+  const auditParts = [];
+  if (f.createdBy)  auditParts.push(`Created by: ${f.createdBy}`);
+  if (f.createdOnFmt) auditParts.push(f.createdOnFmt);
+  if (f.modifiedBy) auditParts.push(`Modified by: ${f.modifiedBy}`);
+  if (f.modifiedOnFmt) auditParts.push(f.modifiedOnFmt);
+  document.getElementById('lbAudit').textContent = auditParts.join(' · ') || '';
 
   const trees  = treesByField[f.fieldId] || [];
   const ring   = f.ring;
@@ -3026,6 +3041,7 @@ function exportCSV(type) {
 
       acRows.push([
         f.fieldId, f.owner || '', f.createdOn || '',
+        f.createdBy || '', f.modifiedOn || '', f.modifiedBy || '',
         trees.length, oldIn, oldOut, oldPct + '%',
         newIn, newOut, newPct + '%',
         gain > 0 ? '+' + gain + '%' : gain + '%',
@@ -3041,6 +3057,7 @@ function exportCSV(type) {
 
     const acHeaders = [
       'Field ID','Owner','Registered',
+      'Created By','Modified On','Modified By',
       'Total Trees','Current Inside','Current Outside','Current Compliance %',
       'Projected Inside','Projected Outside','Projected Compliance %',
       'Gain','Hull Vertices','Current Area (ha)','Projected Area (ha)',
@@ -3244,6 +3261,9 @@ function exportCSV(type) {
           f.fieldId,
           f.owner || '',
           f.createdOn || '',
+          f.createdBy || '',
+          f.modifiedOn || '',
+          f.modifiedBy || '',
           trees.length,
           inCount,
           outCount,
@@ -3258,6 +3278,9 @@ function exportCSV(type) {
           nf ? nf.fieldId : nid,
           nf ? (nf.owner || '') : '',
           nf ? (nf.createdOn || '') : '',
+          nf ? (nf.createdBy || '') : '',
+          nf ? (nf.modifiedOn || '') : '',
+          nf ? (nf.modifiedBy || '') : '',
           ntrees.length,
           nIn,
           nOut,
@@ -3280,11 +3303,15 @@ function exportCSV(type) {
 
     const pairHeaders = [
       'Priority Score','Priority Level',
-      'Field A ID','Field A Owner','Field A Registered','Field A Trees',
+      'Field A ID','Field A Owner','Field A Registered',
+      'Field A Created By','Field A Modified On','Field A Modified By',
+      'Field A Trees',
       'Field A Inside','Field A Outside','Field A Compliance %',
       'Field A Area (ha)','Field A Perimeter (m)','Field A Vertices',
       'Field A Centroid Lat','Field A Centroid Lng','Field A Large Polygon',
-      'Field B ID','Field B Owner','Field B Registered','Field B Trees',
+      'Field B ID','Field B Owner','Field B Registered',
+      'Field B Created By','Field B Modified On','Field B Modified By',
+      'Field B Trees',
       'Field B Inside','Field B Outside','Field B Compliance %',
       'Field B Area (ha)','Field B Perimeter (m)','Field B Vertices',
       'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon',
