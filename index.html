@@ -338,6 +338,16 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬡ Bulk Auto-Correct Preview</strong>
         <span>All fields with outside trees — current vs projected compliance after hull correction</span>
       </div>
+      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+      <div class="export-item" onclick="closeExportMenu();clDownloadAll()">
+        <strong>📋 Download Change Log</strong>
+        <span>All polygon corrections made in this browser — full audit trail with before/after</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();clClear()"
+        style="opacity:0.6">
+        <strong>🗑 Clear Change Log</strong>
+        <span>Permanently removes the stored log from this browser (download first)</span>
+      </div>
     </div>
   </div>
 </header>
@@ -1356,6 +1366,25 @@ async function connect() {
       `Fields (${fieldsData.length.toLocaleString()})`;
     // Build fast lookup map
     fieldByIdMap = new Map(fieldsData.map(f => [f.fieldId, f]));
+
+    // Fetch current user display name for change log
+    try {
+      const me = await fetch(`${DV_API}/WhoAmI`, {
+        headers: { 'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'OData-MaxVersion': '4.0', 'OData-Version': '4.0' }
+      }).then(r => r.json());
+      if (me.UserId) {
+        const userRes = await fetch(
+          `${DV_API}/systemusers(${me.UserId})?$select=fullname`,
+          { headers: { 'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'OData-MaxVersion': '4.0', 'OData-Version': '4.0' } }
+        ).then(r => r.json());
+        window._currentUserName = userRes.fullname || 'Daniel Jones';
+      }
+    } catch(e) { window._currentUserName = 'Daniel Jones'; }
+
     render();
     // Kick off background neighbour detection, then re-allocation
     startNeighbourDetection().then(gridData => startReallocation(gridData));
@@ -2605,9 +2634,149 @@ function cancelEdit() {
   if (f) openLb(lbEditFieldIdx);
 }
 
+// ── POLYGON CHANGE LOG ─────────────────────────────────────────────────────
+const CL_KEY = 'ccs_polygon_changelog';
+
+function clLoad() {
+  try {
+    return JSON.parse(localStorage.getItem(CL_KEY) || '[]');
+  } catch(e) { return []; }
+}
+
+function clSave(entries) {
+  try { localStorage.setItem(CL_KEY, JSON.stringify(entries)); } catch(e) {}
+}
+
+function clAppend(entry) {
+  const entries = clLoad();
+  entries.push(entry);
+  clSave(entries);
+  // Also auto-download a single-row CSV backup immediately
+  clDownloadRow(entry);
+}
+
+function clBuildEntry(f, oldRing, newRing, method, correctedBy) {
+  const trees     = treesByField[f.fieldId] || [];
+  const oldIn     = oldRing ? trees.filter(t => pip(t.lat, t.lng, oldRing)).length : 0;
+  const newIn     = newRing ? trees.filter(t => pip(t.lat, t.lng, newRing)).length : 0;
+  const oldArea   = oldRing ? ringAreaHa(oldRing).toFixed(4) : '';
+  const newArea   = newRing ? ringAreaHa(newRing).toFixed(4) : '';
+  const oldPct    = trees.length ? Math.round(oldIn / trees.length * 100) : null;
+  const newPct    = trees.length ? Math.round(newIn / trees.length * 100) : null;
+  const areaPct   = (oldRing && newRing)
+    ? Math.round(ringAreaHa(newRing) / ringAreaHa(oldRing) * 100) : null;
+
+  return {
+    timestamp:        new Date().toISOString(),
+    fieldId:          f.fieldId,
+    fieldGuid:        f.guid,
+    owner:            f.owner || '',
+    createdBy:        f.createdBy || '',
+    createdOn:        f.createdOn || '',
+    originalModifiedBy:  f.modifiedBy || '',
+    originalModifiedOn:  f.modifiedOn || '',
+    correctedBy,
+    correctionMethod: method,
+    totalTrees:       trees.length,
+    oldInside:        oldIn,
+    oldOutside:       trees.length - oldIn,
+    oldCompliance:    oldPct !== null ? oldPct + '%' : '—',
+    newInside:        newIn,
+    newOutside:       trees.length - newIn,
+    newCompliance:    newPct !== null ? newPct + '%' : '—',
+    complianceGain:   (oldPct !== null && newPct !== null) ? (newPct - oldPct) + '%' : '—',
+    oldVertices:      oldRing ? oldRing.length : '',
+    newVertices:      newRing ? newRing.length : '',
+    oldAreaHa:        oldArea,
+    newAreaHa:        newArea,
+    areaChangePct:    areaPct !== null ? areaPct + '%' : '—',
+    oldGeoJSON:       oldRing ? JSON.stringify({
+      type:'Feature', geometry:{ type:'Polygon',
+        coordinates:[[...oldRing, oldRing[0]]] }, properties:{} }) : '',
+    newGeoJSON:       newRing ? JSON.stringify({
+      type:'Feature', geometry:{ type:'Polygon',
+        coordinates:[[...newRing, newRing[0]]] }, properties:{} }) : ''
+  };
+}
+
+const CL_HEADERS = [
+  'Timestamp','Field ID','Field GUID','Owner',
+  'Originally Created By','Originally Created On',
+  'Previously Modified By','Previously Modified On',
+  'Corrected By','Correction Method',
+  'Total Trees',
+  'Old Inside','Old Outside','Old Compliance %',
+  'New Inside','New Outside','New Compliance %','Compliance Gain',
+  'Old Vertices','New Vertices',
+  'Old Area (ha)','New Area (ha)','Area Change %',
+  'Old GeoJSON','New GeoJSON'
+];
+
+function clEntryToRow(e) {
+  return [
+    e.timestamp, e.fieldId, e.fieldGuid, e.owner,
+    e.createdBy, e.createdOn,
+    e.originalModifiedBy, e.originalModifiedOn,
+    e.correctedBy, e.correctionMethod,
+    e.totalTrees,
+    e.oldInside, e.oldOutside, e.oldCompliance,
+    e.newInside, e.newOutside, e.newCompliance, e.complianceGain,
+    e.oldVertices, e.newVertices,
+    e.oldAreaHa, e.newAreaHa, e.areaChangePct,
+    e.oldGeoJSON, e.newGeoJSON
+  ];
+}
+
+function clDownloadRow(entry) {
+  const csv = [CL_HEADERS, clEntryToRow(entry)]
+    .map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `CCS_Polygon_Change_${entry.fieldId}_${entry.timestamp.slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+function clDownloadAll() {
+  const entries = clLoad();
+  if (!entries.length) {
+    alert('No polygon corrections have been logged yet.');
+    return;
+  }
+  const csv = [CL_HEADERS, ...entries.map(clEntryToRow)]
+    .map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `CCS_Polygon_Change_Log_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+function clClear() {
+  if (confirm(`Clear the change log? This cannot be undone.\n\nMake sure you have downloaded the full log first.`)) {
+    clSave([]);
+    alert('Change log cleared.');
+  }
+}
+
 async function savePolygon() {
   const f = fieldsData[lbEditFieldIdx];
   if (!f || !editRing || !f.guid) return;
+
+  // Capture old ring BEFORE any write
+  const oldRing = f.ring ? f.ring.map(c => [...c]) : null;
+
+  // Determine correction method
+  const isAcMode = document.getElementById('lbAcBar').classList.contains('active');
+  const method   = isAcMode
+    ? `Auto-Correct (${acMode === 'selective' ? 'Selective' : 'Hull'}, buffer ${acBufferM}m)`
+    : 'Manual Edit';
 
   const saveBtn = document.getElementById('lbSaveBtn');
   saveBtn.disabled = true;
@@ -2652,8 +2821,22 @@ async function savePolygon() {
     f.ring    = editRing.map(c => [...c]);
     f.geoJSON = geojson;
 
+    // Write change log entry
+    try {
+      // Get corrected-by from the current user's display name if available
+      const correctedBy = window._currentUserName || 'Daniel Jones';
+      const entry = clBuildEntry(f, oldRing, f.ring, method, correctedBy);
+      // Update f.modifiedOn/By in memory so lightbox shows correct values
+      f.modifiedOn    = entry.timestamp.slice(0,10);
+      f.modifiedOnFmt = new Date(entry.timestamp).toLocaleString();
+      f.modifiedBy    = correctedBy;
+      clAppend(entry);
+    } catch(clErr) {
+      console.warn('Change log write failed:', clErr);
+    }
+
     document.getElementById('lbEditStatus').textContent =
-      `✓ Saved — ${f.fieldId} polygon updated`;
+      `✓ Saved — ${f.fieldId} polygon updated · Change log updated`;
     saveBtn.textContent  = '✓ Saved';
     saveBtn.style.background = '#22c55e';
 
