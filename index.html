@@ -3062,31 +3062,25 @@ function logBatch(fieldId, type, msg) {
 }
 
 function previewBatchField(fieldId) {
-  // Find the field and its index
   const idx = fieldsData.findIndex(f => f.fieldId === fieldId);
   if (idx < 0) { alert('Field not found in loaded data.'); return; }
 
-  // Find the queued item so we can use the pre-computed expanded ring
   const item = batchQueue.find(q => q.fieldId === fieldId);
 
-  // Close batch modal temporarily and open lightbox
+  // Close batch modal and open lightbox
   document.getElementById('batchModal').classList.remove('open');
-
-  // Open lightbox normally first
   openLb(idx);
 
-  // Wait for lightbox to render then switch to auto-correct preview
   setTimeout(() => {
     const f = fieldsData[idx];
     if (!f || !f.ring) return;
 
-    // Set up auto-correct state using pre-computed ring from batch queue
-    acFieldIdx = idx;
-    acBufferM  = item ? item.bufferM : getBatchBuffer();
-    acMode     = 'selective';
-    acSelRing  = item ? item.expanded : null;
-    acHullRing = null;
-    editRing   = item ? item.expanded.map(c=>[...c]) : null;
+    // Set up auto-correct state
+    acFieldIdx     = idx;
+    acBufferM      = item ? item.bufferM : getBatchBuffer();
+    acMode         = 'selective';
+    acSelRing      = null; // let buildAutoCorrectPreview compute it
+    acHullRing     = null;
     lbEditFieldIdx = idx;
 
     // Show the ac bar
@@ -3094,24 +3088,26 @@ function previewBatchField(fieldId) {
     document.getElementById('lbAcBtn').style.display   = 'none';
     document.getElementById('lbEditBtn').style.display = 'none';
     document.getElementById('lbAcModeBtn').textContent = '⬡ Selective mode';
-
-    // Update buffer display
     document.getElementById('lbAcBufVal').textContent  = acBufferM + 'm';
+    document.getElementById('lbAcSaveBtn').style.display = 'none'; // hide save in preview
+    document.getElementById('lbAcBar').querySelector('[onclick="cancelAutoCorrect()"]')
+      .style.display = 'none'; // hide discard too
 
-    // Rebuild map with preview layers
+    // Build preview
     buildAutoCorrectPreview(f);
 
-    // Add a "← Back to Batch" button in the lightbox footer
-    const foot = document.querySelector('.lb-foot');
-    if (foot && !document.getElementById('backToBatchBtn')) {
+    // Add ← Back to Batch button — inject into ac bar so it's always visible
+    const acBar = document.getElementById('lbAcBar');
+    if (acBar && !document.getElementById('backToBatchBtn')) {
       const backBtn = document.createElement('button');
       backBtn.id        = 'backToBatchBtn';
       backBtn.className = 'btn';
       backBtn.textContent = '← Back to Batch';
       backBtn.style.cssText =
-        'background:rgba(56,189,248,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.4)';
+        'background:rgba(56,189,248,0.15);color:#38bdf8;' +
+        'border:1px solid rgba(56,189,248,0.4)';
       backBtn.onclick = () => closeLb();
-      foot.insertBefore(backBtn, foot.firstChild);
+      acBar.insertBefore(backBtn, acBar.firstChild);
     }
   }, 400);
 }
@@ -3620,7 +3616,12 @@ function toggleOutsideTree() {
 function closeLb() {
   document.getElementById('lb').classList.remove('open');
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
-  // If we came from batch preview, reopen the batch modal
+  // Restore hidden buttons in case we were in batch preview
+  const saveBtn   = document.getElementById('lbAcSaveBtn');
+  const discardBtn = document.querySelector('#lbAcBar [onclick="cancelAutoCorrect()"]');
+  if (saveBtn)    saveBtn.style.display   = '';
+  if (discardBtn) discardBtn.style.display = '';
+  // Remove back-to-batch button
   const bb = document.getElementById('backToBatchBtn');
   if (bb) {
     bb.remove();
