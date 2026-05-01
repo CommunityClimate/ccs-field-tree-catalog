@@ -219,6 +219,37 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 .kpi.ov { border-color:rgba(239,68,68,0.25); background:rgba(239,68,68,0.08); }
 .kpi.ov .v { color:#ef4444; }
 
+/* Batch preview grid */
+.bpg-modal { position:fixed; inset:0; background:var(--bg); z-index:9500;
+  display:none; flex-direction:column; }
+.bpg-modal.open { display:flex; }
+.bpg-hdr { display:flex; align-items:center; gap:12px; padding:10px 16px;
+  background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; }
+.bpg-title { font-family:var(--mono); font-size:13px; font-weight:700; color:#22c55e; flex:1; }
+.bpg-stats { font-family:var(--mono); font-size:10px; color:var(--muted); }
+.bpg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:10px; padding:12px; overflow-y:auto; flex:1; }
+.bpg-card { background:var(--card); border:1px solid var(--border); border-radius:8px;
+  overflow:hidden; cursor:pointer; transition:border-color .15s; position:relative; }
+.bpg-card:hover { border-color:var(--blue); }
+.bpg-card.flagged { border-color:#ef4444; background:rgba(239,68,68,0.04); }
+.bpg-card.flagged .bpg-flag-btn { background:#ef4444; color:#fff; }
+.bpg-thumb { width:100%; height:130px; display:block; }
+.bpg-info { padding:6px 8px; }
+.bpg-fid { font-family:var(--mono); font-size:9px; font-weight:700;
+  color:var(--blue); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bpg-owner { font-size:9px; color:var(--muted); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+.bpg-gain { font-family:var(--mono); font-size:10px; font-weight:700;
+  color:#22c55e; margin-top:4px; }
+.bpg-flag-btn { position:absolute; top:6px; right:6px; width:24px; height:24px;
+  border-radius:4px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.15);
+  color:#fff; cursor:pointer; font-size:12px; display:flex; align-items:center;
+  justify-content:center; z-index:2; }
+.bpg-flag-btn:hover { background:rgba(239,68,68,0.8); }
+.bpg-foot { display:flex; align-items:center; gap:10px; padding:10px 16px;
+  background:var(--panel); border-top:1px solid var(--border); flex-shrink:0; }
+
 /* Polygon editor */
 .edit-handle { cursor: grab; }
 .edit-handle:active { cursor: grabbing; }
@@ -470,6 +501,39 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   </div>
 </div>
 
+<!-- BATCH PREVIEW GRID -->
+<div class="bpg-modal" id="bpgModal">
+  <div class="bpg-hdr">
+    <div class="bpg-title">⬡ Batch Preview — Visual Review</div>
+    <div class="bpg-stats" id="bpgStats">—</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="text" id="bpgSearch" placeholder="Search field ID or owner…"
+        oninput="bpgRender()" style="background:var(--bg);border:1px solid var(--border);
+        border-radius:4px;color:var(--text);font-family:var(--mono);font-size:10px;
+        padding:4px 8px;outline:none;width:200px"/>
+      <select id="bpgFilter" onchange="bpgRender()"
+        style="background:var(--bg);border:1px solid var(--border);border-radius:4px;
+        color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 6px">
+        <option value="all">All fields</option>
+        <option value="ok">✓ Not flagged</option>
+        <option value="flagged">⚑ Flagged for review</option>
+      </select>
+    </div>
+    <button class="btn btn-sec" onclick="closeBpg()" style="flex-shrink:0">✕ Close</button>
+  </div>
+  <div class="bpg-grid" id="bpgGrid"></div>
+  <div class="bpg-foot">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)" id="bpgFlagCount">
+      0 flagged</span>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--muted);flex:1">
+      Click any card to preview on map · Click ⚑ to flag for review (excluded from live run)
+    </span>
+    <button class="btn btn-sec" onclick="closeBpg()">← Back to Batch</button>
+    <button class="btn btn-primary" onclick="closeBpgAndStart()"
+      id="bpgStartBtn">▶ Start Live Run (unflagged only)</button>
+  </div>
+</div>
+
 <!-- BATCH CORRECT MODAL -->
 <div class="lb" id="batchModal" onclick="if(event.target===this)pauseBatch()">
   <div class="lb-box" style="width:min(900px,96vw)">
@@ -600,6 +664,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="btn" onclick="scanBatch()"
         style="background:rgba(56,189,248,0.15);color:#38bdf8;
         border:1px solid rgba(56,189,248,0.4)" id="batchScanBtn">🔍 Scan</button>
+      <button class="btn" onclick="openBpg()"
+        id="batchGridBtn" style="display:none;background:rgba(167,139,250,0.15);
+        color:#a78bfa;border:1px solid rgba(167,139,250,0.4)">⬡ Visual Review</button>
       <button class="btn btn-primary" onclick="startBatch()"
         id="batchStartBtn" disabled>▶ Start</button>
       <button class="btn" onclick="pauseBatch()"
@@ -2779,7 +2846,157 @@ function cancelEdit() {
   if (f) openLb(lbEditFieldIdx);
 }
 
-// ── BATCH AUTO-CORRECT ENGINE ──────────────────────────────────────────────
+// ── BATCH PREVIEW GRID ─────────────────────────────────────────────────────
+let bpgFlagged = new Set(); // fieldIds flagged for review
+const BPG_PAGE = 120;
+let bpgPage    = 0;
+
+function openBpg() {
+  bpgPage = 0;
+  document.getElementById('bpgModal').classList.add('open');
+  bpgRender();
+}
+
+function closeBpg() {
+  document.getElementById('bpgModal').classList.remove('open');
+  document.getElementById('batchModal').classList.add('open');
+}
+
+function closeBpgAndStart() {
+  document.getElementById('bpgModal').classList.remove('open');
+  document.getElementById('batchModal').classList.add('open');
+  // Uncheck dry run and start live run
+  const cb = document.getElementById('batchDryRun');
+  cb.checked  = false;
+  cb.disabled = false;
+  startBatch();
+}
+
+function bpgToggleFlag(fieldId, e) {
+  e.stopPropagation();
+  if (bpgFlagged.has(fieldId)) bpgFlagged.delete(fieldId);
+  else bpgFlagged.add(fieldId);
+  // Update card border
+  const card = document.querySelector(`.bpg-card[data-fid="${fieldId}"]`);
+  if (card) card.classList.toggle('flagged', bpgFlagged.has(fieldId));
+  // Update stats
+  updateBpgStats();
+}
+
+function updateBpgStats() {
+  const flagged   = bpgFlagged.size;
+  const eligible  = batchQueue.length - flagged;
+  const reclaimed = batchQueue
+    .filter(q => !bpgFlagged.has(q.fieldId))
+    .reduce((s, q) => s + q.gain, 0);
+  document.getElementById('bpgFlagCount').textContent =
+    `${flagged} flagged · ${eligible} will be corrected · ${reclaimed.toLocaleString()} trees to reclaim`;
+  document.getElementById('bpgStartBtn').textContent =
+    `▶ Start Live Run (${eligible.toLocaleString()} fields)`;
+}
+
+function bpgRender() {
+  const q      = (document.getElementById('bpgSearch').value || '').toLowerCase();
+  const filter = document.getElementById('bpgFilter').value;
+
+  const items = batchQueue.filter(item => {
+    const f = fieldByIdMap.get(item.fieldId);
+    if (q && !item.fieldId.toLowerCase().includes(q) &&
+        !(f?.owner||'').toLowerCase().includes(q)) return false;
+    if (filter === 'flagged' && !bpgFlagged.has(item.fieldId)) return false;
+    if (filter === 'ok'      &&  bpgFlagged.has(item.fieldId)) return false;
+    return true;
+  });
+
+  document.getElementById('bpgStats').textContent =
+    `${items.length.toLocaleString()} of ${batchQueue.length.toLocaleString()} fields`;
+
+  const grid = document.getElementById('bpgGrid');
+  grid.innerHTML = items.slice(0, BPG_PAGE + 120).map((item, i) => {
+    const f       = fieldByIdMap.get(item.fieldId);
+    const flagged = bpgFlagged.has(item.fieldId);
+    const oldPct  = item.total ? Math.round(item.oldIn / item.total * 100) : 0;
+    const newPct  = item.total ? Math.round(item.newIn / item.total * 100) : 0;
+    const thumb   = bpgMakeSvg(f, item);
+
+    return `<div class="bpg-card${flagged?' flagged':''}"
+      data-fid="${item.fieldId}"
+      onclick="previewBatchField('${item.fieldId}');closeBpg()">
+      <button class="bpg-flag-btn"
+        onclick="bpgToggleFlag('${item.fieldId}',event)"
+        title="${flagged?'Remove flag':'Flag for review'}">⚑</button>
+      ${thumb}
+      <div class="bpg-info">
+        <div class="bpg-fid">${item.fieldId}</div>
+        <div class="bpg-owner">${f?.owner||'—'}</div>
+        <div class="bpg-gain">${oldPct}% → ${newPct}%
+          <span style="color:#22c55e">+${item.gain} trees</span>
+          ${flagged?'<span style="color:#ef4444;margin-left:4px">⚑ Flagged</span>':''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Infinite scroll sentinel
+  if (items.length > bpgPage + 120) {
+    const sentinel = document.createElement('div');
+    sentinel.style.gridColumn = '1/-1';
+    sentinel.style.height     = '40px';
+    grid.appendChild(sentinel);
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) { bpgPage += 120; obs.disconnect(); bpgRender(); }
+    });
+    obs.observe(sentinel);
+  }
+
+  updateBpgStats();
+}
+
+function bpgMakeSvg(f, item) {
+  if (!f || !f.ring) return `<svg class="bpg-thumb" viewBox="0 0 220 130"></svg>`;
+
+  const ring = f.ring;
+  const exp  = item.expanded;
+  const trees = treesByField[f.fieldId] || [];
+  const allRings = [ring, exp].filter(Boolean);
+
+  // Compute bounding box across both polygons and trees
+  let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
+  allRings.forEach(r => r.forEach(c => {
+    mnx = Math.min(mnx, c[0]); mxx = Math.max(mxx, c[0]);
+    mny = Math.min(mny, c[1]); mxy = Math.max(mxy, c[1]);
+  }));
+  trees.forEach(t => {
+    mnx = Math.min(mnx, t.lng); mxx = Math.max(mxx, t.lng);
+    mny = Math.min(mny, t.lat); mxy = Math.max(mxy, t.lat);
+  });
+
+  const W = 220, H = 130, PAD = 8;
+  const rngX = mxx - mnx || 0.001, rngY = mxy - mny || 0.001;
+  const scl  = Math.min((W-PAD*2)/rngX, (H-PAD*2)/rngY);
+  const tx   = c => PAD + (c - mnx) * scl;
+  const ty   = c => H - PAD - (c - mny) * scl;
+
+  const ringPath = r => r.map((c,i) =>
+    `${i?'L':'M'}${tx(c[0]).toFixed(1)},${ty(c[1]).toFixed(1)}`).join(' ') + ' Z';
+
+  // Tree dots coloured against proposed ring
+  const dots = trees.slice(0, 300).map(t => {
+    const inside = exp ? pip(t.lat, t.lng, exp) : pip(t.lat, t.lng, ring);
+    return `<circle cx="${tx(t.lng).toFixed(1)}" cy="${ty(t.lat).toFixed(1)}"
+      r="3" fill="${inside?'#22c55e':'#ef4444'}" opacity="0.85"/>`;
+  }).join('');
+
+  return `<svg class="bpg-thumb" viewBox="0 0 ${W} ${H}"
+    xmlns="http://www.w3.org/2000/svg">
+    <rect width="${W}" height="${H}" fill="#0d1b2a"/>
+    ${exp ? `<path d="${ringPath(exp)}" fill="rgba(34,197,94,0.12)"
+      stroke="#22c55e" stroke-width="1.5"/>` : ''}
+    <path d="${ringPath(ring)}" fill="none"
+      stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,3"/>
+    ${dots}
+  </svg>`;
+}
 const BATCH_STATE_KEY = 'ccs_batch_state';
 let batchQueue      = [];
 let batchIdx        = 0;
@@ -2885,6 +3102,10 @@ function scanBatch() {
   // Sort by gain descending — biggest improvement first
   batchQueue.sort((a, b) => b.gain - a.gain);
 
+  // Show visual review button if we have results
+  document.getElementById('batchGridBtn').style.display =
+    batchQueue.length ? '' : 'none';
+
   const totalGain = batchQueue.reduce((s, q) => s + q.gain, 0);
   const el = document.getElementById('batchEligibility');
   if (batchQueue.length) {
@@ -2944,6 +3165,14 @@ async function runBatch() {
     const item = batchQueue[batchIdx];
     const f    = fieldByIdMap.get(item.fieldId);
     batchIdx++;
+
+    // Skip flagged fields
+    if (bpgFlagged.has(item.fieldId)) {
+      batchStats.skipped++;
+      logBatch(item.fieldId, 'skip', '⚑ Flagged for review — skipped');
+      updateBatchProgress();
+      continue;
+    }
 
     updateBatchProgress();
 
@@ -3161,6 +3390,8 @@ function finishBatch() {
   if (batchDryRun) {
     document.getElementById('batchProgressLabel').textContent =
       `✓ Dry run complete — ${batchStats.corrected} fields would be corrected · ${batchStats.reclaimed.toLocaleString()} trees to be reclaimed`;
+    // Show visual review button
+    document.getElementById('batchGridBtn').style.display = '';
     // Unlock live run
     const cb = document.getElementById('batchDryRun');
     cb.disabled = false;
