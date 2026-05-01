@@ -3007,15 +3007,24 @@ let batchReport     = [];
 let batchDryRun     = true;
 
 function openBatch() {
+  // Always start with dry run enforced
+  const cb = document.getElementById('batchDryRun');
+  cb.checked  = true;
+  cb.disabled = true;
+  cb.onchange = null;
+
   document.getElementById('batchModal').classList.add('open');
-  document.getElementById('batchProgress').style.display = 'none';
-  document.getElementById('batchSettings').style.display = '';
-  document.getElementById('batchStartBtn').disabled = true;
+  document.getElementById('batchProgress').style.display  = 'none';
+  document.getElementById('batchSettings').style.display  = '';
+  document.getElementById('batchStartBtn').disabled       = true;
+  document.getElementById('batchStartBtn').textContent    = '▶ Start';
+  document.getElementById('batchStartBtn').style.background = '';
   document.getElementById('batchPauseBtn').style.display  = 'none';
   document.getElementById('batchResumeBtn').style.display = 'none';
   document.getElementById('batchStopBtn').style.display   = 'none';
   document.getElementById('batchReportBtn').style.display = 'none';
   document.getElementById('batchScanBtn').style.display   = '';
+  document.getElementById('batchGridBtn').style.display   = 'none';
 
   // Restore any paused state
   try {
@@ -3044,6 +3053,16 @@ function getBatchBuffer() {
 }
 
 function scanBatch() {
+  // Always reset dry-run to required state on each scan
+  const cb = document.getElementById('batchDryRun');
+  cb.checked  = true;
+  cb.disabled = true;
+  cb.onchange = null;
+  window._batchDryRunCompleted = false;
+  document.getElementById('batchStartBtn').textContent    = '▶ Start';
+  document.getElementById('batchStartBtn').style.background = '';
+  document.getElementById('batchGridBtn').style.display   = 'none';
+
   const isolatedOnly = document.getElementById('batchIsolatedOnly').checked;
   const bufferM      = getBatchBuffer();
   const threshold    = getLargeThreshold();
@@ -3126,7 +3145,15 @@ function scanBatch() {
 }
 
 async function startBatch() {
-  batchDryRun  = document.getElementById('batchDryRun').checked;
+  batchDryRun = document.getElementById('batchDryRun').checked;
+
+  // Safety guard — if dry run has never completed, force dry run
+  if (!batchDryRun && !window._batchDryRunCompleted) {
+    alert('Please complete a dry run first before starting the live run.');
+    const cb = document.getElementById('batchDryRun');
+    cb.checked = true; cb.disabled = true;
+    return;
+  }
   batchIdx     = 0;
   batchStats   = { corrected:0, skipped:0, failed:0, reclaimed:0 };
   batchReport  = [];
@@ -3388,6 +3415,7 @@ function finishBatch() {
   document.getElementById('batchReportBtn').style.display = '';
 
   if (batchDryRun) {
+    window._batchDryRunCompleted = true;
     document.getElementById('batchProgressLabel').textContent =
       `✓ Dry run complete — ${batchStats.corrected} fields would be corrected · ${batchStats.reclaimed.toLocaleString()} trees to be reclaimed`;
     // Show visual review button
