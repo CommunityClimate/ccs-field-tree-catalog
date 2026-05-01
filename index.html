@@ -339,7 +339,12 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <span>All fields with outside trees — current vs projected compliance after hull correction</span>
       </div>
       <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      <div class="export-item" onclick="closeExportMenu();clDownloadAll()">
+      <div class="export-item" onclick="closeExportMenu();openBatch()"
+        style="border-left:3px solid #22c55e">
+        <strong>⚡ Batch Auto-Correct Polygons</strong>
+        <span>Automatically correct all eligible fields — dry run first, then live</span>
+      </div>
+      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
         <strong>📋 Download Change Log</strong>
         <span>All polygon corrections made in this browser — full audit trail with before/after</span>
       </div>
@@ -460,6 +465,152 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnPrev" onclick="changePage(-1)" disabled>← Prev</button>
       <span style="color:var(--muted)" id="pageInfo">—</span>
       <button class="view-btn" id="btnNext" onclick="changePage(1)" disabled>Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- BATCH CORRECT MODAL -->
+<div class="lb" id="batchModal" onclick="if(event.target===this)pauseBatch()">
+  <div class="lb-box" style="width:min(900px,96vw)">
+    <div class="lb-hdr">
+      <div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#22c55e">
+          ⚡ Batch Polygon Auto-Correct
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="batchSubtitle">
+          Automatically corrects eligible field polygons using selective expansion
+        </div>
+      </div>
+      <button class="lb-close" onclick="closeBatch()">✕</button>
+    </div>
+
+    <!-- Settings panel (shown before start) -->
+    <div id="batchSettings" style="padding:14px;border-bottom:1px solid var(--border)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <!-- Safety thresholds -->
+        <div style="background:var(--panel);border:1px solid var(--border);
+          border-radius:6px;padding:12px">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;
+            color:var(--muted);text-transform:uppercase;letter-spacing:1px;
+            margin-bottom:8px">Safety Filters</div>
+          <div style="font-size:10px;color:var(--text);line-height:2">
+            ✓ Area increase ≤ 130% of original<br>
+            ✓ Zero rogue GPS trees excluded<br>
+            ✓ At least 1 outside tree<br>
+            ✓ Valid Fieldforce GUID<br>
+            ✓ Compliance improvement > 0%<br>
+            ✓ Not a large polygon
+          </div>
+        </div>
+        <!-- Options -->
+        <div style="background:var(--panel);border:1px solid var(--border);
+          border-radius:6px;padding:12px">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:700;
+            color:var(--muted);text-transform:uppercase;letter-spacing:1px;
+            margin-bottom:8px">Options</div>
+          <label style="display:flex;align-items:center;gap:8px;
+            font-size:11px;cursor:pointer;margin-bottom:8px">
+            <input type="checkbox" id="batchDryRun" checked
+              style="width:14px;height:14px;cursor:pointer"/>
+            <span><strong>Dry run</strong> — simulate without writing to Fieldforce</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;
+            font-size:11px;cursor:pointer;margin-bottom:8px">
+            <input type="checkbox" id="batchIsolatedOnly"
+              style="width:14px;height:14px;cursor:pointer"/>
+            <span>Isolated fields only (no neighbours)</span>
+          </label>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:4px">
+            <span>Buffer:</span>
+            <input type="number" id="batchBuffer" value="5" min="0" max="20"
+              style="width:48px;background:var(--bg);border:1px solid var(--border);
+              border-radius:3px;color:var(--text);font-family:var(--mono);
+              font-size:11px;padding:3px 6px;text-align:center"/>
+            <span style="color:var(--muted)">metres</span>
+          </div>
+        </div>
+      </div>
+      <!-- Eligibility summary -->
+      <div id="batchEligibility" style="background:rgba(34,197,94,0.06);
+        border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:10px 14px;
+        font-family:var(--mono);font-size:10px;line-height:2">
+        Click Scan to calculate eligible fields…
+      </div>
+    </div>
+
+    <!-- Progress panel (shown during/after run) -->
+    <div id="batchProgress" style="display:none;padding:14px;
+      border-bottom:1px solid var(--border)">
+      <!-- Progress bar -->
+      <div style="display:flex;justify-content:space-between;
+        font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px">
+        <span id="batchProgressLabel">Starting…</span>
+        <span id="batchProgressPct">0%</span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px;margin-bottom:12px">
+        <div id="batchProgressBar" style="height:6px;background:#22c55e;
+          border-radius:3px;width:0%;transition:width .3s"></div>
+      </div>
+      <!-- Live stats -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px">
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
+            color:var(--blue)" id="bsTotal">0</div>
+          <div style="font-size:9px;color:var(--muted)">Eligible</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
+            color:#22c55e" id="bsCorrected">0</div>
+          <div style="font-size:9px;color:var(--muted)">Corrected</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
+            color:var(--muted)" id="bsSkipped">0</div>
+          <div style="font-size:9px;color:var(--muted)">Skipped</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
+            color:#ef4444" id="bsFailed">0</div>
+          <div style="font-size:9px;color:var(--muted)">Failed</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
+            color:#22c55e" id="bsReclaimed">0</div>
+          <div style="font-size:9px;color:var(--muted)">Trees reclaimed</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
+            color:var(--blue)" id="bsCompliance">—</div>
+          <div style="font-size:9px;color:var(--muted)">New compliance</div>
+        </div>
+      </div>
+      <!-- Per-field log -->
+      <div id="batchLog" style="max-height:180px;overflow-y:auto;
+        font-family:var(--mono);font-size:9px;background:var(--bg);
+        border:1px solid var(--border);border-radius:4px;padding:6px 8px;
+        line-height:1.9"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="lb-foot" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-sec" onclick="closeBatch()" id="batchCloseBtn">Close</button>
+      <button class="btn" onclick="scanBatch()"
+        style="background:rgba(56,189,248,0.15);color:#38bdf8;
+        border:1px solid rgba(56,189,248,0.4)" id="batchScanBtn">🔍 Scan</button>
+      <button class="btn btn-primary" onclick="startBatch()"
+        id="batchStartBtn" disabled>▶ Start</button>
+      <button class="btn" onclick="pauseBatch()"
+        id="batchPauseBtn" style="display:none;background:rgba(245,158,11,0.15);
+        color:#f59e0b;border:1px solid rgba(245,158,11,0.4)">⏸ Pause</button>
+      <button class="btn" onclick="resumeBatch()"
+        id="batchResumeBtn" style="display:none;background:rgba(34,197,94,0.15);
+        color:#22c55e;border:1px solid rgba(34,197,94,0.4)">▶ Resume</button>
+      <button class="btn" onclick="stopBatch()"
+        id="batchStopBtn" style="display:none;background:rgba(239,68,68,0.15);
+        color:#ef4444;border:1px solid rgba(239,68,68,0.4)">■ Stop</button>
+      <button class="btn" onclick="downloadBatchReport()"
+        id="batchReportBtn" style="display:none;background:var(--border);
+        color:var(--text)">⬇ Download Report</button>
     </div>
   </div>
 </div>
@@ -2625,7 +2776,357 @@ function cancelEdit() {
   if (f) openLb(lbEditFieldIdx);
 }
 
-// ── POLYGON CHANGE LOG ─────────────────────────────────────────────────────
+// ── BATCH AUTO-CORRECT ENGINE ──────────────────────────────────────────────
+const BATCH_STATE_KEY = 'ccs_batch_state';
+let batchQueue      = [];
+let batchIdx        = 0;
+let batchRunning    = false;
+let batchPaused     = false;
+let batchStats      = { corrected:0, skipped:0, failed:0, reclaimed:0 };
+let batchReport     = [];
+let batchDryRun     = true;
+
+function openBatch() {
+  document.getElementById('batchModal').classList.add('open');
+  document.getElementById('batchProgress').style.display = 'none';
+  document.getElementById('batchSettings').style.display = '';
+  document.getElementById('batchStartBtn').disabled = true;
+  document.getElementById('batchPauseBtn').style.display  = 'none';
+  document.getElementById('batchResumeBtn').style.display = 'none';
+  document.getElementById('batchStopBtn').style.display   = 'none';
+  document.getElementById('batchReportBtn').style.display = 'none';
+  document.getElementById('batchScanBtn').style.display   = '';
+
+  // Restore any paused state
+  try {
+    const saved = JSON.parse(localStorage.getItem(BATCH_STATE_KEY) || 'null');
+    if (saved && saved.queue && saved.idx < saved.queue.length) {
+      document.getElementById('batchEligibility').innerHTML =
+        `<span style="color:#f59e0b">⏸ Paused batch found — ${saved.queue.length - saved.idx} fields remaining.
+        Click Resume to continue or Scan to start fresh.</span>`;
+      document.getElementById('batchResumeBtn').style.display = '';
+      document.getElementById('batchScanBtn').textContent = '🔍 Rescan';
+    }
+  } catch(e) {}
+}
+
+function closeBatch() {
+  if (batchRunning) {
+    if (!confirm('A batch is running. Pause and close?')) return;
+    pauseBatch();
+  }
+  document.getElementById('batchModal').classList.remove('open');
+}
+
+function getBatchBuffer() {
+  return Math.max(0, Math.min(20, parseFloat(
+    document.getElementById('batchBuffer').value) || 5));
+}
+
+function scanBatch() {
+  const isolatedOnly = document.getElementById('batchIsolatedOnly').checked;
+  const bufferM      = getBatchBuffer();
+  const threshold    = getLargeThreshold();
+  const degPerM      = 1 / 111320;
+  const bufDeg       = bufferM * degPerM;
+
+  batchQueue = [];
+
+  fieldsData.forEach(f => {
+    if (!f.ring || !f.guid) return;
+    if (ringAreaHa(f.ring) > threshold) return; // skip large
+
+    const trees  = treesByField[f.fieldId] || [];
+    if (!trees.length) return;
+
+    const cm     = ringMetrics(f.ring);
+    const cLat   = cm.cLat, cLng = cm.cLng;
+    const outside = trees.filter(t => !pip(t.lat, t.lng, f.ring));
+    if (!outside.length) return; // already compliant
+
+    // Safety: no rogue GPS trees in outside set
+    const rogues = outside.filter(t => rogueFlag(t, cLat, cLng));
+    if (rogues.length > 0) return;
+
+    // Isolated only filter
+    if (isolatedOnly) {
+      const nb = neighbourMap.get(f.fieldId);
+      if (nb && (nb.overlapping.length > 0 || nb.adjacent.length > 0)) return;
+    }
+
+    // Compute selective expansion
+    const expanded = selectiveExpand(f.ring, outside, bufDeg);
+    const newArea  = ringAreaHa(expanded);
+    const oldArea  = ringAreaHa(f.ring);
+    const areaPct  = Math.round(newArea / oldArea * 100);
+    if (areaPct > 130) return; // area increase too large
+
+    const newIn  = trees.filter(t => pip(t.lat, t.lng, expanded)).length;
+    const oldIn  = trees.length - outside.length;
+    const gain   = newIn - oldIn;
+    if (gain <= 0) return; // no improvement
+
+    batchQueue.push({
+      fieldId:  f.fieldId,
+      guid:     f.guid,
+      gain,
+      oldIn,
+      newIn,
+      total:    trees.length,
+      expanded, // pre-computed ring
+      bufferM,
+      areaPct
+    });
+  });
+
+  // Sort by gain descending — biggest improvement first
+  batchQueue.sort((a, b) => b.gain - a.gain);
+
+  const totalGain = batchQueue.reduce((s, q) => s + q.gain, 0);
+  const el = document.getElementById('batchEligibility');
+  if (batchQueue.length) {
+    const totalGain = batchQueue.reduce((s, q) => s + q.gain, 0);
+    el.innerHTML =
+      `<span style="color:#22c55e;font-weight:700">` +
+      `\u2713 ${batchQueue.length.toLocaleString()} fields eligible` +
+      ` \u00b7 ${totalGain.toLocaleString()} trees to be reclaimed` +
+      ` \u00b7 Sorted by largest gain first</span><br>` +
+      `<span style="color:var(--muted)">Fields skipped: large polygon, rogue GPS, ` +
+      `area above 130%, no improvement, missing GUID` +
+      (isolatedOnly ? ', has neighbours' : '') + `</span>`;
+  } else {
+    el.innerHTML = '<span style="color:var(--muted)">No eligible fields found with current settings.</span>';
+  }
+
+  document.getElementById('batchStartBtn').disabled = !batchQueue.length;
+}
+
+async function startBatch() {
+  batchDryRun  = document.getElementById('batchDryRun').checked;
+  batchIdx     = 0;
+  batchStats   = { corrected:0, skipped:0, failed:0, reclaimed:0 };
+  batchReport  = [];
+  batchRunning = true;
+  batchPaused  = false;
+
+  document.getElementById('batchSettings').style.display  = 'none';
+  document.getElementById('batchProgress').style.display  = '';
+  document.getElementById('batchStartBtn').style.display  = 'none';
+  document.getElementById('batchScanBtn').style.display   = 'none';
+  document.getElementById('batchPauseBtn').style.display  = '';
+  document.getElementById('batchStopBtn').style.display   = '';
+
+  document.getElementById('bsTotal').textContent = batchQueue.length.toLocaleString();
+  document.getElementById('batchLog').innerHTML  = '';
+  document.getElementById('batchSubtitle').textContent =
+    batchDryRun ? '🔵 Dry run — simulating without writing to Fieldforce'
+                : '🟢 Live run — writing corrections to Fieldforce';
+
+  await runBatch();
+}
+
+async function runBatch() {
+  const token = batchDryRun ? null : await getToken();
+
+  while (batchIdx < batchQueue.length && batchRunning) {
+    if (batchPaused) {
+      // Save state for resume
+      localStorage.setItem(BATCH_STATE_KEY, JSON.stringify({
+        queue: batchQueue, idx: batchIdx, stats: batchStats,
+        report: batchReport, dryRun: batchDryRun
+      }));
+      return;
+    }
+
+    const item = batchQueue[batchIdx];
+    const f    = fieldByIdMap.get(item.fieldId);
+    batchIdx++;
+
+    updateBatchProgress();
+
+    if (!f) { batchStats.skipped++; logBatch(item.fieldId, 'skip', 'Field not found'); continue; }
+
+    try {
+      const geojson = JSON.stringify({
+        type:'Feature',
+        geometry:{ type:'Polygon', coordinates:[[...item.expanded, item.expanded[0]]] },
+        properties:{}
+      });
+
+      if (!batchDryRun) {
+        const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+          method:'PATCH',
+          headers:{
+            'Authorization': `Bearer ${token}`,
+            'Content-Type':  'application/json',
+            'Accept':        'application/json',
+            'OData-MaxVersion':'4.0','OData-Version':'4.0','If-Match':'*'
+          },
+          body: JSON.stringify({ ccs_fieldgeojson_field: geojson })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        // Update in-memory ring
+        const oldRing = f.ring ? f.ring.map(c=>[...c]) : null;
+        f.ring    = item.expanded.map(c=>[...c]);
+        f.geoJSON = geojson;
+
+        // Write change log
+        try {
+          const correctedBy = window._currentUserName || 'Daniel Jones';
+          const entry = clBuildEntry(f, oldRing, f.ring,
+            `Batch Auto-Correct (Selective, buffer ${item.bufferM}m)`, correctedBy);
+          clAppend(entry);
+        } catch(e) {}
+      }
+
+      batchStats.corrected++;
+      batchStats.reclaimed += item.gain;
+
+      const row = {
+        fieldId: item.fieldId, owner: f.owner || '',
+        status: batchDryRun ? 'Simulated' : 'Corrected',
+        oldIn: item.oldIn, newIn: item.newIn,
+        gain: item.gain, total: item.total,
+        areaPct: item.areaPct, bufferM: item.bufferM
+      };
+      batchReport.push(row);
+      logBatch(item.fieldId,
+        batchDryRun ? 'sim' : 'ok',
+        `+${item.gain} trees (${item.oldIn}→${item.newIn}/${item.total})`);
+
+    } catch(err) {
+      batchStats.failed++;
+      batchReport.push({ fieldId: item.fieldId, owner: f?.owner||'',
+        status:'Failed', error: err.message });
+      logBatch(item.fieldId, 'fail', err.message);
+    }
+
+    updateBatchProgress();
+    await new Promise(r => setTimeout(r, batchDryRun ? 0 : 600));
+  }
+
+  batchRunning = false;
+  localStorage.removeItem(BATCH_STATE_KEY);
+  finishBatch();
+}
+
+function updateBatchProgress() {
+  const pct = batchQueue.length
+    ? Math.round(batchIdx / batchQueue.length * 100) : 0;
+  document.getElementById('batchProgressBar').style.width  = pct + '%';
+  document.getElementById('batchProgressPct').textContent  = pct + '%';
+  document.getElementById('batchProgressLabel').textContent =
+    `${batchIdx.toLocaleString()} / ${batchQueue.length.toLocaleString()} fields`;
+  document.getElementById('bsCorrected').textContent = batchStats.corrected.toLocaleString();
+  document.getElementById('bsSkipped').textContent   = batchStats.skipped.toLocaleString();
+  document.getElementById('bsFailed').textContent    = batchStats.failed.toLocaleString();
+  document.getElementById('bsReclaimed').textContent = batchStats.reclaimed.toLocaleString();
+
+  // Live compliance update
+  if (!batchDryRun) {
+    let totalIn = 0, totalOut = 0;
+    const threshold = getLargeThreshold();
+    fieldsData.forEach(f => {
+      if (!f.ring || ringAreaHa(f.ring) > threshold) return;
+      const trees = treesByField[f.fieldId] || [];
+      trees.forEach(t => pip(t.lat, t.lng, f.ring) ? totalIn++ : totalOut++);
+    });
+    const pct = totalIn + totalOut > 0
+      ? Math.round(totalIn / (totalIn+totalOut) * 100) : 0;
+    document.getElementById('bsCompliance').textContent = pct + '%';
+  }
+}
+
+function logBatch(fieldId, type, msg) {
+  const log = document.getElementById('batchLog');
+  const col  = type==='ok'?'#22c55e':type==='sim'?'#38bdf8':type==='fail'?'#ef4444':'var(--muted)';
+  const icon = type==='ok'?'✓':type==='sim'?'~':type==='fail'?'✖':'–';
+  log.innerHTML += `<div><span style="color:${col}">${icon}</span>
+    <span style="color:var(--muted)">${fieldId}</span>
+    <span style="color:var(--text);margin-left:6px">${msg}</span></div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function pauseBatch() {
+  batchPaused = true;
+  batchRunning = false;
+  document.getElementById('batchPauseBtn').style.display  = 'none';
+  document.getElementById('batchResumeBtn').style.display = '';
+  document.getElementById('batchProgressLabel').textContent = '⏸ Paused';
+}
+
+async function resumeBatch() {
+  // Check for saved state
+  try {
+    const saved = JSON.parse(localStorage.getItem(BATCH_STATE_KEY) || 'null');
+    if (saved) {
+      batchQueue   = saved.queue;
+      batchIdx     = saved.idx;
+      batchStats   = saved.stats;
+      batchReport  = saved.report;
+      batchDryRun  = saved.dryRun;
+    }
+  } catch(e) {}
+
+  batchRunning = true;
+  batchPaused  = false;
+  document.getElementById('batchProgress').style.display  = '';
+  document.getElementById('batchSettings').style.display  = 'none';
+  document.getElementById('batchPauseBtn').style.display  = '';
+  document.getElementById('batchResumeBtn').style.display = 'none';
+  document.getElementById('batchStopBtn').style.display   = '';
+  document.getElementById('bsTotal').textContent = batchQueue.length.toLocaleString();
+  await runBatch();
+}
+
+function stopBatch() {
+  if (!confirm('Stop the batch? Progress so far will be kept in the change log.')) return;
+  batchRunning = false;
+  batchPaused  = false;
+  localStorage.removeItem(BATCH_STATE_KEY);
+  finishBatch();
+}
+
+function finishBatch() {
+  document.getElementById('batchPauseBtn').style.display  = 'none';
+  document.getElementById('batchResumeBtn').style.display = 'none';
+  document.getElementById('batchStopBtn').style.display   = 'none';
+  document.getElementById('batchReportBtn').style.display = '';
+  document.getElementById('batchProgressLabel').textContent =
+    batchDryRun
+      ? `✓ Dry run complete — ${batchStats.corrected} fields would be corrected`
+      : `✓ Batch complete — ${batchStats.corrected} fields corrected`;
+
+  // Refresh KPIs and grid
+  if (!batchDryRun) {
+    updateKPIs();
+    renderPage();
+  }
+}
+
+function downloadBatchReport() {
+  const headers = [
+    'Field ID','Owner','Status','Old Inside','New Inside',
+    'Trees Reclaimed','Total Trees','Area Change %','Buffer (m)','Error'
+  ];
+  const rows = batchReport.map(r => [
+    r.fieldId, r.owner||'', r.status,
+    r.oldIn??'', r.newIn??'', r.gain??'',
+    r.total??'', r.areaPct??'', r.bufferM??'', r.error||''
+  ]);
+  const ts  = new Date().toISOString().slice(0,10);
+  const csv = [headers,...rows]
+    .map(r => r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `CCS_Batch_Correct_Report_${ts}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+}
 const CL_KEY = 'ccs_polygon_changelog';
 
 function clLoad() {
