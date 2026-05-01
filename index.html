@@ -345,6 +345,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <span>Automatically correct all eligible fields — dry run first, then live</span>
       </div>
       <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+      <div class="export-item" onclick="closeExportMenu();clDownloadAll()">
         <strong>📋 Download Change Log</strong>
         <span>All polygon corrections made in this browser — full audit trail with before/after</span>
       </div>
@@ -510,9 +511,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
             margin-bottom:8px">Options</div>
           <label style="display:flex;align-items:center;gap:8px;
             font-size:11px;cursor:pointer;margin-bottom:8px">
-            <input type="checkbox" id="batchDryRun" checked
-              style="width:14px;height:14px;cursor:pointer"/>
-            <span><strong>Dry run</strong> — simulate without writing to Fieldforce</span>
+            <input type="checkbox" id="batchDryRun" checked disabled
+              style="width:14px;height:14px;cursor:not-allowed"/>
+            <span><strong>Dry run</strong> — simulate without writing to Fieldforce
+              <span style="color:#f59e0b;font-size:9px">(required before live run)</span>
+            </span>
           </label>
           <label style="display:flex;align-items:center;gap:8px;
             font-size:11px;cursor:pointer;margin-bottom:8px">
@@ -3093,13 +3096,31 @@ function finishBatch() {
   document.getElementById('batchResumeBtn').style.display = 'none';
   document.getElementById('batchStopBtn').style.display   = 'none';
   document.getElementById('batchReportBtn').style.display = '';
-  document.getElementById('batchProgressLabel').textContent =
-    batchDryRun
-      ? `✓ Dry run complete — ${batchStats.corrected} fields would be corrected`
-      : `✓ Batch complete — ${batchStats.corrected} fields corrected`;
 
-  // Refresh KPIs and grid
-  if (!batchDryRun) {
+  if (batchDryRun) {
+    document.getElementById('batchProgressLabel').textContent =
+      `✓ Dry run complete — ${batchStats.corrected} fields would be corrected · ${batchStats.reclaimed.toLocaleString()} trees to be reclaimed`;
+    // Unlock live run
+    const cb = document.getElementById('batchDryRun');
+    cb.disabled = false;
+    cb.checked  = false;
+    cb.onchange = () => {
+      const isLive = !cb.checked;
+      document.getElementById('batchStartBtn').style.display = '';
+      document.getElementById('batchStartBtn').textContent   =
+        isLive ? '▶ Start Live Run' : '▶ Start Dry Run';
+      document.getElementById('batchStartBtn').style.background =
+        isLive ? '#22c55e' : '';
+    };
+    document.getElementById('batchSubtitle').textContent =
+      '✓ Dry run done — uncheck "Dry run" above and click Start to apply corrections';
+    document.getElementById('batchStartBtn').style.display  = '';
+    document.getElementById('batchStartBtn').textContent    = '▶ Start Dry Run Again';
+    document.getElementById('batchScanBtn').style.display   = '';
+  } else {
+    document.getElementById('batchProgressLabel').textContent =
+      `✓ Live run complete — ${batchStats.corrected} fields corrected · ${batchStats.reclaimed.toLocaleString()} trees reclaimed`;
+    // Refresh KPIs and grid
     updateKPIs();
     renderPage();
   }
