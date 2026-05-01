@@ -581,12 +581,6 @@ input[type=range] { width:100%; accent-color:var(--amber); }
               <span style="color:#f59e0b;font-size:9px">(required before live run)</span>
             </span>
           </label>
-          <label style="display:flex;align-items:center;gap:8px;
-            font-size:11px;cursor:pointer;margin-bottom:8px">
-            <input type="checkbox" id="batchIsolatedOnly"
-              style="width:14px;height:14px;cursor:pointer"/>
-            <span>Isolated fields only (no neighbours)</span>
-          </label>
           <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:4px">
             <span>Buffer:</span>
             <input type="number" id="batchBuffer" value="3" min="0" max="20"
@@ -2138,10 +2132,11 @@ function openLb(idx) {
       }
     });
 
-    // Draw neighbour polygons with embedded detection
+    // Draw neighbour polygons — skip in batch preview mode
+    const inBatchPreview = !!document.getElementById('backToBatchBtn');
     const nb = neighbourMap.get(f.fieldId);
     let hasOverlapNeighbour = false, hasAdjNeighbour = false, hasEmbedded = false;
-    if (nb) {
+    if (nb && !inBatchPreview) {
       nb.overlapping.forEach(nid => {
         const nf = fieldByIdMap.get(nid);
         if (!nf || !nf.ring) return;
@@ -2853,6 +2848,11 @@ let bpgPage    = 0;
 
 function openBpg() {
   bpgPage = 0;
+  // Auto-flag risky fields
+  bpgFlagged = new Set();
+  batchQueue.forEach(item => {
+    if (item.autoFlag) bpgFlagged.add(item.fieldId);
+  });
   document.getElementById('bpgModal').classList.add('open');
   bpgRender();
 }
@@ -2919,6 +2919,12 @@ function bpgRender() {
     const newPct  = item.total ? Math.round(item.newIn / item.total * 100) : 0;
     const thumb   = bpgMakeSvg(f, item);
 
+    const riskBadges = item.risks && item.risks.length
+      ? `<div style="font-family:var(--mono);font-size:8px;color:#f59e0b;
+          margin-top:2px;line-height:1.6">${item.risks.join('<br>')}</div>`
+      : `<div style="font-family:var(--mono);font-size:8px;color:#22c55e;
+          margin-top:2px">\u2705 Clean</div>`;
+
     return `<div class="bpg-card${flagged?' flagged':''}"
       data-fid="${item.fieldId}"
       onclick="previewBatchField('${item.fieldId}');closeBpg()">
@@ -2931,8 +2937,8 @@ function bpgRender() {
         <div class="bpg-owner">${f?.owner||'—'}</div>
         <div class="bpg-gain">${oldPct}% → ${newPct}%
           <span style="color:#22c55e">+${item.gain} trees</span>
-          ${flagged?'<span style="color:#ef4444;margin-left:4px">⚑ Flagged</span>':''}
         </div>
+        ${riskBadges}
       </div>
     </div>`;
   }).join('');
@@ -3063,7 +3069,6 @@ function scanBatch() {
   document.getElementById('batchStartBtn').style.background = '';
   document.getElementById('batchGridBtn').style.display   = 'none';
 
-  const isolatedOnly = document.getElementById('batchIsolatedOnly').checked;
   const bufferM      = getBatchBuffer();
   const threshold    = getLargeThreshold();
   const degPerM      = 1 / 111320;
@@ -3087,12 +3092,6 @@ function scanBatch() {
     const rogues = outside.filter(t => rogueFlag(t, cLat, cLng));
     if (rogues.length > 0) return;
 
-    // Isolated only filter
-    if (isolatedOnly) {
-      const nb = neighbourMap.get(f.fieldId);
-      if (nb && (nb.overlapping.length > 0 || nb.adjacent.length > 0)) return;
-    }
-
     // Compute selective expansion
     const expanded = selectiveExpand(f.ring, outside, bufDeg);
     const newArea  = ringAreaHa(expanded);
@@ -3105,16 +3104,29 @@ function scanBatch() {
     const gain   = newIn - oldIn;
     if (gain <= 0) return; // no improvement
 
+    // ── Auto-risk scoring ─────────────────────────────────────────────────
+    const nb           = neighbourMap.get(f.fieldId);
+    const hasNeighbour = nb && (nb.overlapping.length > 0 || nb.adjacent.length > 0);
+    const reAllocated  = outside.filter(t =>
+      t.actualFieldId && t.actualFieldId !== f.fieldId).length;
+    const stillOrphaned = trees.filter(t => !pip(t.lat, t.lng, expanded)).length;
+
+    const risks = [];
+    if (reAllocated > 0)   risks.push(`🔴 ${reAllocated} re-allocated trees`);
+    if (areaPct >= 115)    risks.push(`🟡 Area +${areaPct-100}%`);
+    if (hasNeighbour)      risks.push(`🟡 Has neighbours`);
+    if (stillOrphaned > 0) risks.push(`🟠 ${stillOrphaned} still outside`);
+    const autoFlag = risks.length > 0;
+
     batchQueue.push({
-      fieldId:  f.fieldId,
-      guid:     f.guid,
-      gain,
-      oldIn,
-      newIn,
-      total:    trees.length,
-      expanded, // pre-computed ring
-      bufferM,
-      areaPct
+      fieldId: f.fieldId,
+      guid:    f.guid,
+      gain,  oldIn,  newIn,
+      total:   trees.length,
+      expanded,
+      bufferM, areaPct,
+      risks,       // array of risk descriptions
+      autoFlag     // pre-flagged if any risk
     });
   });
 
@@ -3125,18 +3137,19 @@ function scanBatch() {
   document.getElementById('batchGridBtn').style.display =
     batchQueue.length ? '' : 'none';
 
-  const totalGain = batchQueue.reduce((s, q) => s + q.gain, 0);
+  const totalGain   = batchQueue.reduce((s, q) => s + q.gain, 0);
+  const autoFlagged = batchQueue.filter(q => q.autoFlag).length;
+  const clean       = batchQueue.length - autoFlagged;
   const el = document.getElementById('batchEligibility');
   if (batchQueue.length) {
-    const totalGain = batchQueue.reduce((s, q) => s + q.gain, 0);
     el.innerHTML =
       `<span style="color:#22c55e;font-weight:700">` +
       `\u2713 ${batchQueue.length.toLocaleString()} fields eligible` +
-      ` \u00b7 ${totalGain.toLocaleString()} trees to be reclaimed` +
-      ` \u00b7 Sorted by largest gain first</span><br>` +
-      `<span style="color:var(--muted)">Fields skipped: large polygon, rogue GPS, ` +
-      `area above 130%, no improvement, missing GUID` +
-      (isolatedOnly ? ', has neighbours' : '') + `</span>`;
+      ` \u00b7 ${totalGain.toLocaleString()} trees to be reclaimed</span><br>` +
+      `<span style="color:#22c55e">\u2705 ${clean.toLocaleString()} clean — will be auto-corrected</span>` +
+      ` \u00b7 ` +
+      `<span style="color:#f59e0b">\u26a0 ${autoFlagged.toLocaleString()} auto-flagged — review in Visual Review</span><br>` +
+      `<span style="color:var(--muted)">Skipped: large polygon, rogue GPS, area above 130%, no improvement, missing GUID</span>`;
   } else {
     el.innerHTML = '<span style="color:var(--muted)">No eligible fields found with current settings.</span>';
   }
