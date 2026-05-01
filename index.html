@@ -3110,12 +3110,7 @@ function previewBatchField(fieldId) {
       backBtn.textContent = '← Back to Batch';
       backBtn.style.cssText =
         'background:rgba(56,189,248,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.4)';
-      backBtn.onclick = () => {
-        closeLb();
-        document.getElementById('batchModal').classList.add('open');
-        // Clean up the back button for next time
-        backBtn.remove();
-      };
+      backBtn.onclick = () => closeLb();
       foot.insertBefore(backBtn, foot.firstChild);
     }
   }, 400);
@@ -3625,9 +3620,12 @@ function toggleOutsideTree() {
 function closeLb() {
   document.getElementById('lb').classList.remove('open');
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
-  // Clean up back-to-batch button if present
+  // If we came from batch preview, reopen the batch modal
   const bb = document.getElementById('backToBatchBtn');
-  if (bb) bb.remove();
+  if (bb) {
+    bb.remove();
+    document.getElementById('batchModal').classList.add('open');
+  }
 }
 
 // ── EXPORT MENU ────────────────────────────────────────────────────────────
