@@ -190,7 +190,66 @@ input[type=text]:focus { border-color:var(--green); }
 .kpi.a { border-color:var(--amber-b); background:var(--amber-bg); }
 .kpi.a .v { color:var(--amber); }
 
-/* Metric strip in lightbox */
+/* ── OVERVIEW MODAL ── */
+.ov { position:fixed; inset:0; z-index:9100; background:rgba(0,0,0,0.85);
+  backdrop-filter:blur(4px); display:none; align-items:flex-start;
+  justify-content:center; overflow-y:auto; padding:24px 16px; }
+.ov.open { display:flex; }
+.ov-box { background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; width:min(780px,98vw);
+  box-shadow:0 24px 64px rgba(0,0,0,.7); overflow:hidden; flex-shrink:0; }
+.ov-hdr { display:flex; align-items:center; padding:12px 18px;
+  border-bottom:1px solid var(--border); gap:10px; }
+.ov-title { font-family:var(--mono); font-size:12px; font-weight:700;
+  color:var(--blue); flex:1; }
+.ov-close { background:none; border:none; color:var(--muted);
+  font-size:18px; cursor:pointer; padding:2px 8px; border-radius:4px; }
+.ov-close:hover { color:var(--text); }
+.ov-body { padding:18px; }
+.ov-section { margin-bottom:20px; }
+.ov-section:last-child { margin-bottom:0; }
+.ov-lbl { font-family:var(--mono); font-size:9px; font-weight:700;
+  letter-spacing:1.5px; color:var(--muted); text-transform:uppercase;
+  margin-bottom:12px; display:block; }
+.ov-bar-wrap { background:var(--card); border-radius:4px; height:14px;
+  overflow:hidden; display:flex; margin-bottom:6px; }
+.ov-bar-seg { height:100%; }
+.ov-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:10px;
+  font-family:var(--mono); margin-bottom:16px; }
+.ov-legend span { display:flex; align-items:center; gap:5px; }
+.ov-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.ov-zones { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:14px; }
+.ov-zone { border-radius:6px; padding:10px 12px; }
+.ov-zone .z-n { font-family:var(--mono); font-size:20px; font-weight:800; margin-bottom:2px; }
+.ov-zone .z-l { font-size:10px; font-weight:700; letter-spacing:.5px; }
+.ov-zone .z-d { font-size:10px; color:var(--muted); margin-top:4px; line-height:1.4; }
+.ov-alerts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+.ov-alert { border-radius:6px; padding:10px 12px; border:1px solid; }
+.ov-alert .a-n { font-family:var(--mono); font-size:15px; font-weight:800; margin-bottom:2px; }
+.ov-alert .a-l { font-size:10px; font-weight:700; letter-spacing:.5px; }
+.ov-alert .a-d { font-size:10px; margin-top:4px; line-height:1.4; opacity:.8; }
+.ov-note { background:var(--card); border-radius:6px; padding:10px 14px;
+  font-size:11px; color:var(--muted); line-height:1.6; }
+.ov-note strong { color:var(--text); }
+.ov-steps { display:flex; flex-direction:column; }
+.ov-step { display:flex; gap:12px; padding:12px 0;
+  border-bottom:1px solid var(--border); }
+.ov-step:last-child { border-bottom:none; padding-bottom:0; }
+.ov-step-num { width:26px; height:26px; border-radius:50%; display:flex;
+  align-items:center; justify-content:center; font-family:var(--mono);
+  font-size:11px; font-weight:700; flex-shrink:0; margin-top:2px; }
+.ov-step-body .s-title { font-size:12px; font-weight:700;
+  color:var(--text); margin-bottom:3px; }
+.ov-step-body .s-desc { font-size:11px; color:var(--muted); line-height:1.5; }
+.ov-step-body .s-impact { font-size:10px; font-family:var(--mono);
+  font-weight:700; margin-top:5px; }
+.ov-proj { display:grid; grid-template-columns:repeat(4,1fr);
+  gap:8px; margin-top:14px; }
+.ov-proj-cell { background:var(--card); border-radius:6px; padding:10px;
+  text-align:center; border:1px solid var(--border); }
+.ov-proj-cell .p-n { font-family:var(--mono); font-size:18px; font-weight:800; }
+.ov-proj-cell .p-l { font-size:9px; color:var(--muted); margin-top:3px;
+  text-transform:uppercase; letter-spacing:.5px; line-height:1.3; }
 .lb-metrics { display:grid; grid-template-columns:repeat(4,1fr);
   border-top:1px solid var(--border); flex-shrink:0; }
 .lb-m { padding:8px 10px; text-align:center; border-right:1px solid var(--border); }
@@ -240,6 +299,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     <div class="kpi" id="kpiPct"
       style="font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap"
       title="Verra-compliant %: (inside + tolerance) / total trees with polygons">—</div>
+    <div class="hd"></div>
+    <button class="btn-export" onclick="openOverview()"
+      style="background:rgba(56,189,248,0.1);color:var(--blue);border-color:rgba(56,189,248,0.3)"
+      title="Open live compliance overview and roadmap">📊 Overview</button>
     <div class="hd"></div>
     <div style="position:relative">
     <button class="btn-export" id="btnExport" onclick="toggleExportMenu(event)" disabled>⬇ Export ▾</button>
@@ -439,6 +502,158 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     </div>
   </div><!-- end catalog-wrap -->
 </div><!-- end main -->
+
+<!-- OVERVIEW MODAL -->
+<div class="ov" id="ovModal" onclick="if(event.target===this)closeOverview()">
+  <div class="ov-box">
+    <div class="ov-hdr">
+      <div class="ov-title">📊 Compliance Overview &amp; Roadmap</div>
+      <button class="ov-close" onclick="closeOverview()">✕</button>
+    </div>
+    <div class="ov-body">
+
+      <!-- Where we stand -->
+      <div class="ov-section">
+        <span class="ov-lbl">Where we stand today</span>
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px">
+          <div style="text-align:center;flex-shrink:0">
+            <div style="font-family:var(--mono);font-size:40px;font-weight:800;line-height:1"
+              id="ovPctBig">—</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Verra compliant</div>
+          </div>
+          <div style="flex:1">
+            <div class="ov-bar-wrap">
+              <div class="ov-bar-seg" id="ovBarInside" style="background:#22c55e"></div>
+              <div class="ov-bar-seg" id="ovBarTolerance" style="background:#4ade80"></div>
+              <div class="ov-bar-seg" id="ovBarReview" style="background:#f59e0b"></div>
+              <div class="ov-bar-seg" id="ovBarOutside" style="background:#ef4444"></div>
+            </div>
+            <div class="ov-legend">
+              <span><span class="ov-dot" style="background:#22c55e"></span>Inside</span>
+              <span><span class="ov-dot" style="background:#4ade80"></span>Tolerance</span>
+              <span><span class="ov-dot" style="background:#f59e0b"></span>Review</span>
+              <span><span class="ov-dot" style="background:#ef4444"></span>Correction needed</span>
+            </div>
+          </div>
+        </div>
+        <div class="ov-zones">
+          <div class="ov-zone" style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2)">
+            <div class="z-l" style="color:#22c55e">✓ Inside polygon</div>
+            <div class="z-n" style="color:#22c55e" id="ovNInside">—</div>
+            <div class="z-d">Physically inside the boundary. No action needed.</div>
+          </div>
+          <div class="ov-zone" style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2)">
+            <div class="z-l" style="color:#4ade80">± Tolerance zone (0–<span id="ovTM">5</span>m)</div>
+            <div class="z-n" style="color:#4ade80" id="ovNTolerance">—</div>
+            <div class="z-d">GPS noise. Verra accepts this. Do not correct the polygon.</div>
+          </div>
+          <div class="ov-zone" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25)">
+            <div class="z-l" style="color:#f59e0b">⚠ Review zone (<span id="ovTM2">5</span>–<span id="ovRM">10</span>m)</div>
+            <div class="z-n" style="color:#f59e0b" id="ovNReview">—</div>
+            <div class="z-d">Check GPS accuracy reading. If device error &gt;5m, document and accept.</div>
+          </div>
+          <div class="ov-zone" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25)">
+            <div class="z-l" style="color:#ef4444">✗ Needs correction (&gt;<span id="ovRM2">10</span>m)</div>
+            <div class="z-n" style="color:#ef4444" id="ovNOutside">—</div>
+            <div class="z-d">Too far outside to be GPS noise. Polygon boundary needs correcting.</div>
+          </div>
+        </div>
+        <div class="ov-alerts">
+          <div class="ov-alert" style="background:rgba(167,139,250,0.08);border-color:rgba(167,139,250,0.3)">
+            <div class="a-l" style="color:#a78bfa">⧖ Overlapping fields</div>
+            <div class="a-n" style="color:#a78bfa" id="ovNOverlap">—</div>
+            <div class="a-d" style="color:#a78bfa">Two boundaries share land. Trees counted twice — Verra's top concern. Must fix before submission.</div>
+          </div>
+          <div class="ov-alert" style="background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.25)">
+            <div class="a-l" style="color:#f59e0b">⬡ Large polygons</div>
+            <div class="a-n" style="color:#f59e0b" id="ovNLarge">—</div>
+            <div class="a-d" style="color:#f59e0b">Boundaries suspiciously large. Worth checking before submission.</div>
+          </div>
+        </div>
+        <div class="ov-note">
+          <strong>Why this matters:</strong> Verra issues carbon credits based on verified planted trees.
+          If a tree's GPS sits outside its field boundary, Verra cannot confirm it was planted in the
+          correct place. Every tree correctly positioned within its farmer's registered field strengthens
+          the submission.
+        </div>
+      </div>
+
+      <div style="height:1px;background:var(--border);margin-bottom:20px"></div>
+
+      <!-- Roadmap -->
+      <div class="ov-section">
+        <span class="ov-lbl">Roadmap to 99% compliance</span>
+        <div class="ov-steps">
+          <div class="ov-step">
+            <div class="ov-step-num" style="background:rgba(239,68,68,0.12);color:#ef4444">1</div>
+            <div class="ov-step-body">
+              <div class="s-title">Fix overlapping field boundaries</div>
+              <div class="s-desc"><span id="ovS1Overlap">—</span> fields share boundary area with a neighbour.
+                Use the Polygon Corrector to redraw so no two fields overlap.
+                Mandatory — Verra will reject double-counted land regardless of tree accuracy.</div>
+              <div class="s-impact" style="color:#ef4444">Priority: mandatory before submission · affects carbon credit validity</div>
+            </div>
+          </div>
+          <div class="ov-step">
+            <div class="ov-step-num" style="background:rgba(239,68,68,0.12);color:#ef4444">2</div>
+            <div class="ov-step-body">
+              <div class="s-title">Correct polygons for <span id="ovS2Count">—</span> trees &gt;<span id="ovS2RM">10</span>m outside</div>
+              <div class="s-desc">Genuine boundary errors. Use the "✗ Needs correction" filter,
+                sorted by most trees affected. Use the Polygon Corrector to redraw.
+                Start with fields that have the most trees outside.</div>
+              <div class="s-impact" style="color:#ef4444">Fixing all of these moves compliance: <span id="ovPct1">—</span> → <span id="ovPctAfter2">—</span></div>
+            </div>
+          </div>
+          <div class="ov-step">
+            <div class="ov-step-num" style="background:rgba(245,158,11,0.12);color:#f59e0b">3</div>
+            <div class="ov-step-body">
+              <div class="s-title">Review <span id="ovS3Count">—</span> trees in the <span id="ovS3TM">5</span>–<span id="ovS3RM">10</span>m zone</div>
+              <div class="s-desc">Check the GPS accuracy reading in Fieldforce for each tree.
+                If the device reported accuracy &gt;5m, document this — Verra accepts the tree.
+                Only correct the polygon if GPS reading was good but tree is still outside.</div>
+              <div class="s-impact" style="color:#f59e0b">Resolving these moves compliance: <span id="ovPctAfter2b">—</span> → <span id="ovPctAfter3">—</span></div>
+            </div>
+          </div>
+          <div class="ov-step">
+            <div class="ov-step-num" style="background:rgba(34,197,94,0.12);color:#22c55e">4</div>
+            <div class="ov-step-body">
+              <div class="s-title">Leave the <span id="ovS4Count">—</span> tolerance trees alone</div>
+              <div class="s-desc">Already Verra compliant. Correcting their polygons risks pushing
+                boundaries into neighbouring farmers' land and creating new overlaps.
+                Document the GPS tolerance policy and present to the verifier.</div>
+              <div class="s-impact" style="color:#22c55e">Already counted in compliance % — no action required</div>
+            </div>
+          </div>
+        </div>
+        <div class="ov-proj">
+          <div class="ov-proj-cell">
+            <div class="p-n" id="ovProj0">—</div>
+            <div class="p-l">Today</div>
+          </div>
+          <div class="ov-proj-cell">
+            <div class="p-n" style="color:#f59e0b" id="ovProj1">—</div>
+            <div class="p-l">After overlaps fixed</div>
+          </div>
+          <div class="ov-proj-cell">
+            <div class="p-n" style="color:#f59e0b" id="ovProj2">—</div>
+            <div class="p-l">After corrections</div>
+          </div>
+          <div class="ov-proj-cell">
+            <div class="p-n" style="color:#22c55e" id="ovProj3">—</div>
+            <div class="p-l">After review zone</div>
+          </div>
+        </div>
+        <div class="ov-note" style="margin-top:12px">
+          <strong>Note on overlaps:</strong> Fixing overlapping boundaries doesn't directly change
+          the compliance % — it changes which trees are legitimately countable.
+          Until overlaps are resolved, the compliance % may be overstated because some trees
+          are being claimed by two fields simultaneously.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 <!-- LIGHTBOX -->
 <div class="lb" id="lb" onclick="if(event.target===this)closeLb()">
@@ -1408,10 +1623,97 @@ function closeLb() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLb(); closeExportMenu(); }
+  if (e.key === 'Escape') {
+    closeOverview();
+    closeLb();
+    closeExportMenu();
+  }
 });
 
-// ── EXPORT MENU ────────────────────────────────────────────────────────────
+// ── OVERVIEW MODAL ─────────────────────────────────────────────────────────
+function openOverview() {
+  const modal = document.getElementById('ovModal');
+  if (!fieldsData.length) {
+    modal.classList.add('open');
+    return;
+  }
+  populateOverview();
+  modal.classList.add('open');
+}
+
+function closeOverview() {
+  document.getElementById('ovModal').classList.remove('open');
+}
+
+function populateOverview() {
+  // Pull live numbers
+  let nInside = 0, nTolerance = 0, nReview = 0, nOutside = 0;
+  fieldsData.forEach(f => {
+    const trees = treesByField[f.fieldId] || [];
+    if (f.ring && trees.length > 0) {
+      const cl = classifyField(f);
+      nInside    += cl.inside;
+      nTolerance += cl.tolerance;
+      nReview    += cl.review;
+      nOutside   += cl.outside;
+    }
+  });
+  const total     = nInside + nTolerance + nReview + nOutside;
+  const compliant = nInside + nTolerance;
+  const pct       = total > 0 ? Math.round(compliant / total * 100) : 0;
+  const pctAfter2 = total > 0 ? Math.round((compliant + nOutside) / total * 100) : 0;
+  const pctAfter3 = total > 0 ? Math.round((compliant + nOutside + nReview) / total * 100) : 0;
+  const pctCol    = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+
+  const tM = getToleranceM(), rM = getReviewM();
+  const nLarge   = parseInt(document.getElementById('kpiLarge').textContent.replace(/\D/g,'')) || 0;
+  const nOverlap = parseInt(document.getElementById('kpiOverlap').textContent.replace(/[^\d]/g,'')) || 0;
+
+  // Compliance % + bar
+  document.getElementById('ovPctBig').textContent = pct + '%';
+  document.getElementById('ovPctBig').style.color = pctCol;
+  document.getElementById('ovBarInside').style.width    = total ? (nInside / total * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('ovBarTolerance').style.width = total ? (nTolerance / total * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('ovBarReview').style.width    = total ? (nReview / total * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('ovBarOutside').style.width   = total ? (nOutside / total * 100).toFixed(1) + '%' : '0%';
+
+  // Zone counts
+  document.getElementById('ovNInside').textContent    = nInside.toLocaleString();
+  document.getElementById('ovNTolerance').textContent = nTolerance.toLocaleString();
+  document.getElementById('ovNReview').textContent    = nReview.toLocaleString();
+  document.getElementById('ovNOutside').textContent   = nOutside.toLocaleString();
+  document.getElementById('ovNOverlap').textContent   = nOverlap.toLocaleString();
+  document.getElementById('ovNLarge').textContent     = nLarge.toLocaleString();
+
+  // Tolerance labels
+  ['ovTM','ovTM2'].forEach(id => document.getElementById(id).textContent = tM);
+  ['ovRM','ovRM2'].forEach(id => document.getElementById(id).textContent = rM);
+
+  // Roadmap
+  document.getElementById('ovS1Overlap').textContent  = nOverlap.toLocaleString();
+  document.getElementById('ovS2Count').textContent    = nOutside.toLocaleString();
+  document.getElementById('ovS2RM').textContent       = rM;
+  document.getElementById('ovS3Count').textContent    = nReview.toLocaleString();
+  document.getElementById('ovS3TM').textContent       = tM;
+  document.getElementById('ovS3RM').textContent       = rM;
+  document.getElementById('ovS4Count').textContent    = nTolerance.toLocaleString();
+
+  // Projected compliance
+  document.getElementById('ovPct1').textContent       = pct + '%';
+  document.getElementById('ovPctAfter2').textContent  = pctAfter2 + '%';
+  document.getElementById('ovPctAfter2b').textContent = pctAfter2 + '%';
+  document.getElementById('ovPctAfter3').textContent  = pctAfter3 + '%';
+
+  const projCol2 = pctAfter2 >= 90 ? '#22c55e' : '#f59e0b';
+  const projCol3 = pctAfter3 >= 90 ? '#22c55e' : '#f59e0b';
+  document.getElementById('ovProj0').textContent  = pct + '%';
+  document.getElementById('ovProj0').style.color  = pctCol;
+  document.getElementById('ovProj1').textContent  = pct + '%';
+  document.getElementById('ovProj2').textContent  = pctAfter2 + '%';
+  document.getElementById('ovProj2').style.color  = projCol2;
+  document.getElementById('ovProj3').textContent  = pctAfter3 + '%';
+  document.getElementById('ovProj3').style.color  = projCol3;
+}
 function toggleExportMenu(e) {
   const menu = document.getElementById('exportMenu');
   const btn  = document.getElementById('btnExport');
