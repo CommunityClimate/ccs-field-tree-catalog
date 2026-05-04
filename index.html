@@ -38,18 +38,31 @@ body { font-family:var(--sans); background:var(--bg); color:var(--text);
 
 /* ── HEADER ── */
 header {
-  background:var(--panel); border-bottom:1px solid var(--border);
-  padding:0 10px; height:46px; display:flex; align-items:center;
-  gap:6px; flex-shrink:0; overflow:hidden;
+  background:var(--panel);
+  display:flex; flex-direction:column;
+  flex-shrink:0;
 }
+.hdr-row1 {
+  display:flex; align-items:center; gap:8px;
+  padding:0 12px; height:44px; flex-shrink:0;
+  border-bottom:1px solid var(--border);
+}
+.hdr-row2 {
+  display:flex; align-items:center; gap:6px;
+  padding:4px 12px; flex-shrink:0;
+  background:var(--bg); border-bottom:1px solid var(--border);
+  overflow-x:auto; overflow-y:hidden;
+}
+.hdr-row2::-webkit-scrollbar { height:2px; }
+.hdr-row2::-webkit-scrollbar-thumb { background:var(--border); }
 .logo { font-family:var(--mono); font-size:11px; font-weight:700;
   letter-spacing:1.5px; text-transform:uppercase; color:var(--text);
   flex-shrink:0; white-space:nowrap; }
 .logo span { color:var(--green); }
-.hd { width:1px; height:22px; background:var(--border); flex-shrink:0; }
+.hd { width:1px; height:20px; background:var(--border); flex-shrink:0; }
 .kpi { display:flex; align-items:center; gap:4px; background:var(--card);
-  border:1px solid var(--border); border-radius:4px; padding:3px 8px;
-  font-family:var(--mono); font-size:11px; flex-shrink:0; white-space:nowrap; }
+  border:1px solid var(--border); border-radius:4px; padding:2px 8px;
+  font-family:var(--mono); font-size:10px; flex-shrink:0; white-space:nowrap; }
 .kpi .v { font-weight:700; font-size:12px; }
 .kpi.g { border-color:var(--green-b); background:var(--green-bg); }
 .kpi.g .v { color:var(--green); }
@@ -62,16 +75,8 @@ header {
 .kpi .l { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:.5px; }
 .sp { flex:1; min-width:8px; }
 
-/* Responsive — hide label text on narrow screens, keep numbers */
-@media (max-width:1400px) {
-  .kpi { padding:3px 6px; gap:3px; }
-  .kpi .l { display:none; }
-  .kpi .v { font-size:11px; }
-  header { gap:4px; }
-}
-
 /* ── MAIN ── */
-.main { display:flex; flex:1; overflow:hidden; }
+.main { display:flex; flex:1; overflow:hidden; min-height:0; }
 
 /* ── LEFT ── */
 .left { width:280px; flex-shrink:0; background:var(--panel);
@@ -228,48 +233,15 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 <body>
 
 <header>
-  <div class="logo">🌳 CCS <span>Field</span> Tree Catalog</div>
-  <div class="hd"></div>
-
-  <!-- Volume -->
-  <div class="kpi b" title="Total active fields loaded from Fieldforce">
-    <span class="v" id="kpiFields">—</span><span class="l">Fields</span></div>
-  <div class="kpi b" title="Total active trees loaded from Fieldforce">
-    <span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
-
-  <div class="hd"></div>
-
-  <!-- Compliance zones — the real picture -->
-  <div class="kpi g" title="Trees physically inside polygon + trees within GPS tolerance band — Verra compliant">
-    <span class="v" id="kpiInside">—</span><span class="l">✓ Compliant</span></div>
-  <div class="kpi" style="border-color:rgba(74,222,128,0.25);background:rgba(74,222,128,0.06)"
-    title="Trees 0 to Xm outside — within GPS tolerance, no correction needed">
-    <span class="v" id="kpiTolerance" style="color:#4ade80">—</span>
-    <span class="l">± Tolerance</span></div>
-  <div class="kpi" style="border-color:var(--amber-b);background:var(--amber-bg)"
-    title="Trees in review zone — check GPS accuracy reading before deciding">
-    <span class="v" id="kpiReview" style="color:var(--amber)">—</span>
-    <span class="l">⚠ Review</span></div>
-  <div class="kpi r" title="Trees genuinely outside beyond review threshold — polygon correction required">
-    <span class="v" id="kpiOutside">—</span>
-    <span class="l">✗ Correct</span></div>
-
-  <div class="hd"></div>
-
-  <!-- Structural issues -->
-  <div class="kpi" style="border-color:rgba(167,139,250,0.3);background:rgba(167,139,250,0.06)"
-    title="Fields whose polygon overlaps another field — spatial grid index, covers all 34k fields. High priority for VERRA compliance.">
-    <span class="v" id="kpiOverlap" style="color:#a78bfa">…</span>
-    <span class="l">⧖ Overlap</span></div>
-  <div class="kpi a" title="Fields whose polygon area exceeds the large polygon threshold">
-    <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
-
-  <div class="sp"></div>
-  <div class="kpi" id="kpiPct"
-    style="font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0"
-    title="Verra-compliant percentage: (inside + tolerance) / total trees with polygons">—</div>
-  <div class="hd"></div>
-  <div style="position:relative">
+  <!-- Row 1: Logo + compliance % + Export -->
+  <div class="hdr-row1">
+    <div class="logo">🌳 CCS <span>Field</span> Tree Catalog</div>
+    <div class="sp"></div>
+    <div class="kpi" id="kpiPct"
+      style="font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap"
+      title="Verra-compliant %: (inside + tolerance) / total trees with polygons">—</div>
+    <div class="hd"></div>
+    <div style="position:relative">
     <button class="btn-export" id="btnExport" onclick="toggleExportMenu(event)" disabled>⬇ Export ▾</button>
     <div class="export-menu" id="exportMenu">
       <div class="export-item" onclick="closeExportMenu();exportCSV('all')">
@@ -297,6 +269,45 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <span>Fields detected as overlapping another — approximate</span>
       </div>
     </div>
+    </div>
+  </div><!-- end hdr-row1 -->
+
+  <!-- Row 2: All KPI chips -->
+  <div class="hdr-row2">
+
+    <!-- Volume -->
+    <div class="kpi b" title="Total active fields">
+      <span class="v" id="kpiFields">—</span><span class="l">Fields</span></div>
+    <div class="kpi b" title="Total active trees">
+      <span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
+
+    <div class="hd"></div>
+
+    <!-- Compliance zones -->
+    <div class="kpi g" title="Inside + within GPS tolerance — Verra compliant">
+      <span class="v" id="kpiInside">—</span><span class="l">✓ Compliant</span></div>
+    <div class="kpi" style="border-color:rgba(74,222,128,0.25);background:rgba(74,222,128,0.06)"
+      title="Within GPS tolerance band — no correction needed">
+      <span class="v" id="kpiTolerance" style="color:#4ade80">—</span>
+      <span class="l">± Tolerance</span></div>
+    <div class="kpi" style="border-color:var(--amber-b);background:var(--amber-bg)"
+      title="Review zone — check GPS accuracy before deciding">
+      <span class="v" id="kpiReview" style="color:var(--amber)">—</span>
+      <span class="l">⚠ Review</span></div>
+    <div class="kpi r" title="Genuinely outside — polygon correction required">
+      <span class="v" id="kpiOutside">—</span>
+      <span class="l">✗ Correct</span></div>
+
+    <div class="hd"></div>
+
+    <!-- Structural issues -->
+    <div class="kpi" style="border-color:rgba(167,139,250,0.3);background:rgba(167,139,250,0.06)"
+      title="Fields overlapping another — spatial grid index across all 34k fields">
+      <span class="v" id="kpiOverlap" style="color:#a78bfa">…</span>
+      <span class="l">⧖ Overlap</span></div>
+    <div class="kpi a" title="Fields above large polygon threshold">
+      <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
+
   </div>
 </header>
 
