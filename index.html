@@ -247,9 +247,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 
   <!-- Structural issues -->
   <div class="kpi" style="border-color:rgba(167,139,250,0.3);background:rgba(167,139,250,0.06)"
-    title="Fields whose polygon overlaps another field — approximate, detected via bounding box + pip. High priority for VERRA compliance.">
-    <span class="v" id="kpiOverlap" style="color:#a78bfa">—</span>
-    <span class="l">⧖ Overlap~</span></div>
+    title="Fields whose polygon overlaps another field — spatial grid index, covers all 34k fields. High priority for VERRA compliance.">
+    <span class="v" id="kpiOverlap" style="color:#a78bfa">…</span>
+    <span class="l">⧖ Overlap</span></div>
   <div class="kpi a" title="Fields whose polygon area exceeds the large polygon threshold">
     <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
 
@@ -837,62 +837,115 @@ function updateKPIs() {
 // ── Lightweight overlap detection for KPI header ───────────────────────────
 // Uses bounding box pre-filter + pip sampling — approximate, clearly labelled
 async function detectOverlapsKPI() {
+  const el     = document.getElementById('kpiOverlap');
   const fields = fieldsData.filter(f => f.ring && f.ring.length >= 3);
   if (fields.length < 2) {
-    document.getElementById('kpiOverlap').textContent = '0';
+    el.textContent = '0'; el.style.color = '#22c55e';
+    window._overlappingFieldIds = new Set();
     return;
   }
 
-  // Build bounding boxes
-  const boxes = fields.map(f => {
+  el.textContent = '…';
+
+  // ── Step 1: Build bounding boxes + spatial grid index ─────────────────────
+  // Same 0.1° grid approach as the allocation engine.
+  // Each field is registered in every grid cell its bounding box touches.
+  // Only pairs sharing a cell are tested — reduces 600M potential pairs
+  // to a manageable candidate set for 34k fields.
+  const CELL = 0.05; // ~5km cells — tighter than allocation engine for precision
+  const grid  = {};  // "row:col" → [field indices]
+  const boxes = [];
+
+  fields.forEach((f, idx) => {
     const lats = f.ring.map(c => c[1]), lngs = f.ring.map(c => c[0]);
-    return {
+    const box  = {
       minLat: Math.min(...lats), maxLat: Math.max(...lats),
       minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
     };
+    boxes.push(box);
+    const r0 = Math.floor(box.minLat / CELL), r1 = Math.floor(box.maxLat / CELL);
+    const c0 = Math.floor(box.minLng / CELL), c1 = Math.floor(box.maxLng / CELL);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const key = `${r}:${c}`;
+        if (!grid[key]) grid[key] = [];
+        grid[key].push(idx);
+      }
+    }
   });
 
-  const overlapping = new Set();
-  const MAX_PAIRS   = 5000; // cap for performance — approximate
-  let   pairsTested = 0;
-  const CHUNK       = 100;
-
-  for (let i = 0; i < fields.length && pairsTested < MAX_PAIRS; i++) {
-    if (i % CHUNK === 0) await new Promise(r => setTimeout(r, 0)); // yield
-    for (let j = i + 1; j < fields.length && pairsTested < MAX_PAIRS; j++) {
-      pairsTested++;
-      // Bounding box pre-filter
-      const a = boxes[i], b = boxes[j];
-      if (a.minLat > b.maxLat || a.maxLat < b.minLat ||
-          a.minLng > b.maxLng || a.maxLng < b.minLng) continue;
-
-      // Sample up to 6 vertices of ring i — check if any land inside ring j
-      const step = Math.max(1, Math.floor(fields[i].ring.length / 6));
-      let hit = false;
-      for (let k = 0; k < fields[i].ring.length && !hit; k += step) {
-        const c = fields[i].ring[k];
-        if (pip(c[1], c[0], fields[j].ring)) hit = true;
-      }
-      // Also check centroid of i inside j
-      if (!hit) {
-        const cLat = (a.minLat + a.maxLat) / 2;
-        const cLng = (a.minLng + a.maxLng) / 2;
-        if (pip(cLat, cLng, fields[j].ring)) hit = true;
-      }
-      if (hit) {
-        overlapping.add(fields[i].fieldId);
-        overlapping.add(fields[j].fieldId);
+  // ── Step 2: Collect unique candidate pairs from grid ──────────────────────
+  const testedPairs = new Set();
+  const candidates  = [];
+  for (const key of Object.keys(grid)) {
+    const cell = grid[key];
+    if (cell.length < 2) continue;
+    for (let a = 0; a < cell.length; a++) {
+      for (let b = a + 1; b < cell.length; b++) {
+        const pairKey = cell[a] < cell[b]
+          ? `${cell[a]}_${cell[b]}` : `${cell[b]}_${cell[a]}`;
+        if (!testedPairs.has(pairKey)) {
+          testedPairs.add(pairKey);
+          candidates.push([cell[a], cell[b]]);
+        }
       }
     }
   }
 
+  // ── Step 3: Test each candidate pair ─────────────────────────────────────
+  const overlapping = new Set();
+  const CHUNK       = 200; // yield every 200 pairs
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (i % CHUNK === 0) {
+      // Update KPI with progress
+      el.textContent = `${overlapping.size} (${Math.round(i/candidates.length*100)}%…)`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const [ai, bi] = candidates[i];
+    const fA = fields[ai], fB = fields[bi];
+    const bA = boxes[ai],  bB = boxes[bi];
+
+    // Bounding box pre-filter (some grid-neighbour pairs don't actually overlap)
+    if (bA.minLat > bB.maxLat || bA.maxLat < bB.minLat ||
+        bA.minLng > bB.maxLng || bA.maxLng < bB.minLng) continue;
+
+    // Test: sample vertices of A inside B, and centroid of A inside B
+    let hit = false;
+    const stepA = Math.max(1, Math.floor(fA.ring.length / 8));
+    for (let k = 0; k < fA.ring.length && !hit; k += stepA) {
+      if (pip(fA.ring[k][1], fA.ring[k][0], fB.ring)) hit = true;
+    }
+    // Also check centroid of A inside B
+    if (!hit) {
+      const cLat = (bA.minLat + bA.maxLat) / 2;
+      const cLng = (bA.minLng + bA.maxLng) / 2;
+      if (pip(cLat, cLng, fB.ring)) hit = true;
+    }
+    // And centroid of B inside A (catches embedded polygons)
+    if (!hit) {
+      const cLat = (bB.minLat + bB.maxLat) / 2;
+      const cLng = (bB.minLng + bB.maxLng) / 2;
+      if (pip(cLat, cLng, fA.ring)) hit = true;
+    }
+
+    if (hit) {
+      overlapping.add(fA.fieldId);
+      overlapping.add(fB.fieldId);
+    }
+  }
+
+  // ── Step 4: Update KPI ───────────────────────────────────────────────────
   const count = overlapping.size;
-  const el = document.getElementById('kpiOverlap');
-  el.textContent = count.toLocaleString() + (pairsTested >= MAX_PAIRS ? '~' : '');
+  el.textContent = count.toLocaleString();
   el.style.color = count > 0 ? '#a78bfa' : '#22c55e';
 
-  // Store for use in filter
   window._overlappingFieldIds = overlapping;
+
+  // Update the filter option label with real count
+  const opt = document.querySelector('#fltStatus option[value="overlapping"]');
+  if (opt) opt.textContent = `⧖ Overlapping fields (${count.toLocaleString()})`;
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
