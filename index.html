@@ -219,15 +219,44 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 <header>
   <div class="logo">🌳 CCS <span>Field</span> Tree Catalog</div>
   <div class="hd"></div>
-  <div class="kpi b"><span class="v" id="kpiFields">—</span><span class="l">Fields</span></div>
-  <div class="kpi b"><span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
-  <div class="kpi g"><span class="v" id="kpiInside">—</span><span class="l">Compliant</span></div>
-  <div class="kpi" style="border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.06)"><span class="v" id="kpiTolerance" style="color:#4ade80">—</span><span class="l">Tolerance</span></div>
-  <div class="kpi" style="border-color:var(--amber-b);background:var(--amber-bg)"><span class="v" id="kpiReview" style="color:var(--amber)">—</span><span class="l">Review</span></div>
-  <div class="kpi r"><span class="v" id="kpiOutside">—</span><span class="l">Correct</span></div>
-  <div class="kpi a"><span class="v" id="kpiLarge">—</span><span class="l">Large poly</span></div>
+
+  <!-- Volume -->
+  <div class="kpi b" title="Total active fields loaded from Fieldforce">
+    <span class="v" id="kpiFields">—</span><span class="l">Fields</span></div>
+  <div class="kpi b" title="Total active trees loaded from Fieldforce">
+    <span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
+
+  <div class="hd"></div>
+
+  <!-- Compliance zones — the real picture -->
+  <div class="kpi g" title="Trees physically inside polygon + trees within GPS tolerance band — Verra compliant">
+    <span class="v" id="kpiInside">—</span><span class="l">✓ Compliant</span></div>
+  <div class="kpi" style="border-color:rgba(74,222,128,0.25);background:rgba(74,222,128,0.06)"
+    title="Trees 0 to Xm outside — within GPS tolerance, no correction needed">
+    <span class="v" id="kpiTolerance" style="color:#4ade80">—</span>
+    <span class="l">± Tolerance</span></div>
+  <div class="kpi" style="border-color:var(--amber-b);background:var(--amber-bg)"
+    title="Trees in review zone — check GPS accuracy reading before deciding">
+    <span class="v" id="kpiReview" style="color:var(--amber)">—</span>
+    <span class="l">⚠ Review</span></div>
+  <div class="kpi r" title="Trees genuinely outside beyond review threshold — polygon correction required">
+    <span class="v" id="kpiOutside">—</span>
+    <span class="l">✗ Correct</span></div>
+
+  <div class="hd"></div>
+
+  <!-- Structural issues -->
+  <div class="kpi" style="border-color:rgba(167,139,250,0.3);background:rgba(167,139,250,0.06)"
+    title="Fields whose polygon overlaps another field — approximate, detected via bounding box + pip. High priority for VERRA compliance.">
+    <span class="v" id="kpiOverlap" style="color:#a78bfa">—</span>
+    <span class="l">⧖ Overlap~</span></div>
+  <div class="kpi a" title="Fields whose polygon area exceeds the large polygon threshold">
+    <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
+
   <div class="sp"></div>
-  <div class="kpi" id="kpiPct" style="font-family:var(--mono);font-size:13px;font-weight:700">—</div>
+  <div class="kpi" id="kpiPct"
+    style="font-family:var(--mono);font-size:12px;font-weight:700;white-space:nowrap"
+    title="Verra-compliant percentage: (inside + tolerance) / total trees with polygons">—</div>
   <div class="hd"></div>
   <div style="position:relative">
     <button class="btn-export" id="btnExport" onclick="toggleExportMenu(event)" disabled>⬇ Export ▾</button>
@@ -251,6 +280,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div class="export-item" onclick="closeExportMenu();exportCSV('large')">
         <strong>⬇ Large Polygons</strong>
         <span>Fields above the large polygon threshold</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
+        <strong>⬇ Overlapping Fields (approx)</strong>
+        <span>Fields detected as overlapping another — approximate</span>
       </div>
     </div>
   </div>
@@ -279,6 +312,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large">⚠ Large polygons</option>
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
+        <option value="overlapping">⧖ Overlapping fields (approx)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
     </div>
@@ -771,7 +805,7 @@ function updateKPIs() {
       if (ringAreaHa(f.ring) > threshold) largeCount++;
       if (trees.length > 0) {
         const cl = classifyField(f);
-        totalInside    += cl.inside + cl.tolerance; // compliant
+        totalInside    += cl.inside + cl.tolerance;
         totalTolerance += cl.tolerance;
         totalReview    += cl.review;
         totalOutside   += cl.outside;
@@ -781,17 +815,84 @@ function updateKPIs() {
   const totalTrees = totalInside + totalReview + totalOutside;
   const pct = totalTrees > 0 ? Math.round(totalInside / totalTrees * 100) : 0;
   const pctCol = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+
   document.getElementById('kpiFields').textContent    = fieldsData.length.toLocaleString();
-  document.getElementById('kpiTrees').textContent    = totalTrees.toLocaleString();
-  document.getElementById('kpiInside').textContent   = totalInside.toLocaleString();
-  document.getElementById('kpiTolerance').textContent= totalTolerance.toLocaleString();
-  document.getElementById('kpiReview').textContent   = totalReview.toLocaleString();
-  document.getElementById('kpiOutside').textContent  = totalOutside.toLocaleString();
-  document.getElementById('kpiLarge').textContent    = largeCount.toLocaleString();
+  document.getElementById('kpiTrees').textContent     = totalTrees.toLocaleString();
+  document.getElementById('kpiInside').textContent    = totalInside.toLocaleString();
+  document.getElementById('kpiTolerance').textContent = totalTolerance.toLocaleString();
+  document.getElementById('kpiReview').textContent    = totalReview.toLocaleString();
+  document.getElementById('kpiOutside').textContent   = totalOutside.toLocaleString();
+  document.getElementById('kpiLarge').textContent     = largeCount.toLocaleString();
+  document.getElementById('kpiOverlap').textContent   = '…';
   document.getElementById('btnExport').disabled = false;
+
   const kpiPct = document.getElementById('kpiPct');
   kpiPct.textContent = pct + '% Verra compliant';
   kpiPct.style.color = pctCol;
+
+  // Run lightweight overlap detection asynchronously after KPIs display
+  setTimeout(() => detectOverlapsKPI(), 200);
+}
+
+// ── Lightweight overlap detection for KPI header ───────────────────────────
+// Uses bounding box pre-filter + pip sampling — approximate, clearly labelled
+async function detectOverlapsKPI() {
+  const fields = fieldsData.filter(f => f.ring && f.ring.length >= 3);
+  if (fields.length < 2) {
+    document.getElementById('kpiOverlap').textContent = '0';
+    return;
+  }
+
+  // Build bounding boxes
+  const boxes = fields.map(f => {
+    const lats = f.ring.map(c => c[1]), lngs = f.ring.map(c => c[0]);
+    return {
+      minLat: Math.min(...lats), maxLat: Math.max(...lats),
+      minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
+    };
+  });
+
+  const overlapping = new Set();
+  const MAX_PAIRS   = 5000; // cap for performance — approximate
+  let   pairsTested = 0;
+  const CHUNK       = 100;
+
+  for (let i = 0; i < fields.length && pairsTested < MAX_PAIRS; i++) {
+    if (i % CHUNK === 0) await new Promise(r => setTimeout(r, 0)); // yield
+    for (let j = i + 1; j < fields.length && pairsTested < MAX_PAIRS; j++) {
+      pairsTested++;
+      // Bounding box pre-filter
+      const a = boxes[i], b = boxes[j];
+      if (a.minLat > b.maxLat || a.maxLat < b.minLat ||
+          a.minLng > b.maxLng || a.maxLng < b.minLng) continue;
+
+      // Sample up to 6 vertices of ring i — check if any land inside ring j
+      const step = Math.max(1, Math.floor(fields[i].ring.length / 6));
+      let hit = false;
+      for (let k = 0; k < fields[i].ring.length && !hit; k += step) {
+        const c = fields[i].ring[k];
+        if (pip(c[1], c[0], fields[j].ring)) hit = true;
+      }
+      // Also check centroid of i inside j
+      if (!hit) {
+        const cLat = (a.minLat + a.maxLat) / 2;
+        const cLng = (a.minLng + a.maxLng) / 2;
+        if (pip(cLat, cLng, fields[j].ring)) hit = true;
+      }
+      if (hit) {
+        overlapping.add(fields[i].fieldId);
+        overlapping.add(fields[j].fieldId);
+      }
+    }
+  }
+
+  const count = overlapping.size;
+  const el = document.getElementById('kpiOverlap');
+  el.textContent = count.toLocaleString() + (pairsTested >= MAX_PAIRS ? '~' : '');
+  el.style.color = count > 0 ? '#a78bfa' : '#22c55e';
+
+  // Store for use in filter
+  window._overlappingFieldIds = overlapping;
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
@@ -843,6 +944,10 @@ function render() {
     if (filter === 'large')         return isLarge;
     if (filter === 'large_with')    return isLarge && trees.length > 0;
     if (filter === 'large_without') return isLarge && trees.length === 0;
+    if (filter === 'overlapping') {
+      const ovSet = window._overlappingFieldIds;
+      return ovSet ? ovSet.has(f.fieldId) : false;
+    }
 
     // Zone-aware filters
     if (filter === 'inside' || filter === 'tolerance' ||
@@ -1274,7 +1379,11 @@ function exportCSV(type) {
     if (type === 'outside')  return r.cl && r.cl.outside > 0;
     if (type === 'inside')   return r.trees.length > 0 && r.cl && r.cl.outside === 0 && r.cl.review === 0;
     if (type === 'no_trees') return r.trees.length === 0 && r.f.ring;
-    if (type === 'large')    return r.isLarge;
+    if (type === 'large')       return r.isLarge;
+    if (type === 'overlapping') {
+      const ovSet = window._overlappingFieldIds;
+      return ovSet ? ovSet.has(r.f.fieldId) : false;
+    }
     return true;
   });
 
