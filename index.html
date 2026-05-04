@@ -99,21 +99,21 @@ input[type=text]:focus { border-color:var(--green); }
   border-bottom:1px solid var(--border); display:flex;
   align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap; }
 .cat-grid { flex:1; overflow-y:auto; padding:12px;
-  display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
-  gap:10px; align-content:start; }
-.cat-grid.sm { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
-.cat-grid.lg { grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:12px; align-content:start; }
+.cat-grid.sm { grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; }
+.cat-grid.lg { grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
 .cat-grid.list { grid-template-columns:1fr; gap:5px; padding:8px 12px; }
 .cat-card { background:var(--card); border:1px solid var(--border);
   border-radius:8px; overflow:hidden; cursor:pointer;
   transition:border-color .15s; }
 .cat-card:hover { border-color:var(--green); }
-.cat-card .map-thumb { width:100%; height:140px; background:#0a0c12;
+.cat-card .map-thumb { width:100%; height:180px; background:#0a0c12;
   position:relative; overflow:hidden; }
-.cat-grid.sm .map-thumb { height:110px; }
-.cat-grid.lg .map-thumb { height:180px; }
+.cat-grid.sm .map-thumb { height:130px; }
+.cat-grid.lg .map-thumb { height:240px; }
 .cat-grid.list .cat-card { display:flex; align-items:center; border-radius:6px; }
-.cat-grid.list .map-thumb { width:80px; height:60px; flex-shrink:0; border-radius:6px 0 0 6px; }
+.cat-grid.list .map-thumb { width:100px; height:70px; flex-shrink:0; border-radius:6px 0 0 6px; }
 .cat-grid.list .info { flex:1; display:flex; align-items:center;
   gap:12px; padding:8px 12px; }
 .cat-grid.list .fid { margin-bottom:0; }
@@ -143,7 +143,7 @@ input[type=text]:focus { border-color:var(--green); }
   justify-content:center; }
 .lb.open { display:flex; }
 .lb-box { background:var(--card); border:1px solid var(--border);
-  border-radius:10px; width:min(1100px,96vw); max-height:88vh;
+  border-radius:10px; width:min(740px,96vw); max-height:90vh;
   display:flex; flex-direction:column; overflow:hidden;
   box-shadow:0 24px 64px rgba(0,0,0,.7); }
 .lb-hdr { display:flex; align-items:center; justify-content:space-between;
@@ -153,7 +153,7 @@ input[type=text]:focus { border-color:var(--green); }
 .lb-close { background:none; border:none; color:var(--muted);
   font-size:18px; cursor:pointer; padding:2px 6px; border-radius:4px; }
 .lb-close:hover { color:var(--text); }
-.lb-map { width:100%; height:440px; flex-shrink:0; }
+.lb-map { width:100%; height:340px; flex-shrink:0; }
 .lb-legend { display:flex; gap:14px; padding:6px 14px;
   border-bottom:1px solid var(--border); flex-shrink:0; font-size:10px; color:var(--muted); }
 .lb-legend span { display:flex; align-items:center; gap:5px; }
@@ -212,96 +212,6 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 ::-webkit-scrollbar { width:5px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
-
-/* Neighbour badges */
-.badge.ov { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); }
-.badge.adj{ background:rgba(245,158,11,0.1); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); }
-.kpi.ov { border-color:rgba(239,68,68,0.25); background:rgba(239,68,68,0.08); }
-.kpi.ov .v { color:#ef4444; }
-
-/* Batch preview grid */
-.bpg-modal { position:fixed; inset:0; background:var(--bg); z-index:9500;
-  display:none; flex-direction:column; }
-.bpg-modal.open { display:flex; }
-.bpg-hdr { display:flex; align-items:center; gap:12px; padding:10px 16px;
-  background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; }
-.bpg-title { font-family:var(--mono); font-size:13px; font-weight:700; color:#22c55e; flex:1; }
-.bpg-stats { font-family:var(--mono); font-size:10px; color:var(--muted); }
-.bpg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-  gap:10px; padding:12px; overflow-y:auto; flex:1; }
-.bpg-card { background:var(--card); border:1px solid var(--border); border-radius:8px;
-  overflow:hidden; cursor:pointer; transition:border-color .15s; position:relative; }
-.bpg-card:hover { border-color:var(--blue); }
-.bpg-card.flagged { border-color:#ef4444; background:rgba(239,68,68,0.04); }
-.bpg-card.flagged .bpg-flag-btn { background:#ef4444; color:#fff; }
-.bpg-thumb { width:100%; height:130px; display:block; }
-.bpg-info { padding:6px 8px; }
-.bpg-fid { font-family:var(--mono); font-size:9px; font-weight:700;
-  color:var(--blue); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bpg-owner { font-size:9px; color:var(--muted); white-space:nowrap;
-  overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
-.bpg-gain { font-family:var(--mono); font-size:10px; font-weight:700;
-  color:#22c55e; margin-top:4px; }
-.bpg-flag-btn { position:absolute; top:6px; right:6px; width:24px; height:24px;
-  border-radius:4px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.15);
-  color:#fff; cursor:pointer; font-size:12px; display:flex; align-items:center;
-  justify-content:center; z-index:2; }
-.bpg-flag-btn:hover { background:rgba(239,68,68,0.8); }
-.bpg-foot { display:flex; align-items:center; gap:10px; padding:10px 16px;
-  background:var(--panel); border-top:1px solid var(--border); flex-shrink:0; }
-
-/* Polygon editor */
-.edit-handle { cursor: grab; }
-.edit-handle:active { cursor: grabbing; }
-.lb-edit-bar { display:none; padding:8px 14px; border-top:1px solid var(--border);
-  background:rgba(245,158,11,0.06); flex-shrink:0;
-  align-items:center; gap:10px; flex-wrap:wrap; }
-.lb-edit-bar.active { display:flex; }
-.edit-status { font-family:var(--mono); font-size:10px; color:var(--amber); flex:1; }
-.edit-compliance { font-family:var(--mono); font-size:11px; font-weight:700; }
-/* Auto-correct preview */
-.ac-bar { display:none; padding:8px 14px; border-top:1px solid var(--border);
-  background:rgba(34,197,94,0.05); flex-shrink:0;
-  align-items:center; gap:10px; flex-wrap:wrap; }
-.ac-bar.active { display:flex; }
-.ac-stats { display:flex; gap:16px; flex:1; flex-wrap:wrap; }
-.ac-stat  { display:flex; flex-direction:column; font-family:var(--mono); font-size:10px; }
-.ac-stat .l { color:var(--muted); font-size:9px; }
-.ac-stat .v { font-weight:700; }
-.ac-gain  { color:#22c55e; }
-.ac-buffer{ display:flex; align-items:center; gap:6px;
-  font-family:var(--mono); font-size:10px; color:var(--muted); }
-.ac-buffer button { width:22px; height:22px; border-radius:4px;
-  background:var(--border); color:var(--text); border:none;
-  cursor:pointer; font-size:13px; line-height:1; }
-.ac-buffer button:hover { background:var(--blue); color:#fff; }
-
-/* Outside tree table */
-.tree-table th { color:var(--muted); text-transform:uppercase; letter-spacing:.8px;
-  padding:5px 8px; border-bottom:1px solid var(--border); text-align:left;
-  font-weight:700; position:sticky; top:0; background:var(--card); }
-.tree-table td { padding:4px 8px; border-bottom:1px solid rgba(31,46,66,0.5);
-  color:var(--text); white-space:nowrap; }
-.tree-table tr:last-child td { border-bottom:none; }
-.tree-table tr:hover td { background:rgba(56,189,248,0.04); }
-.tree-table tr.selected td { background:rgba(56,189,248,0.12) !important; }
-.tree-table tr { cursor:pointer; }
-@keyframes treePulse {
-  0%   { r: 5;  opacity: 1; }
-  50%  { r: 14; opacity: 0.5; }
-  100% { r: 5;  opacity: 1; }
-}
-.tree-table .re  { color:#f59e0b; }
-.tree-table .orp { color:#ef4444; }
-.tree-table .pnd { color:var(--muted); }
-
-/* Neighbour detect progress bar */
-#nbProgress { font-family:var(--mono); font-size:9px; color:var(--muted);
-  padding:4px 12px; border-bottom:1px solid var(--border);
-  display:none; background:var(--panel); }
-.nb-bar-wrap { height:3px; background:var(--border); border-radius:2px; margin-top:4px; }
-.nb-bar { height:3px; background:var(--red); border-radius:2px;
-  width:0%; transition:width .3s; }
 </style>
 </head>
 <body>
@@ -314,7 +224,6 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   <div class="kpi g"><span class="v" id="kpiInside">—</span><span class="l">Inside</span></div>
   <div class="kpi r"><span class="v" id="kpiOutside">—</span><span class="l">Outside</span></div>
   <div class="kpi a"><span class="v" id="kpiLarge">—</span><span class="l">Large poly</span></div>
-  <div class="kpi ov"><span class="v" id="kpiOverlap">—</span><span class="l">Overlapping</span></div>
   <div class="sp"></div>
   <div class="kpi" id="kpiPct" style="font-family:var(--mono);font-size:13px;font-weight:700">—</div>
   <div class="hd"></div>
@@ -341,50 +250,6 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Large Polygons</strong>
         <span>Fields above the large polygon threshold</span>
       </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
-        <strong>⬇ Overlapping Fields</strong>
-        <span>Fields whose polygons share area with another field — list of conflicting pairs</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('adjacent')">
-        <strong>⬇ Adjacent Fields</strong>
-        <span>Fields within ~50 m of another polygon but not overlapping</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('realloc')">
-        <strong>⬇ Re-allocation Report</strong>
-        <span>Every outside tree — where it is vs where it should be</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('audit')">
-        <strong>⬇ Audit Trail</strong>
-        <span>Every outside tree with raw coords, polygon vertices, pip result — independently verifiable</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('codemismatch')">
-        <strong>⬇ Code / Field Mismatches</strong>
-        <span>Trees where the field encoded in the tree code disagrees with the GUID link</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();openCrossCheck()">
-        <strong>🔍 Cross-Check Tree</strong>
-        <span>Look up any tree code — raw coordinates, polygon, pip result step-by-step</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('bulkac')">
-        <strong>⬡ Bulk Auto-Correct Preview</strong>
-        <span>All fields with outside trees — current vs projected compliance after hull correction</span>
-      </div>
-      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      <div class="export-item" onclick="closeExportMenu();openBatch()"
-        style="border-left:3px solid #22c55e">
-        <strong>⚡ Batch Auto-Correct Polygons</strong>
-        <span>Automatically correct all eligible fields — dry run first, then live</span>
-      </div>
-      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      <div class="export-item" onclick="closeExportMenu();clDownloadAll()">
-        <strong>📋 Download Change Log</strong>
-        <span>All polygon corrections made in this browser — full audit trail with before/after</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();clClear()"
-        style="opacity:0.6">
-        <strong>🗑 Clear Change Log</strong>
-        <span>Permanently removes the stored log from this browser (download first)</span>
-      </div>
     </div>
   </div>
 </header>
@@ -409,25 +274,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large">⚠ Large polygons</option>
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
-        <option value="overlapping">⧖ Overlapping fields</option>
-        <option value="adjacent">~ Adjacent fields</option>
-        <option value="embedded">⊂ Embedded fields (polygon inside another)</option>
-        <option value="isolated">⬡ Isolated fields (no neighbours)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
-    </div>
-    <div class="sec">
-      <span class="sec-lbl">Max neighbours (overlap + adjacent)</span>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <input type="range" id="maxNeighbours" min="0" max="20" value="20"
-          oninput="updateNeighbourLabel();render()"/>
-        <span style="font-family:var(--mono);font-size:12px;font-weight:700;
-          color:var(--blue);min-width:42px" id="neighbourLabel">Any</span>
-      </div>
-      <div style="font-size:9px;color:var(--muted);line-height:1.5">
-        Slide to 0 to show only isolated fields.<br>
-        Slide left to reduce neighbour clutter.
-      </div>
     </div>
     <div class="sec">
       <span class="sec-lbl">Date registered</span>
@@ -485,10 +333,6 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div style="width:1px;height:18px;background:var(--border)"></div>
       <button class="view-btn" onclick="clearFilters()" style="color:var(--amber)">✕ Clear</button>
     </div>
-    <div id="nbProgress">
-      <span id="nbProgressText">Detecting overlapping &amp; adjacent fields…</span>
-      <div class="nb-bar-wrap"><div class="nb-bar" id="nbBar"></div></div>
-    </div>
     <div class="cat-grid" id="catGrid">
       <div class="empty" style="grid-column:1/-1">Connect to Fieldforce to load fields and trees</div>
     </div>
@@ -501,297 +345,13 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   </div>
 </div>
 
-<!-- BATCH PREVIEW GRID -->
-<div class="bpg-modal" id="bpgModal">
-  <div class="bpg-hdr">
-    <div class="bpg-title">⬡ Batch Preview — Visual Review</div>
-    <div class="bpg-stats" id="bpgStats">—</div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <input type="text" id="bpgSearch" placeholder="Search field ID or owner…"
-        oninput="bpgRender()" style="background:var(--bg);border:1px solid var(--border);
-        border-radius:4px;color:var(--text);font-family:var(--mono);font-size:10px;
-        padding:4px 8px;outline:none;width:200px"/>
-      <select id="bpgFilter" onchange="bpgRender()"
-        style="background:var(--bg);border:1px solid var(--border);border-radius:4px;
-        color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 6px">
-        <option value="all">All fields</option>
-        <option value="ok">✓ Not flagged</option>
-        <option value="flagged">⚑ Flagged for review</option>
-      </select>
-    </div>
-    <button class="btn btn-sec" onclick="closeBpg()" style="flex-shrink:0">✕ Close</button>
-  </div>
-  <div class="bpg-grid" id="bpgGrid"></div>
-  <div class="bpg-foot">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)" id="bpgFlagCount">
-      0 flagged</span>
-    <span style="font-family:var(--mono);font-size:10px;color:var(--muted);flex:1">
-      Click any card to preview on map · Click ⚑ to flag for review (excluded from live run)
-    </span>
-    <button class="btn btn-sec" onclick="closeBpg()">← Back to Batch</button>
-    <button class="btn btn-primary" onclick="closeBpgAndStart()"
-      id="bpgStartBtn">▶ Start Live Run (unflagged only)</button>
-  </div>
-</div>
-
-<!-- BATCH CORRECT MODAL -->
-<div class="lb" id="batchModal" onclick="if(event.target===this)pauseBatch()">
-  <div class="lb-box" style="width:min(900px,96vw)">
-    <div class="lb-hdr">
-      <div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#22c55e">
-          ⚡ Batch Polygon Auto-Correct
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="batchSubtitle">
-          Automatically corrects eligible field polygons using selective expansion
-        </div>
-      </div>
-      <button class="lb-close" onclick="closeBatch()">✕</button>
-    </div>
-
-    <!-- Settings panel (shown before start) -->
-    <div id="batchSettings" style="padding:14px;border-bottom:1px solid var(--border)">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-        <!-- Safety thresholds -->
-        <div style="background:var(--panel);border:1px solid var(--border);
-          border-radius:6px;padding:12px">
-          <div style="font-family:var(--mono);font-size:10px;font-weight:700;
-            color:var(--muted);text-transform:uppercase;letter-spacing:1px;
-            margin-bottom:8px">Safety Filters</div>
-          <div style="font-size:10px;color:var(--text);line-height:2">
-            ✓ Area increase ≤ 130% of original<br>
-            ✓ Zero rogue GPS trees excluded<br>
-            ✓ At least 1 outside tree<br>
-            ✓ Valid Fieldforce GUID<br>
-            ✓ Compliance improvement > 0%<br>
-            ✓ Not a large polygon
-          </div>
-        </div>
-        <!-- Options -->
-        <div style="background:var(--panel);border:1px solid var(--border);
-          border-radius:6px;padding:12px">
-          <div style="font-family:var(--mono);font-size:10px;font-weight:700;
-            color:var(--muted);text-transform:uppercase;letter-spacing:1px;
-            margin-bottom:8px">Options</div>
-          <label style="display:flex;align-items:center;gap:8px;
-            font-size:11px;cursor:pointer;margin-bottom:8px">
-            <input type="checkbox" id="batchDryRun" checked disabled
-              style="width:14px;height:14px;cursor:not-allowed"/>
-            <span><strong>Dry run</strong> — simulate without writing to Fieldforce
-              <span style="color:#f59e0b;font-size:9px">(required before live run)</span>
-            </span>
-          </label>
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:4px">
-            <span>Buffer:</span>
-            <input type="number" id="batchBuffer" value="3" min="0" max="20"
-              style="width:48px;background:var(--bg);border:1px solid var(--border);
-              border-radius:3px;color:var(--text);font-family:var(--mono);
-              font-size:11px;padding:3px 6px;text-align:center"/>
-            <span style="color:var(--muted)">metres</span>
-          </div>
-        </div>
-      </div>
-      <!-- Eligibility summary -->
-      <div id="batchEligibility" style="background:rgba(34,197,94,0.06);
-        border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:10px 14px;
-        font-family:var(--mono);font-size:10px;line-height:2">
-        Click Scan to calculate eligible fields…
-      </div>
-    </div>
-
-    <!-- Progress panel (shown during/after run) -->
-    <div id="batchProgress" style="display:none;padding:14px;
-      border-bottom:1px solid var(--border)">
-      <!-- Progress bar -->
-      <div style="display:flex;justify-content:space-between;
-        font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:4px">
-        <span id="batchProgressLabel">Starting…</span>
-        <span id="batchProgressPct">0%</span>
-      </div>
-      <div style="height:6px;background:var(--border);border-radius:3px;margin-bottom:12px">
-        <div id="batchProgressBar" style="height:6px;background:#22c55e;
-          border-radius:3px;width:0%;transition:width .3s"></div>
-      </div>
-      <!-- Live stats -->
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px">
-        <div style="text-align:center">
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
-            color:var(--blue)" id="bsTotal">0</div>
-          <div style="font-size:9px;color:var(--muted)">Eligible</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
-            color:#22c55e" id="bsCorrected">0</div>
-          <div style="font-size:9px;color:var(--muted)">Corrected</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
-            color:var(--muted)" id="bsSkipped">0</div>
-          <div style="font-size:9px;color:var(--muted)">Skipped</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
-            color:#ef4444" id="bsFailed">0</div>
-          <div style="font-size:9px;color:var(--muted)">Failed</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
-            color:#22c55e" id="bsReclaimed">0</div>
-          <div style="font-size:9px;color:var(--muted)">Trees reclaimed</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;
-            color:var(--blue)" id="bsCompliance">—</div>
-          <div style="font-size:9px;color:var(--muted)">New compliance</div>
-        </div>
-      </div>
-      <!-- Per-field log -->
-      <div id="batchLog" style="max-height:180px;overflow-y:auto;
-        font-family:var(--mono);font-size:9px;background:var(--bg);
-        border:1px solid var(--border);border-radius:4px;padding:6px 8px;
-        line-height:1.9"></div>
-    </div>
-
-    <!-- Footer -->
-    <div class="lb-foot" style="flex-wrap:wrap;gap:8px">
-      <button class="btn btn-sec" onclick="closeBatch()" id="batchCloseBtn">Close</button>
-      <button class="btn" onclick="scanBatch()"
-        style="background:rgba(56,189,248,0.15);color:#38bdf8;
-        border:1px solid rgba(56,189,248,0.4)" id="batchScanBtn">🔍 Scan</button>
-      <button class="btn" onclick="openBpg()"
-        id="batchGridBtn" style="display:none;background:rgba(167,139,250,0.15);
-        color:#a78bfa;border:1px solid rgba(167,139,250,0.4)">⬡ Visual Review</button>
-      <button class="btn btn-primary" onclick="startBatch()"
-        id="batchStartBtn" disabled>▶ Start</button>
-      <button class="btn" onclick="pauseBatch()"
-        id="batchPauseBtn" style="display:none;background:rgba(245,158,11,0.15);
-        color:#f59e0b;border:1px solid rgba(245,158,11,0.4)">⏸ Pause</button>
-      <button class="btn" onclick="resumeBatch()"
-        id="batchResumeBtn" style="display:none;background:rgba(34,197,94,0.15);
-        color:#22c55e;border:1px solid rgba(34,197,94,0.4)">▶ Resume</button>
-      <button class="btn" onclick="stopBatch()"
-        id="batchStopBtn" style="display:none;background:rgba(239,68,68,0.15);
-        color:#ef4444;border:1px solid rgba(239,68,68,0.4)">■ Stop</button>
-      <button class="btn" onclick="downloadBatchReport()"
-        id="batchReportBtn" style="display:none;background:var(--border);
-        color:var(--text)">⬇ Download Report</button>
-    </div>
-  </div>
-</div>
-
-<!-- AUTO-CORRECT WARNING MODAL -->
-<div class="lb" id="acWarnModal" onclick="if(event.target===this)closeAcWarn()"
-  style="z-index:10001">
-  <div class="lb-box" style="width:min(520px,96vw)">
-    <div class="lb-hdr">
-      <div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:#ef4444">
-          ⚠ Confirm Polygon Replacement
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">
-          This action cannot be undone
-        </div>
-      </div>
-      <button class="lb-close" onclick="closeAcWarn()">✕</button>
-    </div>
-    <div style="padding:14px;font-size:11px;line-height:1.8;color:var(--text)">
-      <p style="margin:0 0 12px">
-        You are about to <strong>permanently replace</strong> the polygon for:
-      </p>
-      <div style="background:var(--panel);border:1px solid var(--border);
-        border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:10px;
-        margin-bottom:14px">
-        <div><span style="color:var(--muted)">Method:</span>
-          &nbsp;<span id="acWarnMode" style="color:#38bdf8;font-weight:700"></span></div>
-        <div><span style="color:var(--muted)">Field:</span>
-          &nbsp;<span id="acWarnField" style="color:var(--blue);font-weight:700"></span></div>
-        <div><span style="color:var(--muted)">Owner:</span>
-          &nbsp;<span id="acWarnOwner"></span></div>
-        <div><span style="color:var(--muted)">Current area:</span>
-          &nbsp;<span id="acWarnOldArea"></span>
-          &nbsp;→&nbsp;
-          <span style="color:var(--muted)">Proposed area:</span>
-          &nbsp;<span id="acWarnNewArea" style="color:#22c55e;font-weight:700"></span></div>
-        <div><span style="color:var(--muted)">Projected compliance:</span>
-          &nbsp;<span id="acWarnNewPct" style="color:#22c55e;font-weight:700"></span></div>
-        <div><span style="color:var(--muted)">Hull vertices:</span>
-          &nbsp;<span id="acWarnVerts"></span>
-          &nbsp;&nbsp;<span style="color:var(--muted)">Buffer:</span>
-          &nbsp;<span id="acWarnBuf"></span></div>
-      </div>
-      <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);
-        border-radius:6px;padding:10px 14px;margin-bottom:14px">
-        <div style="font-weight:700;color:#ef4444;margin-bottom:6px">
-          ⚠ Important — read before proceeding:
-        </div>
-        <ul style="margin:0;padding-left:16px;color:var(--muted);line-height:2">
-          <li>In <strong style="color:var(--text)">Selective mode</strong>:
-            original vertices are preserved — only the tight edges are expanded.
-            In <strong style="color:var(--text)">Hull mode</strong>:
-            the original polygon is completely discarded</li>
-          <li>The new polygon is a <strong style="color:var(--text)">convex hull</strong>
-            drawn from tree GPS coordinates — any part of the field with
-            <strong style="color:var(--text)">no trees planted yet</strong>
-            will not be included</li>
-          <li>Future trees planted outside the new hull will appear
-            <strong style="color:var(--text)">outside polygon</strong>
-            until the boundary is corrected again</li>
-          <li>If the satellite image shows the field extends
-            <strong style="color:var(--text)">beyond the green polygon</strong>,
-            use <strong style="color:var(--text)">✎ Edit Polygon</strong> instead</li>
-        </ul>
-      </div>
-      <p style="margin:0;color:var(--muted);font-size:10px">
-        Verify the green polygon on the satellite map covers the full
-        planted area before proceeding.
-      </p>
-    </div>
-    <div class="lb-foot">
-      <button class="btn btn-sec" onclick="closeAcWarn()">✕ Cancel — go back</button>
-      <button class="btn btn-primary" style="background:#22c55e"
-        onclick="proceedAutoCorrect()">✓ I understand — apply polygon</button>
-    </div>
-  </div>
-</div>
-
-<!-- CROSS-CHECK MODAL -->
-<div class="lb" id="ccModal" onclick="if(event.target===this)closeCrossCheck()">
-  <div class="lb-box" style="width:min(800px,96vw)">
-    <div class="lb-hdr">
-      <div>
-        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue)">
-          🔍 Tree Cross-Check Tool
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">
-          Enter a tree code to verify raw coordinates, polygon, and pip result
-        </div>
-      </div>
-      <button class="lb-close" onclick="closeCrossCheck()">✕</button>
-    </div>
-    <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px">
-      <input type="text" id="ccInput"
-        placeholder="e.g. TRE-C4Q2Z-W8F4J-001-0387"
-        style="flex:1;background:var(--bg);border:1px solid var(--border);
-        border-radius:4px;color:var(--text);font-family:var(--mono);
-        font-size:11px;padding:6px 10px;outline:none"/>
-      <button class="btn btn-primary" onclick="runCrossCheck()">Check</button>
-    </div>
-    <div id="ccResult" style="padding:14px;max-height:500px;overflow-y:auto;
-      font-family:var(--mono);font-size:10px;line-height:1.8">
-      <span style="color:var(--muted)">Enter a tree code above and press Check.</span>
-    </div>
-  </div>
-</div>
-
 <!-- LIGHTBOX -->
 <div class="lb" id="lb" onclick="if(event.target===this)closeLb()">
-  <div class="lb-box" style="width:min(1100px,96vw)">
+  <div class="lb-box" style="width:min(820px,96vw)">
     <div class="lb-hdr">
       <div>
         <div class="lb-title" id="lbTitle">—</div>
         <div class="lb-sub" id="lbSub">—</div>
-        <div class="lb-sub" id="lbAudit" style="margin-top:3px;font-size:9px;
-          color:var(--muted);font-family:var(--mono)">—</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span id="lbLargeBadge"></span>
@@ -799,14 +359,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <button class="lb-close" onclick="closeLb()">✕</button>
       </div>
     </div>
-    <div class="lb-map" id="lbMap" style="height:440px"></div>
+    <div class="lb-map" id="lbMap" style="height:300px"></div>
     <div class="lb-legend">
       <span><span class="dot" style="background:#22c55e"></span>Inside polygon</span>
       <span><span class="dot" style="background:#ef4444"></span>Outside polygon</span>
       <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Field boundary</span>
-      <span id="lbLegendOverlap" style="display:none"><span class="dot" style="background:#ef4444;width:8px;height:8px;border-radius:2px"></span>Overlapping field</span>
-      <span id="lbLegendEmbedded" style="display:none"><span class="dot" style="background:#a78bfa;width:8px;height:8px;border-radius:2px"></span>Embedded field</span>
-      <span id="lbLegendAdjacent" style="display:none"><span class="dot" style="background:#f59e0b;width:8px;height:8px;border-radius:2px"></span>Adjacent field</span>
     </div>
     <!-- Tree stats row -->
     <div class="lb-stats">
@@ -865,83 +422,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <div class="l">Centroid</div>
       </div>
     </div>
-    <!-- Outside tree breakdown -->
-    <div id="lbOutsideSection" style="display:none;border-top:1px solid var(--border);flex-shrink:0;">
-      <div style="display:flex;align-items:center;justify-content:space-between;
-        padding:8px 14px;cursor:pointer;user-select:none"
-        onclick="toggleOutsideTree()">
-        <span style="font-family:var(--mono);font-size:10px;font-weight:700;
-          color:var(--muted);text-transform:uppercase;letter-spacing:1px">
-          ▸ Outside Trees
-        </span>
-        <div style="display:flex;gap:8px" id="lbOutsideSummary"></div>
-      </div>
-      <div id="lbOutsideBody" style="display:none;max-height:320px;overflow-y:auto;
-        border-top:1px solid var(--border)">
-        <div style="padding:5px 8px;border-bottom:1px solid var(--border);background:var(--panel);
-          position:sticky;top:0;z-index:1">
-          <input type="text" id="lbTreeSearch"
-            placeholder="Search tree code, species or actual field…"
-            oninput="filterTreeTable()"
-            style="width:100%;background:var(--bg);border:1px solid var(--border);
-            border-radius:3px;color:var(--text);font-family:var(--mono);
-            font-size:10px;padding:4px 7px;outline:none"/>
-        </div>
-        <table class="tree-table" id="lbTreeTable">
-          <thead>
-            <tr>
-              <th>Tree Code</th><th>Species</th>
-              <th>Lat</th><th>Lng</th>
-              <th>Dist (m)</th><th>Accuracy (m)</th>
-              <th>Assigned By</th><th>Code→Field</th>
-              <th>Actual Field</th><th>Flag</th>
-            </tr>
-          </thead>
-          <tbody id="lbTreeBody"></tbody>
-        </table>
-      </div>
-    </div>
-    <!-- Auto-correct preview bar -->
-    <div class="ac-bar" id="lbAcBar">
-      <div class="ac-stats" id="lbAcStats"></div>
-      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-        <button id="lbAcModeBtn"
-          onclick="toggleAcMode()"
-          style="font-family:var(--mono);font-size:9px;font-weight:700;
-          padding:3px 9px;border-radius:4px;cursor:pointer;
-          background:rgba(56,189,248,0.15);color:#38bdf8;
-          border:1px solid rgba(56,189,248,0.4)">⬡ Selective mode</button>
-        <div class="ac-buffer">
-          Buffer:
-          <button onclick="adjustBuffer(-1)">−</button>
-          <span id="lbAcBufVal" style="min-width:30px;text-align:center;color:var(--text)">3m</span>
-          <button onclick="adjustBuffer(1)">+</button>
-        </div>
-      </div>
-      <button class="btn" style="background:var(--border);color:var(--text)"
-        onclick="cancelAutoCorrect()">✕ Discard</button>
-      <button class="btn btn-primary" id="lbAcSaveBtn"
-        onclick="confirmAutoCorrect()">✓ Apply to Fieldforce</button>
-    </div>
-    <!-- Edit mode bar -->
-    <div class="lb-edit-bar" id="lbEditBar">
-      <span class="edit-status" id="lbEditStatus">✎ Edit mode — drag vertices · right-click vertex to delete · click edge midpoint to add</span>
-      <span class="edit-compliance" id="lbEditCompliance"></span>
-      <button class="btn" style="background:var(--border);color:var(--text)"
-        onclick="cancelEdit()">✕ Cancel</button>
-      <button class="btn btn-primary" id="lbSaveBtn"
-        onclick="savePolygon()">💾 Save to Fieldforce</button>
-    </div>
     <div class="lb-foot">
       <button class="btn btn-sec" onclick="closeLb()">Close</button>
-      <button class="btn" id="lbAcBtn"
-        style="background:rgba(34,197,94,0.15);color:#22c55e;
-        border:1px solid rgba(34,197,94,0.4);display:none"
-        onclick="startAutoCorrect()">⬡ Auto-Correct Preview</button>
-      <button class="btn" id="lbEditBtn"
-        style="background:rgba(245,158,11,0.15);color:var(--amber);
-        border:1px solid rgba(245,158,11,0.4);display:none"
-        onclick="startEdit()">✎ Edit Polygon</button>
     </div>
   </div>
 </div>
@@ -1037,20 +519,8 @@ function updateThresholdLabel() {
   const v = getLargeThreshold();
   document.getElementById('thresholdLabel').textContent = v + ' ha';
 }
-
-function getMaxNeighbours() {
-  return parseInt(document.getElementById('maxNeighbours')?.value ?? 20);
-}
-
-function updateNeighbourLabel() {
-  const v = getMaxNeighbours();
-  document.getElementById('neighbourLabel').textContent = v >= 20 ? 'Any' : v.toString();
-}
 let fieldsData = [];     // { fieldId, owner, geoJSON, ring, guid }
 let treesByField = {};   // fieldId → [{lat, lng}]
-let fieldByIdMap = new Map(); // fieldId → field object (built after load)
-let neighbourMap = new Map(); // fieldId → { overlapping:[], adjacent:[] }
-let neighbourDetectionDone = false;
 
 // ── SPATIAL ────────────────────────────────────────────────────────────────
 function pip(lat, lng, ring) {
@@ -1098,155 +568,6 @@ function parseGeoJSON(raw) {
   return pairs.length >= 3 ? pairs : null;
 }
 
-// ── NEIGHBOUR DETECTION GEOMETRY ───────────────────────────────────────────
-function bboxOverlap(a, b, bufDeg) {
-  return a.maxLng + bufDeg >= b.minLng - bufDeg &&
-         a.minLng - bufDeg <= b.maxLng + bufDeg &&
-         a.maxLat + bufDeg >= b.minLat - bufDeg &&
-         a.minLat - bufDeg <= b.maxLat + bufDeg;
-}
-
-function segmentsIntersect(p1, p2, p3, p4) {
-  // p1..p4 are [lng, lat]
-  const d1x = p2[0]-p1[0], d1y = p2[1]-p1[1];
-  const d2x = p4[0]-p3[0], d2y = p4[1]-p3[1];
-  const cross = d1x*d2y - d1y*d2x;
-  if (Math.abs(cross) < 1e-12) return false;
-  const t = ((p3[0]-p1[0])*d2y - (p3[1]-p1[1])*d2x) / cross;
-  const u = ((p3[0]-p1[0])*d1y - (p3[1]-p1[1])*d1x) / cross;
-  return t > 0 && t < 1 && u > 0 && u < 1;
-}
-
-function polygonsIntersect(ringA, ringB) {
-  // Quick vertex-in-polygon checks first (covers most real cases)
-  for (const c of ringA) { if (pip(c[1], c[0], ringB)) return true; }
-  for (const c of ringB) { if (pip(c[1], c[0], ringA)) return true; }
-  // Edge-edge check (catches crossing without containment — rare for farms)
-  const nA = ringA.length, nB = ringB.length;
-  for (let i = 0; i < nA; i++) {
-    const a1 = ringA[i], a2 = ringA[(i+1)%nA];
-    for (let j = 0; j < nB; j++) {
-      if (segmentsIntersect(a1, a2, ringB[j], ringB[(j+1)%nB])) return true;
-    }
-  }
-  return false;
-}
-
-async function startNeighbourDetection() {
-  neighbourMap.clear();
-  neighbourDetectionDone = false;
-  const ADJ_BUF = 0.00045; // ~50 m in degrees lat/lng
-  const CELL    = 0.1;     // 0.1° grid cell ≈ 11 km
-
-  // Build bounding boxes
-  const bboxes = new Map();
-  fieldsData.forEach(f => {
-    if (!f.ring) return;
-    const lats = f.ring.map(c => c[1]);
-    const lngs = f.ring.map(c => c[0]);
-    bboxes.set(f.fieldId, {
-      minLat: Math.min(...lats), maxLat: Math.max(...lats),
-      minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
-    });
-  });
-
-  // Build spatial grid
-  const grid = new Map();
-  fieldsData.forEach(f => {
-    const bb = bboxes.get(f.fieldId);
-    if (!bb) return;
-    const r0 = Math.floor((bb.minLat - ADJ_BUF) / CELL);
-    const r1 = Math.floor((bb.maxLat + ADJ_BUF) / CELL);
-    const c0 = Math.floor((bb.minLng - ADJ_BUF) / CELL);
-    const c1 = Math.floor((bb.maxLng + ADJ_BUF) / CELL);
-    for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) {
-        const key = `${r}_${c}`;
-        if (!grid.has(key)) grid.set(key, []);
-        grid.get(key).push(f);
-      }
-    }
-  });
-
-  // Show progress bar
-  const prog = document.getElementById('nbProgress');
-  const bar  = document.getElementById('nbBar');
-  const txt  = document.getElementById('nbProgressText');
-  prog.style.display = 'block';
-
-  // Process in chunks to stay non-blocking
-  const checked = new Set();
-  const CHUNK   = 60;
-  const total   = fieldsData.length;
-  let   overlapCount = 0, adjacentCount = 0;
-
-  for (let i = 0; i < total; i += CHUNK) {
-    const slice = fieldsData.slice(i, i + CHUNK);
-    slice.forEach(f => {
-      const bb = bboxes.get(f.fieldId);
-      if (!bb) return;
-
-      const r0 = Math.floor((bb.minLat - ADJ_BUF) / CELL);
-      const r1 = Math.floor((bb.maxLat + ADJ_BUF) / CELL);
-      const c0 = Math.floor((bb.minLng - ADJ_BUF) / CELL);
-      const c1 = Math.floor((bb.maxLng + ADJ_BUF) / CELL);
-
-      const candidates = new Set();
-      for (let r = r0; r <= r1; r++) {
-        for (let c = c0; c <= c1; c++) {
-          (grid.get(`${r}_${c}`) || []).forEach(g => {
-            if (g.fieldId !== f.fieldId) candidates.add(g);
-          });
-        }
-      }
-
-      candidates.forEach(g => {
-        const pk = f.fieldId < g.fieldId
-          ? `${f.fieldId}|${g.fieldId}` : `${g.fieldId}|${f.fieldId}`;
-        if (checked.has(pk)) return;
-        checked.add(pk);
-
-        const bbG = bboxes.get(g.fieldId);
-        if (!bbG || !bboxOverlap(bb, bbG, ADJ_BUF)) return;
-
-        function ensureEntry(id) {
-          if (!neighbourMap.has(id)) neighbourMap.set(id, {overlapping:[], adjacent:[]});
-          return neighbourMap.get(id);
-        }
-
-        if (polygonsIntersect(f.ring, g.ring)) {
-          ensureEntry(f.fieldId).overlapping.push(g.fieldId);
-          ensureEntry(g.fieldId).overlapping.push(f.fieldId);
-          overlapCount++;
-        } else {
-          ensureEntry(f.fieldId).adjacent.push(g.fieldId);
-          ensureEntry(g.fieldId).adjacent.push(f.fieldId);
-          adjacentCount++;
-        }
-      });
-    });
-
-    // Update progress
-    const pct = Math.round((i + CHUNK) / total * 100);
-    bar.style.width = Math.min(pct, 100) + '%';
-    txt.textContent = `Detecting neighbours… ${Math.min(i + CHUNK, total).toLocaleString()} / ${total.toLocaleString()} fields`;
-    await new Promise(res => setTimeout(res, 0));
-  }
-
-  neighbourDetectionDone = true;
-  prog.style.display = 'none';
-
-  // Update overlap KPI
-  const uniqueOverlap = [...neighbourMap.values()].filter(n => n.overlapping.length > 0).length;
-  document.getElementById('kpiOverlap').textContent = uniqueOverlap.toLocaleString();
-
-  // Re-render to show badges
-  renderPage();
-
-  // Return grid for re-allocation pass to reuse
-  return { grid, bboxes };
-}
-
 function autoLatLng(a, b) {
   if (a < 0 && b > 0) return { lat: a, lng: b };
   if (b < 0 && a > 0) return { lat: b, lng: a };
@@ -1254,127 +575,7 @@ function autoLatLng(a, b) {
   return { lat: b, lng: a };
 }
 
-// ── ROGUE GPS DETECTION ────────────────────────────────────────────────────
-const ROGUE_DIST_M   = 1000;  // > 1 km from centroid = rogue
-const ROGUE_ACC_M    = 50;    // > 50 m accuracy reading = poor fix
-
-function haversineM(lat1, lng1, lat2, lng2) {
-  const R  = 6371000;
-  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lng2 - lng1) * Math.PI / 180;
-  const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function rogueFlag(t, centLat, centLng) {
-  const dist = haversineM(t.lat, t.lng, centLat, centLng);
-  const poorGps = t.accuracy != null && t.accuracy > ROGUE_ACC_M;
-  if (dist > ROGUE_DIST_M && poorGps) return { flag: '🚨 Rogue', dist, reason: `${Math.round(dist)}m from centroid, accuracy ${Math.round(t.accuracy)}m` };
-  if (dist > ROGUE_DIST_M)           return { flag: '⚠ Far',   dist, reason: `${Math.round(dist)}m from centroid` };
-  if (poorGps)                        return { flag: '⚠ GPS',   dist, reason: `Accuracy ${Math.round(t.accuracy)}m` };
-  return null;
-}
-// Flags overlapping pairs that look like original + corrected version of the
-// same field. Signature: one polygon is largely contained within the other
-// (>70% of vertices inside) AND has noticeably more vertices (more detail).
-function correctionArtifactFlag(ringA, ringB) {
-  if (!ringA || !ringB) return 'Unknown';
-  const aInB = ringA.filter(c => pip(c[1], c[0], ringB)).length / ringA.length;
-  const bInA = ringB.filter(c => pip(c[1], c[0], ringA)).length / ringB.length;
-  const contained = Math.max(aInB, bInA);
-  if (contained < 0.70) return 'No — genuine overlap';
-  const areaA = ringAreaHa(ringA), areaB = ringAreaHa(ringB);
-  const smaller      = areaA <= areaB ? 'A' : 'B';
-  const moreVertices = ringA.length >= ringB.length ? 'A' : 'B';
-  const confidence   = contained >= 0.90 ? 'Likely' : 'Possible';
-  return smaller === moreVertices
-    ? `${confidence} correction artifact — Field ${smaller} is smaller & more detailed (probable corrected version)`
-    : `${confidence} correction artifact — Field ${smaller} is smaller but has fewer vertices`;
-}
-
-// ── EMBEDDED POLYGON DETECTION ─────────────────────────────────────────────
-// Returns true if ringA is >80% contained within ringB
-// (i.e. B is the "dominating" polygon that swallows A)
-function isEmbedded(ringA, ringB, threshold = 0.80) {
-  if (!ringA || !ringB) return false;
-  const inside = ringA.filter(c => pip(c[1], c[0], ringB)).length;
-  return inside / ringA.length >= threshold;
-}
-
-function embeddedRelation(ringA, ringB) {
-  // Returns: 'A_in_B', 'B_in_A', 'partial', 'none'
-  if (!ringA || !ringB) return 'none';
-  const aInB = ringA.filter(c => pip(c[1], c[0], ringB)).length / ringA.length;
-  const bInA = ringB.filter(c => pip(c[1], c[0], ringA)).length / ringB.length;
-  if (aInB >= 0.80) return 'A_in_B';
-  if (bInA >= 0.80) return 'B_in_A';
-  return 'partial';
-}
-// For every tree outside its tagged field, find which field polygon it
-// actually sits inside (if any). Sets t.actualFieldId on each outside tree:
-//   = same fieldId  → inside (already handled by pip, skipped here)
-//   = other fieldId → re-allocated to a different field
-//   = null          → orphaned (outside every polygon)
-let reallocationDone = false;
-
-async function startReallocation({ grid, bboxes }) {
-  reallocationDone = false;
-  const CELL  = 0.1;
-  const CHUNK = 60;
-  const total = fieldsData.length;
-
-  // Show progress reusing the same bar (recolour to blue)
-  const prog = document.getElementById('nbProgress');
-  const bar  = document.getElementById('nbBar');
-  const txt  = document.getElementById('nbProgressText');
-  bar.style.background = '#38bdf8';
-  bar.style.width = '0%';
-  prog.style.display = 'block';
-
-  for (let i = 0; i < total; i += CHUNK) {
-    const slice = fieldsData.slice(i, i + CHUNK);
-
-    slice.forEach(f => {
-      const trees = treesByField[f.fieldId] || [];
-      trees.forEach(t => {
-        // Skip trees already inside their tagged field
-        if (f.ring && pip(t.lat, t.lng, f.ring)) {
-          t.actualFieldId = f.fieldId;
-          return;
-        }
-        if (t.actualFieldId !== undefined) return; // already resolved
-
-        // Search grid cells around tree position
-        const gr = Math.floor(t.lat / CELL);
-        const gc = Math.floor(t.lng / CELL);
-        let found = null;
-        outer:
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            const candidates = grid.get(`${gr + dr}_${gc + dc}`) || [];
-            for (const g of candidates) {
-              if (g.fieldId !== f.fieldId && g.ring && pip(t.lat, t.lng, g.ring)) {
-                found = g.fieldId;
-                break outer;
-              }
-            }
-          }
-        }
-        t.actualFieldId = found; // null = orphaned, string = re-allocated
-      });
-    });
-
-    const pct = Math.round((i + CHUNK) / total * 100);
-    bar.style.width = Math.min(pct, 100) + '%';
-    txt.textContent = `Re-allocating outside trees… ${Math.min(i + CHUNK, total).toLocaleString()} / ${total.toLocaleString()} fields`;
-    await new Promise(res => setTimeout(res, 0));
-  }
-
-  reallocationDone = true;
-  prog.style.display = 'none';
-  renderPage();
-}
+// ── FIELDFORCE FETCH ───────────────────────────────────────────────────────
 function setStatus(msg, cls = '') {
   const el = document.getElementById('ffStatus');
   el.textContent = msg;
@@ -1384,46 +585,18 @@ function setStatus(msg, cls = '') {
 async function dvFetchAll(token, url, label) {
   const rows = [];
   let page = 0;
-  const MAX_RETRIES = 4;
-
   while (url) {
     page++;
     setStatus(`⬇ ${label}: page ${page} (${rows.length.toLocaleString()} so far)…`, 'ok');
-
-    let res, lastErr;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        res = await fetch(url, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'OData-MaxVersion': '4.0', 'OData-Version': '4.0',
-            'Prefer': 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
-          }
-        });
-        if (res.ok) { lastErr = null; break; }
-        // 500/429/503 — wait and retry
-        lastErr = `HTTP ${res.status}`;
-        const wait = attempt * 3000; // 3s, 6s, 9s, 12s
-        setStatus(`⚠ ${label} page ${page}: ${lastErr} — retry ${attempt}/${MAX_RETRIES} in ${wait/1000}s…`, 'ok');
-        await new Promise(r => setTimeout(r, wait));
-      } catch(e) {
-        lastErr = e.message;
-        const wait = attempt * 3000;
-        setStatus(`⚠ ${label} page ${page}: ${lastErr} — retry ${attempt}/${MAX_RETRIES} in ${wait/1000}s…`, 'ok');
-        await new Promise(r => setTimeout(r, wait));
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'OData-MaxVersion': '4.0', 'OData-Version': '4.0',
+        'Prefer': 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
       }
-    }
-
-    if (lastErr) {
-      // All retries failed — skip this page and continue rather than crashing
-      console.warn(`dvFetchAll: skipping ${label} page ${page} after ${MAX_RETRIES} retries: ${lastErr}`);
-      setStatus(`⚠ ${label} page ${page} skipped after retries — continuing…`, 'ok');
-      await new Promise(r => setTimeout(r, 1000));
-      // Can't advance nextLink without a response — stop pagination
-      break;
-    }
-
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     rows.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
@@ -1446,34 +619,24 @@ async function connect() {
     // Load fields
     setStatus('Loading fields…', 'ok');
     const fRows = await dvFetchAll(token,
-      `${DV_API}/ccs_fields?$select=ccs_fieldid,ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon,modifiedon,_createdby_value,_modifiedby_value&$filter=statecode eq 0`,
+      `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon&$filter=statecode eq 0`,
       'Fields'
     );
 
-    const IS_TEST_USER = /^testuser[\s_]/i;
-
-    const allFields = fRows.map(r => ({
-      guid:       String(r.ccs_fieldid || '').toLowerCase(),
-      fieldId:    String(r.ccs_cssfieldid_field || '').trim(),
-      owner:      String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
-      geoJSON:    String(r.ccs_fieldgeojson_field || ''),
-      createdOn:  r.createdon ? r.createdon.slice(0,10) : '',
-      createdOnFmt: r['createdon@OData.Community.Display.V1.FormattedValue'] || '',
-      createdBy:  r['_createdby_value@OData.Community.Display.V1.FormattedValue'] || '',
-      modifiedOn: r.modifiedon ? r.modifiedon.slice(0,10) : '',
-      modifiedOnFmt: r['modifiedon@OData.Community.Display.V1.FormattedValue'] || '',
-      modifiedBy: r['_modifiedby_value@OData.Community.Display.V1.FormattedValue'] || '',
+    fieldsData = fRows.map(r => ({
+      guid:      String(r.ccs_fieldid || '').toLowerCase(),
+      fieldId:   String(r.ccs_cssfieldid_field || '').trim(),
+      owner:     String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
+      geoJSON:   String(r.ccs_fieldgeojson_field || ''),
+      createdOn: r.createdon ? r.createdon.slice(0,10) : '',
       ring:      null
     })).map(f => { f.ring = parseGeoJSON(f.geoJSON); return f; })
       .filter(f => f.fieldId);
 
-    const testFieldCount = allFields.filter(f => IS_TEST_USER.test(f.owner)).length;
-    fieldsData = allFields.filter(f => !IS_TEST_USER.test(f.owner));
-
     // Load trees
     setStatus('Loading trees…', 'ok');
     const tRows = await dvFetchAll(token,
-      `${DV_API}/ccs_trees?$select=ccs_treecode,modifiedon,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value,ccs_species_tree,ccs_accuracyreading&$filter=statecode eq 0`,
+      `${DV_API}/ccs_trees?$select=ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
       'Trees'
     );
 
@@ -1481,128 +644,27 @@ async function connect() {
     const guidToId = {};
     fieldsData.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
 
-    // Build fieldId set for fast lookup
-    const fieldIdSet = new Set(fieldsData.map(f => f.fieldId));
-
-    // Deduplicate trees by ccs_treecode — keep newest modifiedon
-    const treeMap = new Map();
-    tRows.forEach(r => {
-      const code = r.ccs_treecode;
-      if (!code) return;
-      const existing = treeMap.get(code);
-      if (!existing || r.modifiedon > existing.modifiedon) {
-        treeMap.set(code, r);
-      }
-    });
-    const noCode     = tRows.filter(r => !r.ccs_treecode);
-    const dedupedRows = [...treeMap.values(), ...noCode];
-    const dupesDropped = tRows.length - dedupedRows.length;
-
     treesByField = {};
     let treeCount = 0;
-    let assignedByCode = 0, assignedByGuid = 0, assignedNeither = 0;
-
-    dedupedRows.forEach(r => {
+    tRows.forEach(r => {
       const lat = parseFloat(r.ccs_treelatitude_tree);
       const lng = parseFloat(r.ccs_treelongitude_tree);
       if (isNaN(lat) || isNaN(lng)) return;
       const coords = autoLatLng(lat, lng);
-
-      // ── PRIMARY: derive field from tree code ──────────────────────────────
-      const code  = r.ccs_treecode || '';
-      const parts = code.split('-');
-      const codeFieldId = parts.length >= 4
-        ? `FLD-${parts[1]}-${parts[2]}-${parts[3]}` : null;
-
-      // ── FALLBACK: GUID link ───────────────────────────────────────────────
-      const guid      = (r['_ccs_field_tree_value'] || '').toLowerCase();
-      const guidFieldId = guidToId[guid] || null;
-
-      // Use tree code if it resolves to a known field, otherwise fall back to GUID
-      let fid, assignMethod;
-      if (codeFieldId && fieldIdSet.has(codeFieldId)) {
-        fid = codeFieldId;
-        assignMethod = 'code';
-        assignedByCode++;
-      } else if (guidFieldId) {
-        fid = guidFieldId;
-        assignMethod = 'guid';
-        assignedByGuid++;
-      } else {
-        assignedNeither++;
-        return; // can't assign — skip
-      }
-
-      const codeGuidMismatch = codeFieldId && guidFieldId && codeFieldId !== guidFieldId;
-
+      const guid   = (r['_ccs_field_tree_value'] || '').toLowerCase();
+      const fid    = guidToId[guid];
+      if (!fid) return;
       if (!treesByField[fid]) treesByField[fid] = [];
-      treesByField[fid].push({
-        lat: coords.lat, lng: coords.lng,
-        code,
-        species:          r['ccs_species_tree@OData.Community.Display.V1.FormattedValue'] || '',
-        accuracy:         r.ccs_accuracyreading != null ? parseFloat(r.ccs_accuracyreading) : null,
-        codeFieldId,
-        guidFieldId,
-        assignMethod,     // 'code' | 'guid'
-        codeGuidMismatch
-      });
+      treesByField[fid].push({ lat: coords.lat, lng: coords.lng });
       treeCount++;
     });
 
     // KPIs
-    const loadedAt = new Date().toISOString();
-    window._catalogLoadedAt       = loadedAt;
-    window._catalogDupesDropped   = dupesDropped;
-    window._catalogTestFields     = testFieldCount;
-
-    // Count code-vs-guid mismatches across all trees
-    let codeGuidMismatches = 0;
-    Object.values(treesByField).forEach(trees => {
-      trees.forEach(t => { if (t.codeGuidMismatch) codeGuidMismatches++; });
-    });
-    window._catalogCodeGuidMismatches = codeGuidMismatches;
-
-    window._catalogAssignedByCode   = assignedByCode;
-    window._catalogAssignedByGuid   = assignedByGuid;
-    window._catalogAssignedNeither  = assignedNeither;
-
     updateKPIs();
-    setStatus(
-      `✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`
-      + (dupesDropped > 0    ? ` · ${dupesDropped.toLocaleString()} dupes removed` : '')
-      + (testFieldCount > 0  ? ` · ${testFieldCount.toLocaleString()} test fields excluded` : '')
-      + ` · ${assignedByCode.toLocaleString()} by code`
-      + (assignedByGuid > 0  ? ` · ${assignedByGuid.toLocaleString()} by GUID` : '')
-      + (assignedNeither > 0 ? ` · ⚠ ${assignedNeither.toLocaleString()} unassigned` : '')
-      + (codeGuidMismatches > 0 ? ` · ⚠ ${codeGuidMismatches.toLocaleString()} mismatches` : ''),
-      'ok'
-    );
+    setStatus(`✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`, 'ok');
     document.getElementById('fieldCount').textContent =
       `Fields (${fieldsData.length.toLocaleString()})`;
-    // Build fast lookup map
-    fieldByIdMap = new Map(fieldsData.map(f => [f.fieldId, f]));
-
-    // Fetch current user display name for change log
-    try {
-      const me = await fetch(`${DV_API}/WhoAmI`, {
-        headers: { 'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'OData-MaxVersion': '4.0', 'OData-Version': '4.0' }
-      }).then(r => r.json());
-      if (me.UserId) {
-        const userRes = await fetch(
-          `${DV_API}/systemusers(${me.UserId})?$select=fullname`,
-          { headers: { 'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-            'OData-MaxVersion': '4.0', 'OData-Version': '4.0' } }
-        ).then(r => r.json());
-        window._currentUserName = userRes.fullname || 'Daniel Jones';
-      }
-    } catch(e) { window._currentUserName = 'Daniel Jones'; }
-
     render();
-    // Kick off background neighbour detection, then re-allocation
-    startNeighbourDetection().then(gridData => startReallocation(gridData));
   } catch(e) {
     btn.disabled = false;
     btn.textContent = 'Connect to Fieldforce';
@@ -1613,46 +675,26 @@ async function connect() {
 
 function updateKPIs() {
   let totalIn = 0, totalOut = 0, largeCount = 0;
-  let largeExcludedFields = 0, largeExcludedTrees = 0;
   const threshold = getLargeThreshold();
   fieldsData.forEach(f => {
     const trees = treesByField[f.fieldId] || [];
     if (f.ring) {
-      const isLarge = ringAreaHa(f.ring) > threshold;
-      if (isLarge) {
-        largeCount++;
-        largeExcludedFields++;
-        largeExcludedTrees += trees.length;
-        return; // ← exclude large fields from compliance KPIs entirely
-      }
+      if (ringAreaHa(f.ring) > threshold) largeCount++;
       trees.forEach(t => pip(t.lat, t.lng, f.ring) ? totalIn++ : totalOut++);
     }
   });
-  const total   = totalIn + totalOut;
-  const pct     = total > 0 ? Math.round(totalIn / total * 100) : 0;
-  const pctCol  = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
-  const eligibleFields = fieldsData.length - largeExcludedFields;
-
-  document.getElementById('kpiFields').textContent  = eligibleFields.toLocaleString();
-  document.getElementById('kpiFields').parentNode.querySelector('.l').textContent =
-    `Fields (excl. ${largeExcludedFields} large)`;
+  const total = totalIn + totalOut;
+  const pct = total > 0 ? Math.round(totalIn / total * 100) : 0;
+  const pctCol = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+  document.getElementById('kpiFields').textContent  = fieldsData.length.toLocaleString();
   document.getElementById('kpiTrees').textContent   = total.toLocaleString();
-  document.getElementById('kpiTrees').parentNode.querySelector('.l').textContent =
-    `Trees (excl. ${largeExcludedTrees.toLocaleString()})`;
   document.getElementById('kpiInside').textContent  = totalIn.toLocaleString();
   document.getElementById('kpiOutside').textContent = totalOut.toLocaleString();
   document.getElementById('kpiLarge').textContent   = largeCount.toLocaleString();
-  // Overlapping KPI — updated by neighbour detection; show placeholder until ready
-  if (!neighbourDetectionDone) {
-    document.getElementById('kpiOverlap').textContent = '…';
-  }
   document.getElementById('btnExport').disabled = false;
   const kpiPct = document.getElementById('kpiPct');
   kpiPct.textContent = pct + '% compliant';
   kpiPct.style.color = pctCol;
-  // Store for exports
-  window._largeExcludedFields = largeExcludedFields;
-  window._largeExcludedTrees  = largeExcludedTrees;
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
@@ -1686,34 +728,6 @@ function render() {
     if (filter === 'large')         return isLarge;
     if (filter === 'large_with')    return isLarge && trees.length > 0;
     if (filter === 'large_without') return isLarge && trees.length === 0;
-    if (filter === 'overlapping') {
-      const nb = neighbourMap.get(f.fieldId);
-      return nb && nb.overlapping.length > 0;
-    }
-    if (filter === 'adjacent') {
-      const nb = neighbourMap.get(f.fieldId);
-      return nb && nb.adjacent.length > 0;
-    }
-    if (filter === 'embedded') {
-      const nb = neighbourMap.get(f.fieldId);
-      if (!nb || !f.ring) return false;
-      return nb.overlapping.some(nid => {
-        const nf = fieldByIdMap.get(nid);
-        return nf && nf.ring && embeddedRelation(f.ring, nf.ring) !== 'none';
-      });
-    }
-    if (filter === 'isolated') {
-      const nb = neighbourMap.get(f.fieldId);
-      return !nb || (nb.overlapping.length === 0 && nb.adjacent.length === 0);
-    }
-
-    // Max neighbours slider — applied to ALL filter results
-    const maxNb = getMaxNeighbours();
-    if (maxNb < 20) {
-      const nb = neighbourMap.get(f.fieldId);
-      const total = nb ? nb.overlapping.length + nb.adjacent.length : 0;
-      if (total > maxNb) return false;
-    }
     if (!f.ring) return filter === '';
     if (filter === 'inside')        return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
     if (filter === 'outside')       return trees.some(t => !pip(t.lat, t.lng, f.ring));
@@ -1764,11 +778,6 @@ function renderPage() {
       ? `<span class="badge" style="background:${pctCol}18;color:${pctCol};border:1px solid ${pctCol}44">${pct}%</span>` : '';
     const areaBadge = area !== null
       ? `<span class="badge" style="background:${isLarge?'rgba(245,158,11,0.1)':'rgba(56,189,248,0.08)'};color:${isLarge?'#f59e0b':'var(--muted)'};border:1px solid ${isLarge?'rgba(245,158,11,0.3)':'var(--border)'}">${isLarge?'⚠ ':''}${area.toFixed(1)}ha</span>` : '';
-    const nb = neighbourMap.get(f.fieldId);
-    const overlapBadge = (nb && nb.overlapping.length > 0)
-      ? `<span class="badge ov">⧖ ${nb.overlapping.length} overlap</span>` : '';
-    const adjBadge = (nb && nb.adjacent.length > 0)
-      ? `<span class="badge adj">~ ${nb.adjacent.length} adj</span>` : '';
     const thumb = hasRing ? makeSVG(f, trees)
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
     return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})"
@@ -1786,8 +795,6 @@ function renderPage() {
             : `<span class="badge na">No trees</span>`}
           ${!hasRing ? `<span class="badge na">No polygon</span>` : ''}
           ${areaBadge}
-          ${overlapBadge}
-          ${adjBadge}
         </div>
       </div>
     </div>`;
@@ -1806,15 +813,49 @@ function changePage(d) {
 
 function makeSVG(f, trees) {
   const ring = f.ring;
-  const W = 200, H = 140, PAD = 12;
+  const W = 200, H = 160, PAD = 14;
 
   const lats = ring.map(c => c[1]);
   const lngs = ring.map(c => c[0]);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  const spanLat = maxLat - minLat || 0.001;
-  const spanLng = maxLng - minLng || 0.001;
+  let spanLat = maxLat - minLat;
+  let spanLng = maxLng - minLng;
 
+  // Enforce a minimum span so tiny polygons (20×20m ≈ 0.0002°) fill the thumbnail
+  // A field of 0.001° is about 111m — a reasonable minimum visual size
+  const MIN_SPAN = 0.001;
+  if (spanLat < MIN_SPAN || spanLng < MIN_SPAN) {
+    const maxSpan  = Math.max(spanLat, spanLng, MIN_SPAN);
+    const cLat     = (minLat + maxLat) / 2;
+    const cLng     = (minLng + maxLng) / 2;
+    spanLat = maxSpan;
+    spanLng = maxSpan;
+    // Re-centre around the polygon centroid
+    const newMinLat = cLat - spanLat / 2;
+    const newMaxLat = cLat + spanLat / 2;
+    const newMinLng = cLng - spanLng / 2;
+
+    const sc   = Math.min((W - PAD*2) / spanLng, (H - PAD*2) / spanLat);
+    const offX = (W - spanLng * sc) / 2;
+    const offY = (H - spanLat * sc) / 2;
+
+    const tx = lng => ((lng - newMinLng) * sc + offX).toFixed(1);
+    const ty = lat => ((newMaxLat - lat) * sc + offY).toFixed(1);
+
+    const pts  = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
+    const step = trees.length > 200 ? Math.ceil(trees.length / 200) : 1;
+    const dots = trees.filter((_, i) => i % step === 0).map(t => {
+      const inside = pip(t.lat, t.lng, ring);
+      return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="3"
+        fill="${inside ? '#22c55e' : '#ef4444'}" fill-opacity="0.9"
+        stroke="rgba(0,0,0,0.4)" stroke-width="0.5"/>`;
+    }).join('');
+
+    return svgWrap(W, H, pts, dots);
+  }
+
+  // Normal path — polygon is large enough to scale naturally
   const sc   = Math.min((W - PAD*2) / spanLng, (H - PAD*2) / spanLat);
   const offX = (W - spanLng * sc) / 2;
   const offY = (H - spanLat * sc) / 2;
@@ -1822,20 +863,26 @@ function makeSVG(f, trees) {
   const tx = lng => ((lng - minLng) * sc + offX).toFixed(1);
   const ty = lat => ((maxLat - lat) * sc + offY).toFixed(1);
 
-  const pts = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
-
+  const pts  = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
   const step = trees.length > 200 ? Math.ceil(trees.length / 200) : 1;
   const dots = trees.filter((_, i) => i % step === 0).map(t => {
     const inside = pip(t.lat, t.lng, ring);
-    return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="2.5"
-      fill="${inside ? '#22c55e' : '#ef4444'}" fill-opacity="0.85"
-      stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>`;
+    return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="3"
+      fill="${inside ? '#22c55e' : '#ef4444'}" fill-opacity="0.9"
+      stroke="rgba(0,0,0,0.4)" stroke-width="0.5"/>`;
   }).join('');
 
+  return svgWrap(W, H, pts, dots);
+}
+
+function svgWrap(W, H, pts, dots) {
   return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
     style="width:100%;height:100%;display:block;background:#0a0e18">
-    <polygon points="${pts}" fill="rgba(56,189,248,0.1)"
-      stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <!-- Grid crosshair -->
+    <line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+    <line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+    <polygon points="${pts}" fill="rgba(56,189,248,0.12)"
+      stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,3"/>
     ${dots}
   </svg>`;
 }
@@ -1872,8 +919,6 @@ function clearFilters() {
   document.getElementById('fltSearch').value = '';
   document.getElementById('fltDateFrom').value = '';
   document.getElementById('fltDateTo').value   = '';
-  const nb = document.getElementById('maxNeighbours');
-  if (nb) { nb.value = 20; updateNeighbourLabel(); }
   render();
 }
 
@@ -1887,14 +932,6 @@ function openLb(idx) {
   document.getElementById('lbTitle').textContent = f.fieldId;
   document.getElementById('lbSub').textContent   =
     [f.owner, f.createdOn ? `Registered: ${f.createdOn}` : ''].filter(Boolean).join(' · ');
-
-  // Audit trail row
-  const auditParts = [];
-  if (f.createdBy)  auditParts.push(`Created by: ${f.createdBy}`);
-  if (f.createdOnFmt) auditParts.push(f.createdOnFmt);
-  if (f.modifiedBy) auditParts.push(`Modified by: ${f.modifiedBy}`);
-  if (f.modifiedOnFmt) auditParts.push(f.modifiedOnFmt);
-  document.getElementById('lbAudit').textContent = auditParts.join(' · ') || '';
 
   const trees  = treesByField[f.fieldId] || [];
   const ring   = f.ring;
@@ -1936,47 +973,6 @@ function openLb(idx) {
         border:1px solid rgba(245,158,11,0.3);border-radius:3px;
         padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
         ⚠ Large ${m.area.toFixed(1)} ha</span>` : '';
-
-  // Neighbour badges in lightbox header
-  const nb = neighbourMap.get(f.fieldId);
-  const lbOverlapBadge = document.getElementById('lbLargeBadge').parentNode;
-  // Remove any existing neighbour badges
-  ['lbNbOverlapBadge','lbNbAdjBadge'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.remove();
-  });
-  if (nb && nb.overlapping.length > 0) {
-    // Count embedded relationships
-    const embCount = nb.overlapping.filter(nid => {
-      const nf = fieldByIdMap.get(nid);
-      return nf && nf.ring && embeddedRelation(f.ring, nf.ring) !== 'none';
-    }).length;
-    const sp = document.createElement('span');
-    sp.id = 'lbNbOverlapBadge';
-    sp.innerHTML = embCount > 0
-      ? `<span style="background:rgba(167,139,250,0.1);color:#a78bfa;
-          border:1px solid rgba(167,139,250,0.3);border-radius:3px;
-          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
-          ⊂ ${embCount} embedded</span>
-         <span style="background:rgba(239,68,68,0.1);color:#ef4444;
-          border:1px solid rgba(239,68,68,0.3);border-radius:3px;
-          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700;margin-left:4px">
-          ⧖ ${nb.overlapping.length - embCount} overlapping</span>`
-      : `<span style="background:rgba(239,68,68,0.1);color:#ef4444;
-          border:1px solid rgba(239,68,68,0.3);border-radius:3px;
-          padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
-          ⧖ ${nb.overlapping.length} overlapping</span>`;
-    lbOverlapBadge.insertBefore(sp, document.getElementById('lbLargeBadge'));
-  }
-  if (nb && nb.adjacent.length > 0) {
-    const sp = document.createElement('span');
-    sp.id = 'lbNbAdjBadge';
-    sp.innerHTML = `<span style="background:rgba(245,158,11,0.1);color:#f59e0b;
-      border:1px solid rgba(245,158,11,0.3);border-radius:3px;
-      padding:2px 7px;font-family:var(--mono);font-size:9px;font-weight:700">
-      ~ ${nb.adjacent.length} adjacent</span>`;
-    lbOverlapBadge.insertBefore(sp, document.getElementById('lbLargeBadge'));
-  }
   document.getElementById('lbBoundsBadge').innerHTML = m
     ? m.inZambia
       ? `<span style="background:rgba(34,197,94,0.1);color:#22c55e;
@@ -1988,109 +984,6 @@ function openLb(idx) {
     : '';
 
   document.getElementById('lb').classList.add('open');
-
-  // Show edit button only if field has a polygon and a valid GUID for PATCH
-  const editBtn = document.getElementById('lbEditBtn');
-  editBtn.style.display = (ring && f.guid) ? '' : 'none';
-  // Show auto-correct button if field has outside trees and a guid
-  const outsideCount = ring ? trees.filter(t => !pip(t.lat, t.lng, ring)).length : 0;
-  const acBtn = document.getElementById('lbAcBtn');
-  acBtn.style.display = (outsideCount > 0 && f.guid) ? '' : 'none';
-  // Reset bars
-  document.getElementById('lbEditBar').classList.remove('active');
-  document.getElementById('lbAcBar').classList.remove('active');
-  document.getElementById('lb').dataset.editIdx = idx;
-
-  // Outside tree breakdown
-  const outsideTrees = ring
-    ? trees.filter(t => !pip(t.lat, t.lng, ring))
-    : [];
-  const outSec = document.getElementById('lbOutsideSection');
-  if (outsideTrees.length === 0) {
-    outSec.style.display = 'none';
-  } else {
-    outSec.style.display = '';
-    document.getElementById('lbOutsideBody').style.display = 'none';
-    document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span').textContent =
-      '▸ Outside Trees';
-
-    const reAllocated = outsideTrees.filter(t => t.actualFieldId && t.actualFieldId !== f.fieldId);
-    const orphaned    = outsideTrees.filter(t => t.actualFieldId === null);
-    const pending     = outsideTrees.filter(t => t.actualFieldId === undefined);
-
-    // Centroid from ring metrics for rogue distance check
-    const cm = f.ring ? ringMetrics(f.ring) : null;
-    const centLat = cm ? cm.cLat : f.ring ? f.ring[0][1] : 0;
-    const centLng = cm ? cm.cLng : f.ring ? f.ring[0][0] : 0;
-    const rogues  = outsideTrees.filter(t => rogueFlag(t, centLat, centLng));
-
-    document.getElementById('lbOutsideSummary').innerHTML = [
-      reAllocated.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
-        background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);
-        border-radius:3px;padding:2px 7px">→ ${reAllocated.length} re-allocated</span>` : '',
-      orphaned.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
-        background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);
-        border-radius:3px;padding:2px 7px">⊗ ${orphaned.length} orphaned</span>` : '',
-      rogues.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
-        background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.5);
-        border-radius:3px;padding:2px 7px">🚨 ${rogues.length} rogue GPS</span>` : '',
-      pending.length ? `<span style="font-family:var(--mono);font-size:9px;font-weight:700;
-        background:rgba(107,136,168,0.1);color:var(--muted);border:1px solid var(--border);
-        border-radius:3px;padding:2px 7px">⏳ ${pending.length} pending</span>` : ''
-    ].join('');
-
-    // Build tree table rows
-    const rows = outsideTrees.slice(0, 500).map((t, i) => {
-      let statusClass = 'pnd', actualLabel = '⏳ Pending';
-      if (t.actualFieldId === null) {
-        statusClass = 'orp'; actualLabel = '⊗ Orphaned';
-      } else if (t.actualFieldId && t.actualFieldId !== f.fieldId) {
-        statusClass = 're'; actualLabel = '→ ' + t.actualFieldId;
-      }
-      const rf   = rogueFlag(t, centLat, centLng);
-      const rogueCell = rf
-        ? `<td title="${rf.reason}" style="color:#ef4444;font-weight:700">${rf.flag}</td>`
-        : '<td style="color:var(--muted)">—</td>';
-      const distM = Math.round(haversineM(t.lat, t.lng, centLat, centLng));
-      const accStr = t.accuracy != null ? Math.round(t.accuracy) : '—';
-      const distCol = distM > ROGUE_DIST_M
-        ? `<td style="color:#ef4444">${distM.toLocaleString()}</td>`
-        : `<td>${distM.toLocaleString()}</td>`;
-      const accCol = t.accuracy != null && t.accuracy > ROGUE_ACC_M
-        ? `<td style="color:#f59e0b">${accStr}</td>`
-        : `<td>${accStr}</td>`;
-      const codeFieldCell = t.codeFieldId
-        ? (t.codeGuidMismatch
-            ? `<td title="Tree code says ${t.codeFieldId} but GUID links to ${f.fieldId}"
-                style="color:#ef4444;font-weight:700">⚠ ${t.codeFieldId}</td>`
-            : `<td style="color:var(--muted)">✓ Match</td>`)
-        : `<td style="color:var(--muted)">—</td>`;
-      const assignCell = t.assignMethod === 'guid'
-        ? `<td style="color:#f59e0b" title="Tree code did not resolve — using GUID fallback">⚠ GUID</td>`
-        : `<td style="color:var(--muted)">Code</td>`;
-
-      return `<tr data-tidx="${i}" onclick="focusTreeOnMap(${i})" title="Click to locate on map">
-        <td>${t.code || '—'}</td>
-        <td>${t.species || '—'}</td>
-        <td>${t.lat.toFixed(5)}</td>
-        <td>${t.lng.toFixed(5)}</td>
-        ${distCol}
-        ${accCol}
-        ${assignCell}
-        ${codeFieldCell}
-        <td class="${statusClass}">${actualLabel}</td>
-        ${rogueCell}
-      </tr>`;
-    }).join('');
-    document.getElementById('lbTreeBody').innerHTML = rows
-      + (outsideTrees.length > 500
-        ? `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:8px">
-            … ${(outsideTrees.length - 500).toLocaleString()} more — use the Re-allocation Export</td></tr>`
-        : '');
-  }
-
-  // Store outside trees ref for row click focusing
-  window._lbOutsideTrees = outsideTrees.slice(0, 500);
 
   // Build Leaflet map
   const mapEl = document.getElementById('lbMap');
@@ -2114,1792 +1007,27 @@ function openLb(idx) {
       fillOpacity:0.08, dashArray:'6,4'
     }).addTo(lbMap);
 
-    window._lbTreeMarkers = {};
-    const outsideList = window._lbOutsideTrees || [];
     trees.forEach(t => {
-      const insideRing = ring ? pip(t.lat, t.lng, ring) : false;
-      const marker = L.circleMarker([t.lat, t.lng], {
+      L.circleMarker([t.lat, t.lng], {
         radius:5, color:'rgba(255,255,255,0.4)', weight:1,
-        fillColor: insideRing ? '#22c55e' : '#ef4444',
+        fillColor: pip(t.lat, t.lng, ring) ? '#22c55e' : '#ef4444',
         fillOpacity:0.9
       }).addTo(lbMap);
-      // Map marker to outside tree index for row click focusing
-      if (!insideRing) {
-        const idx = outsideList.findIndex(
-          ot => ot.code === t.code && ot.lat === t.lat && ot.lng === t.lng
-        );
-        if (idx >= 0) window._lbTreeMarkers[idx] = marker;
-      }
     });
-
-    // Draw neighbour polygons — skip in batch preview mode
-    const inBatchPreview = !!document.getElementById('backToBatchBtn');
-    const nb = neighbourMap.get(f.fieldId);
-    let hasOverlapNeighbour = false, hasAdjNeighbour = false, hasEmbedded = false;
-    if (nb && !inBatchPreview) {
-      nb.overlapping.forEach(nid => {
-        const nf = fieldByIdMap.get(nid);
-        if (!nf || !nf.ring) return;
-        hasOverlapNeighbour = true;
-
-        // Check embedded relationship
-        const rel = embeddedRelation(f.ring, nf.ring);
-        const isEmb = rel !== 'none';
-        if (isEmb) hasEmbedded = true;
-
-        // Colour: purple = embedded, red = overlapping
-        const col = isEmb ? '#a78bfa' : '#ef4444';
-        const embLabel = rel === 'A_in_B'
-          ? `⊂ This field is inside ${nid}`
-          : rel === 'B_in_A'
-          ? `⊃ ${nid} is inside this field`
-          : `⧖ Overlaps ${nid}`;
-
-        const poly = L.polygon(nf.ring.map(c => [c[1], c[0]]), {
-          color: col, weight: isEmb ? 2.5 : 2,
-          fillColor: col, fillOpacity: isEmb ? 0.08 : 0.06,
-          dashArray: isEmb ? null : '5,4'
-        }).addTo(lbMap);
-
-        // Click popup with field info and Edit button
-        const nfIdx = fieldsData.indexOf(nf);
-        poly.on('click', function(e) {
-          L.DomEvent.stopPropagation(e);
-          const popup = L.popup({ maxWidth:280, className:'nb-popup' })
-            .setLatLng(e.latlng)
-            .setContent(`
-              <div style="font-family:monospace;font-size:11px;line-height:1.7">
-                <div style="font-weight:700;color:${col}">${embLabel}</div>
-                <div style="color:#888;margin-top:2px">${nf.owner || '—'}</div>
-                <div style="color:#888">${nf.createdOn || ''}</div>
-                ${nfIdx >= 0 && nf.guid
-                  ? `<div style="margin-top:8px">
-                      <button onclick="closeLb();setTimeout(()=>openLb(${nfIdx}),100)"
-                        style="background:#a78bfa;color:#fff;border:none;
-                        border-radius:4px;padding:4px 10px;cursor:pointer;
-                        font-family:monospace;font-size:11px;font-weight:700;
-                        margin-right:6px">Open field</button>
-                      <button onclick="closeLb();setTimeout(()=>{openLb(${nfIdx});setTimeout(startEdit,300)},100)"
-                        style="background:#f59e0b;color:#000;border:none;
-                        border-radius:4px;padding:4px 10px;cursor:pointer;
-                        font-family:monospace;font-size:11px;font-weight:700">✎ Edit polygon</button>
-                    </div>`
-                  : ''}
-              </div>`)
-            .openOn(lbMap);
-        });
-
-        poly.bindTooltip(embLabel, { sticky:true });
-      });
-
-      nb.adjacent.forEach(nid => {
-        const nf = fieldByIdMap.get(nid);
-        if (!nf || !nf.ring) return;
-        hasAdjNeighbour = true;
-        const nfIdx = fieldsData.indexOf(nf);
-        const poly = L.polygon(nf.ring.map(c => [c[1], c[0]]), {
-          color:'#f59e0b', weight:2, fillColor:'#f59e0b',
-          fillOpacity:0.06, dashArray:'5,4'
-        }).addTo(lbMap);
-
-        poly.on('click', function(e) {
-          L.DomEvent.stopPropagation(e);
-          L.popup({ maxWidth:260 })
-            .setLatLng(e.latlng)
-            .setContent(`
-              <div style="font-family:monospace;font-size:11px;line-height:1.7">
-                <div style="font-weight:700;color:#f59e0b">~ Adjacent: ${nid}</div>
-                <div style="color:#888">${nf.owner || '—'}</div>
-                ${nfIdx >= 0 && nf.guid
-                  ? `<div style="margin-top:8px">
-                      <button onclick="closeLb();setTimeout(()=>openLb(${nfIdx}),100)"
-                        style="background:#f59e0b;color:#000;border:none;
-                        border-radius:4px;padding:4px 10px;cursor:pointer;
-                        font-family:monospace;font-size:11px;font-weight:700;
-                        margin-right:6px">Open field</button>
-                      <button onclick="closeLb();setTimeout(()=>{openLb(${nfIdx});setTimeout(startEdit,300)},100)"
-                        style="background:#f59e0b;color:#000;border:none;
-                        border-radius:4px;padding:4px 10px;cursor:pointer;
-                        font-family:monospace;font-size:11px;font-weight:700">✎ Edit polygon</button>
-                    </div>`
-                  : ''}
-              </div>`)
-            .openOn(lbMap);
-        });
-
-        poly.bindTooltip(`~ ${nid}`, { sticky:true });
-      });
-    }
-    document.getElementById('lbLegendOverlap').style.display  = hasOverlapNeighbour ? '' : 'none';
-    document.getElementById('lbLegendEmbedded').style.display = hasEmbedded ? '' : 'none';
-    document.getElementById('lbLegendAdjacent').style.display = hasAdjNeighbour ? '' : 'none';
 
     lbMap.fitBounds(poly.getBounds(), { padding:[24,24] });
     setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
   }, 60);
 }
 
-function filterTreeTable() {
-  const q = document.getElementById('lbTreeSearch').value.toLowerCase().trim();
-  const rows = document.querySelectorAll('#lbTreeBody tr');
-  rows.forEach(row => {
-    row.style.display = !q || row.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
-}
-
-// ── CONVEX HULL (Gift Wrapping) ────────────────────────────────────────────
-function cross(O, A, B) {
-  return (A[0]-O[0])*(B[1]-O[1]) - (A[1]-O[1])*(B[0]-O[0]);
-}
-function convexHull(points) {
-  const n = points.length;
-  if (n < 3) return points;
-  const pts = points.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]);
-  const lower = [], upper = [];
-  for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0)
-      lower.pop();
-    lower.push(p);
-  }
-  for (let i = pts.length-1; i >= 0; i--) {
-    const p = pts[i];
-    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0)
-      upper.pop();
-    upper.push(p);
-  }
-  upper.pop(); lower.pop();
-  return lower.concat(upper);
-}
-
-// Buffer polygon outward by metres (approximate using degree conversion)
-function bufferRingM(ring, metres) {
-  if (metres <= 0) return ring;
-  const degPerM = 1 / 111320; // ~1m in degrees lat
-  const cLat    = ring.reduce((s,c) => s + c[1], 0) / ring.length;
-  const degLng  = degPerM / Math.cos(cLat * Math.PI / 180);
-  const cx = ring.reduce((s,c) => s + c[0], 0) / ring.length;
-  const cy = ring.reduce((s,c) => s + c[1], 0) / ring.length;
-  return ring.map(c => {
-    const dx = c[0] - cx, dy = c[1] - cy;
-    const len = Math.sqrt((dx/degLng)**2 + (dy/degPerM)**2);
-    if (len === 0) return c;
-    return [
-      c[0] + (dx / len) * metres * degLng,
-      c[1] + (dy / len) * metres * degPerM
-    ];
-  });
-}
-
-// ── SELECTIVE BOUNDARY EXPANSION ──────────────────────────────────────────
-// Expands only the edges where outside trees require it.
-// Original vertices are preserved — only the tight edges grow.
-
-function ptSegClosest(px, py, ax, ay, bx, by) {
-  const dx = bx-ax, dy = by-ay;
-  const lenSq = dx*dx + dy*dy;
-  if (lenSq === 0) return { t:0, x:ax, y:ay };
-  const t = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / lenSq));
-  return { t, x: ax+t*dx, y: ay+t*dy };
-}
-
-function edgeOutwardNormal(ring, ei) {
-  const n  = ring.length;
-  const a  = ring[ei], b = ring[(ei+1)%n];
-  const dx = b[0]-a[0], dy = b[1]-a[1];
-  const len = Math.sqrt(dx*dx + dy*dy);
-  if (len === 0) return [0, 0];
-  // Two candidate normals
-  let nx = -dy/len, ny = dx/len;
-  // Pick the one pointing away from centroid
-  const cx = ring.reduce((s,c) => s+c[0], 0) / n;
-  const cy = ring.reduce((s,c) => s+c[1], 0) / n;
-  const mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2;
-  const dot = (mx+nx-cx)*(mx+nx-cx) + (my+ny-cy)*(my+ny-cy);
-  const dot2= (mx-nx-cx)*(mx-nx-cx) + (my-ny-cy)*(my-ny-cy);
-  if (dot < dot2) { nx = -nx; ny = -ny; }
-  return [nx, ny];
-}
-
-function selectiveExpand(ring, outsideTrees, bufferDeg) {
-  if (!outsideTrees.length) return ring.map(c => [...c]);
-
-  // Run up to 3 passes — catches trees in corner dead zones
-  let currentRing = ring.map(c => [...c]);
-  for (let pass = 0; pass < 3; pass++) {
-    // Find trees still outside the current ring
-    const stillOutside = outsideTrees.filter(t => !pip(t.lat, t.lng, currentRing));
-    if (!stillOutside.length) break; // all inside — done
-
-    const n = currentRing.length;
-
-    // Assign each remaining outside tree to its nearest edge
-    const edgeMap = new Map();
-    stillOutside.forEach(t => {
-      let minDist = Infinity, minEi = 0, minPerpDist = 0;
-      for (let i = 0; i < n; i++) {
-        const a = currentRing[i], b = currentRing[(i+1)%n];
-        const proj = ptSegClosest(t.lng, t.lat, a[0], a[1], b[0], b[1]);
-        const d = Math.sqrt((t.lng-proj.x)**2 + (t.lat-proj.y)**2);
-        if (d < minDist) { minDist = d; minEi = i; minPerpDist = d; }
-      }
-      if (!edgeMap.has(minEi)) edgeMap.set(minEi, []);
-      edgeMap.get(minEi).push(minPerpDist);
-    });
-
-    // Shift amounts per edge
-    const shifts = new Array(n).fill(0);
-    edgeMap.forEach((dists, ei) => {
-      shifts[ei] = Math.max(...dists) + bufferDeg;
-    });
-
-    // Helper: shifted edge
-    function shiftedEdge(ring, ei, shift) {
-      const a = ring[ei], b = ring[(ei+1)%n];
-      const [nx, ny] = edgeOutwardNormal(ring, ei);
-      return {
-        ax: a[0] + nx*shift, ay: a[1] + ny*shift,
-        bx: b[0] + nx*shift, by: b[1] + ny*shift
-      };
-    }
-
-    function lineIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
-      const dxAB = bx-ax, dyAB = by-ay;
-      const dxCD = dx-cx, dyCD = dy-cy;
-      const denom = dxAB*dyCD - dyAB*dxCD;
-      if (Math.abs(denom) < 1e-12) return [(ax+cx)/2, (ay+cy)/2];
-      const t = ((cx-ax)*dyCD - (cy-ay)*dxCD) / denom;
-      return [ax + t*dxAB, ay + t*dyAB];
-    }
-
-    // Build new ring for this pass
-    const newRing = [];
-    for (let i = 0; i < n; i++) {
-      const prevEi = (i - 1 + n) % n;
-      const currEi = i;
-      const prevShift = shifts[prevEi];
-      const currShift = shifts[currEi];
-
-      if (prevShift === 0 && currShift === 0) {
-        newRing.push([...currentRing[i]]);
-      } else if (prevShift > 0 && currShift > 0) {
-        const prev = shiftedEdge(currentRing, prevEi, prevShift);
-        const curr = shiftedEdge(currentRing, currEi, currShift);
-        const pt   = lineIntersect(prev.ax, prev.ay, prev.bx, prev.by,
-                                   curr.ax, curr.ay, curr.bx, curr.by);
-        newRing.push(pt);
-      } else {
-        const shift    = prevShift > 0 ? prevShift : currShift;
-        const ei       = prevShift > 0 ? prevEi    : currEi;
-        const [nx, ny] = edgeOutwardNormal(currentRing, ei);
-        newRing.push([currentRing[i][0] + nx*shift, currentRing[i][1] + ny*shift]);
-      }
-    }
-    currentRing = newRing;
-  }
-  return currentRing;
-}
-let acBufferM   = 3;
-let acHullRing  = null;  // raw convex hull without buffer
-let acSelRing   = null;  // raw selective expansion without buffer
-let acMode      = 'selective'; // 'selective' | 'hull'
-let acFieldIdx  = null;
-let acOrigLayer = null;
-let acHullLayer = null;
-
-function startAutoCorrect() {
-  const idx = parseInt(document.getElementById('lb').dataset.editIdx);
-  const f   = fieldsData[idx];
-  if (!f) return;
-  acFieldIdx = idx;
-  acBufferM  = 3;
-  acMode     = 'selective';
-  document.getElementById('lbAcBufVal').textContent = acBufferM + 'm';
-  document.getElementById('lbAcBar').classList.add('active');
-  document.getElementById('lbAcBtn').style.display   = 'none';
-  document.getElementById('lbEditBtn').style.display = 'none';
-  buildAutoCorrectPreview(f);
-}
-
-function buildAutoCorrectPreview(f) {
-  const trees = treesByField[f.fieldId] || [];
-  const ring  = f.ring;
-  const cm    = ring ? ringMetrics(ring) : null;
-  const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
-
-  // Filter clean trees — exclude rogue GPS
-  const cleanTrees  = trees.filter(t => !rogueFlag(t, cLat, cLng));
-  const rogueCt     = trees.length - cleanTrees.length;
-  const outsideTrees = ring
-    ? cleanTrees.filter(t => !pip(t.lat, t.lng, ring))
-    : cleanTrees;
-
-  // Compute both rings (raw, before buffer)
-  const degPerM = 1 / 111320;
-  const bufDeg  = acBufferM * degPerM;
-
-  // Selective expansion — preserve original vertices, expand only tight edges
-  acSelRing  = ring ? selectiveExpand(ring, outsideTrees, bufDeg) : null;
-
-  // Convex hull — full replacement from all clean trees
-  const pts  = cleanTrees.map(t => [t.lng, t.lat]);
-  acHullRing = pts.length >= 3 ? convexHull(pts) : null;
-
-  // Active ring based on mode
-  const activeRaw = acMode === 'selective' ? acSelRing : acHullRing;
-  const buffered  = activeRaw
-    ? (acMode === 'selective' ? activeRaw : bufferRingM(activeRaw, acBufferM))
-    : null;
-
-  // Rebuild map
-  const mapEl = document.getElementById('lbMap');
-  mapEl.innerHTML = '';
-  if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
-
-  lbMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
-  L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21
-  }).addTo(lbMap);
-
-  // Original polygon — blue dashed
-  if (ring) {
-    acOrigLayer = L.polygon(ring.map(c => [c[1], c[0]]), {
-      color:'#38bdf8', weight:2, fillColor:'#38bdf8',
-      fillOpacity:0.05, dashArray:'6,4'
-    }).addTo(lbMap).bindTooltip('Current polygon', {sticky:true});
-  }
-
-  // Proposed polygon — green solid
-  if (buffered) {
-    acHullLayer = L.polygon(buffered.map(c => [c[1], c[0]]), {
-      color:'#22c55e', weight:2.5, fillColor:'#22c55e', fillOpacity:0.08
-    }).addTo(lbMap).bindTooltip(
-      acMode === 'selective' ? 'Proposed (selective expansion)' : 'Proposed (convex hull)',
-      {sticky:true}
-    );
-  }
-
-  // Tree dots — coloured against proposed polygon
-  trees.forEach(t => {
-    const insideNew = buffered ? pip(t.lat, t.lng, buffered) : false;
-    const isRogue   = !!rogueFlag(t, cLat, cLng);
-    L.circleMarker([t.lat, t.lng], {
-      radius: isRogue ? 6 : 5,
-      color:  isRogue ? '#f59e0b' : 'rgba(255,255,255,0.4)',
-      weight: isRogue ? 2 : 1,
-      fillColor: isRogue ? '#f59e0b' : insideNew ? '#22c55e' : '#ef4444',
-      fillOpacity: 0.9
-    }).addTo(lbMap).bindTooltip(
-      isRogue ? `🚨 Rogue: ${t.code}` : t.code, {sticky:true}
-    );
-  });
-
-  // Fit bounds
-  const bounds = acHullLayer
-    ? acHullLayer.getBounds()
-    : acOrigLayer ? acOrigLayer.getBounds() : null;
-  if (bounds) {
-    if (acOrigLayer) bounds.extend(acOrigLayer.getBounds());
-    lbMap.fitBounds(bounds, { padding:[24,24] });
-  }
-  setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
-
-  if (buffered) {
-    updateAcStats(f, buffered, rogueCt, outsideTrees.length);
-    editRing = buffered.map(c => [...c]);
-  }
-  lbEditFieldIdx = acFieldIdx;
-}
-
-const AC_AREA_WARN_PCT  = 130; // amber warning above 130% of original
-const AC_AREA_BLOCK_PCT = 200; // red block above 200% of original
-
-function updateAcStats(f, buffered, rogueCt, outsideTreesCt) {
-  const trees   = treesByField[f.fieldId] || [];
-  const ring    = f.ring;
-  const oldIn   = ring ? trees.filter(t => pip(t.lat, t.lng, ring)).length : 0;
-  const oldOut  = trees.length - oldIn;
-  const oldPct  = trees.length ? Math.round(oldIn/trees.length*100) : 0;
-  const newIn   = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
-  const newOut  = trees.length - newIn;
-  const newPct  = trees.length ? Math.round(newIn/trees.length*100) : 0;
-  const gain    = newPct - oldPct;
-  const newArea = ringAreaHa(buffered);
-  const oldArea = ring ? ringAreaHa(ring) : null;
-  const areaPct = oldArea ? Math.round(newArea / oldArea * 100) : 100;
-  const areaIncrease = areaPct - 100;
-
-  const modeLabel = acMode === 'selective'
-    ? `Selective (${ring ? ring.length : 0}→${buffered.length} vertices)`
-    : `Convex hull (${buffered.length} vertices)`;
-
-  // Area warning level
-  let areaColor = 'var(--text)', areaWarn = '';
-  const saveBtn = document.getElementById('lbAcSaveBtn');
-  if (areaPct >= AC_AREA_BLOCK_PCT) {
-    areaColor = '#ef4444';
-    areaWarn  = `<span style="color:#ef4444;font-weight:700">
-      ✖ +${areaIncrease}% — exceeds 200% limit. Reduce buffer or use Edit Polygon.</span>`;
-    if (saveBtn) { saveBtn.disabled = true;
-      saveBtn.style.opacity = '0.4'; saveBtn.style.cursor = 'not-allowed'; }
-  } else if (areaPct >= AC_AREA_WARN_PCT) {
-    areaColor = '#f59e0b';
-    areaWarn  = `<span style="color:#f59e0b;font-weight:700">
-      ⚠ +${areaIncrease}% — review on satellite before applying</span>`;
-    if (saveBtn) { saveBtn.disabled = false;
-      saveBtn.style.opacity = '1'; saveBtn.style.cursor = ''; }
-  } else {
-    if (saveBtn) { saveBtn.disabled = false;
-      saveBtn.style.opacity = '1'; saveBtn.style.cursor = ''; }
-  }
-
-  document.getElementById('lbAcStats').innerHTML = `
-    <div class="ac-stat">
-      <span class="l">Mode</span>
-      <span class="v" style="color:${acMode==='selective'?'#38bdf8':'#a78bfa'}">${modeLabel}</span>
-    </div>
-    <div class="ac-stat">
-      <span class="l">Current compliance</span>
-      <span class="v">${oldPct}% (${oldIn} in / ${oldOut} out)</span>
-    </div>
-    <div class="ac-stat">
-      <span class="l">Proposed compliance</span>
-      <span class="v">${newPct}%
-        (${newIn} in / ${newOut} out)
-        ${gain > 0 ? `<span class="ac-gain">+${gain}%</span>` : ''}</span>
-    </div>
-    <div class="ac-stat">
-      <span class="l">Proposed area</span>
-      <span class="v" style="color:${areaColor}">
-        ${newArea.toFixed(3)} ha
-        <span style="color:var(--muted)">(was ${oldArea ? oldArea.toFixed(3) : '—'} ha)</span>
-        ${areaWarn}
-      </span>
-    </div>
-    ${rogueCt > 0 ? `<div class="ac-stat">
-      <span class="l">Rogue trees excluded</span>
-      <span class="v" style="color:#f59e0b">⚠ ${rogueCt}</span>
-    </div>` : ''}`;
-}
-
-function adjustBuffer(delta) {
-  acBufferM = Math.max(0, Math.min(20, acBufferM + delta));
-  document.getElementById('lbAcBufVal').textContent = acBufferM + 'm';
-  const f   = fieldsData[acFieldIdx];
-  const cm  = f.ring ? ringMetrics(f.ring) : null;
-  const cLat = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
-  const trees = treesByField[f.fieldId] || [];
-  const cleanTrees = trees.filter(t => !rogueFlag(t, cLat, cLng));
-  const outsideTrees = f.ring
-    ? cleanTrees.filter(t => !pip(t.lat, t.lng, f.ring))
-    : cleanTrees;
-  const rogueCt = trees.length - cleanTrees.length;
-  const degPerM = 1 / 111320;
-  const bufDeg  = acBufferM * degPerM;
-
-  let buffered;
-  if (acMode === 'selective') {
-    // Recompute selective expansion with new buffer
-    acSelRing = f.ring ? selectiveExpand(f.ring, outsideTrees, bufDeg) : null;
-    buffered  = acSelRing;
-  } else {
-    buffered = acHullRing ? bufferRingM(acHullRing, acBufferM) : null;
-  }
-
-  if (buffered && acHullLayer) {
-    acHullLayer.setLatLngs(buffered.map(c => [c[1], c[0]]));
-    updateAcStats(f, buffered, rogueCt, outsideTrees.length);
-    editRing = buffered.map(c => [...c]);
-  }
-}
-
-function toggleAcMode() {
-  acMode = acMode === 'selective' ? 'hull' : 'selective';
-  const btn = document.getElementById('lbAcModeBtn');
-  btn.textContent = acMode === 'selective'
-    ? '⬡ Selective mode' : '◎ Hull mode';
-  btn.style.background = acMode === 'selective'
-    ? 'rgba(56,189,248,0.15)' : 'rgba(167,139,250,0.15)';
-  btn.style.color = acMode === 'selective' ? '#38bdf8' : '#a78bfa';
-  btn.style.borderColor = acMode === 'selective'
-    ? 'rgba(56,189,248,0.4)' : 'rgba(167,139,250,0.4)';
-  buildAutoCorrectPreview(fieldsData[acFieldIdx]);
-}
-
-function confirmAutoCorrect() {
-  const f = fieldsData[acFieldIdx];
-  if (!f) return;
-  const trees    = treesByField[f.fieldId] || [];
-  const activeRaw = acMode === 'selective' ? acSelRing : acHullRing;
-  if (!activeRaw) return;
-  const buffered = acMode === 'selective' ? activeRaw : bufferRingM(activeRaw, acBufferM);
-  const newIn    = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
-  const newPct   = trees.length ? Math.round(newIn / trees.length * 100) : 0;
-  const newArea  = ringAreaHa(buffered).toFixed(2);
-  const oldArea  = f.ring ? ringAreaHa(f.ring).toFixed(2) : '—';
-
-  document.getElementById('acWarnField').textContent  = f.fieldId;
-  document.getElementById('acWarnOwner').textContent  = f.owner || '—';
-  document.getElementById('acWarnOldArea').textContent = oldArea + ' ha';
-  document.getElementById('acWarnNewArea').textContent = newArea + ' ha';
-  document.getElementById('acWarnNewPct').textContent  = newPct + '%';
-  document.getElementById('acWarnVerts').textContent   = buffered.length + ' vertices';
-  document.getElementById('acWarnBuf').textContent     = acBufferM + 'm';
-  document.getElementById('acWarnMode').textContent    =
-    acMode === 'selective' ? 'Selective expansion (original vertices preserved)' : 'Convex hull (full replacement)';
-  document.getElementById('acWarnModal').classList.add('open');
-}
-
-function closeAcWarn() {
-  document.getElementById('acWarnModal').classList.remove('open');
-}
-
-function proceedAutoCorrect() {
-  closeAcWarn();
-  savePolygon();
-}
-function cancelAutoCorrect() {
-  acHullRing = null; acFieldIdx = null; editRing = null;
-  document.getElementById('lbAcBar').classList.remove('active');
-  openLb(parseInt(document.getElementById('lb').dataset.editIdx));
-}
-let editRing        = null;  // working copy of ring being edited [lng,lat][]
-let editOrigRing    = null;  // original ring for cancel
-let editMarkers     = [];    // draggable vertex markers
-let editPolyLayer   = null;  // live polygon layer
-let editTreeDots    = [];    // tree circle markers (kept visible during edit)
-let lbEditFieldIdx  = null;
-
-function startEdit() {
-  const idx = parseInt(document.getElementById('lb').dataset.editIdx);
-  const f   = fieldsData[idx];
-  if (!f || !f.ring) return;
-
-  lbEditFieldIdx = idx;
-  editOrigRing   = f.ring.map(c => [...c]); // deep copy
-  editRing       = f.ring.map(c => [...c]);
-
-  // Switch UI
-  document.getElementById('lbEditBar').classList.add('active');
-  document.getElementById('lbEditBtn').style.display = 'none';
-  document.getElementById('lbEditStatus').textContent =
-    '✎ Edit mode — drag vertices to reshape boundary';
-
-  // Rebuild map in edit mode
-  buildEditMap(f);
-}
-
-function buildEditMap(f) {
-  const mapEl = document.getElementById('lbMap');
-  mapEl.innerHTML = '';
-  if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
-  editMarkers  = [];
-  editTreeDots = [];
-  editPolyLayer = null;
-
-  lbMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
-  L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    subdomains:['mt0','mt1','mt2','mt3'], maxZoom:21
-  }).addTo(lbMap);
-
-  // Draw editable polygon
-  editPolyLayer = L.polygon(editRing.map(c => [c[1], c[0]]), {
-    color:'#f59e0b', weight:2.5,
-    fillColor:'#f59e0b', fillOpacity:0.08, dashArray:'6,4'
-  }).addTo(lbMap);
-
-  // Tree dots
-  const trees = treesByField[f.fieldId] || [];
-  trees.forEach(t => {
-    const dot = L.circleMarker([t.lat, t.lng], {
-      radius:5, color:'rgba(255,255,255,0.4)', weight:1,
-      fillColor: pip(t.lat, t.lng, editRing) ? '#22c55e' : '#ef4444',
-      fillOpacity:0.9
-    }).addTo(lbMap);
-    editTreeDots.push({ dot, lat:t.lat, lng:t.lng });
-  });
-
-  rebuildEditHandles(f);
-
-  lbMap.fitBounds(editPolyLayer.getBounds(), { padding:[24,24] });
-  setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
-  updateEditCompliance(f.fieldId);
-}
-
-function rebuildEditHandles(f) {
-  // Remove all existing handles
-  editMarkers.forEach(m => { try { lbMap.removeLayer(m); } catch(e){} });
-  editMarkers = [];
-
-  const n = editRing.length;
-
-  // ── Vertex handles (drag to move, right-click to delete) ────────────────
-  editRing.forEach((c, i) => {
-    const marker = L.circleMarker([c[1], c[0]], {
-      radius:8, color:'#f59e0b', weight:2,
-      fillColor:'#fff', fillOpacity:1,
-      className:'edit-handle'
-    }).addTo(lbMap);
-
-    // Drag to move
-    marker.on('mousedown', function(e) {
-      L.DomEvent.stopPropagation(e);
-      lbMap.dragging.disable();
-      function onMove(me) {
-        const ll = lbMap.containerPointToLatLng(
-          lbMap.mouseEventToContainerPoint(me.originalEvent));
-        editRing[i] = [ll.lng, ll.lat];
-        marker.setLatLng([ll.lat, ll.lng]);
-        editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
-        editTreeDots.forEach(td => {
-          td.dot.setStyle({
-            fillColor: pip(td.lat, td.lng, editRing) ? '#22c55e' : '#ef4444'
-          });
-        });
-        updateEditCompliance(f.fieldId);
-      }
-      function onUp() {
-        lbMap.dragging.enable();
-        lbMap.off('mousemove', onMove);
-        lbMap.off('mouseup', onUp);
-      }
-      lbMap.on('mousemove', onMove);
-      lbMap.on('mouseup', onUp);
-    });
-
-    // Right-click to delete vertex
-    marker.on('contextmenu', function(e) {
-      L.DomEvent.stopPropagation(e);
-      if (editRing.length <= 3) {
-        alert('A polygon must have at least 3 vertices.');
-        return;
-      }
-      editRing.splice(i, 1);
-      editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
-      editTreeDots.forEach(td => {
-        td.dot.setStyle({
-          fillColor: pip(td.lat, td.lng, editRing) ? '#22c55e' : '#ef4444'
-        });
-      });
-      updateEditCompliance(f.fieldId);
-      rebuildEditHandles(f);
-    });
-
-    // Tooltip hint
-    marker.bindTooltip('Drag to move · Right-click to delete',
-      { direction:'top', offset:[0,-10], opacity:0.85 });
-
-    editMarkers.push(marker);
-  });
-
-  // ── Midpoint handles (click to insert new vertex) ─────────────────────
-  editRing.forEach((c, i) => {
-    const next = editRing[(i+1) % n];
-    const mx   = (c[0] + next[0]) / 2;
-    const my   = (c[1] + next[1]) / 2;
-
-    const mid = L.circleMarker([my, mx], {
-      radius:5, color:'#f59e0b', weight:1.5,
-      fillColor:'#f59e0b', fillOpacity:0.35,
-      className:'edit-handle'
-    }).addTo(lbMap);
-
-    mid.bindTooltip('Click to add vertex here',
-      { direction:'top', offset:[0,-8], opacity:0.85 });
-
-    mid.on('click', function(e) {
-      L.DomEvent.stopPropagation(e);
-      // Insert new vertex after i
-      editRing.splice(i+1, 0, [mx, my]);
-      editPolyLayer.setLatLngs(editRing.map(c => [c[1], c[0]]));
-      updateEditCompliance(f.fieldId);
-      rebuildEditHandles(f);
-    });
-
-    editMarkers.push(mid);
-  });
-}
-
-function updateEditCompliance(fieldId) {
-  const trees = treesByField[fieldId] || [];
-  if (!trees.length) {
-    document.getElementById('lbEditCompliance').textContent = '';
-    return;
-  }
-  const inCount = trees.filter(t => pip(t.lat, t.lng, editRing)).length;
-  const pct = Math.round(inCount / trees.length * 100);
-  const col = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
-  document.getElementById('lbEditCompliance').innerHTML =
-    `<span style="color:${col}">${pct}% compliant (${inCount}/${trees.length} inside)</span>`;
-}
-
-function cancelEdit() {
-  const f = fieldsData[lbEditFieldIdx];
-  editRing = null;
-  document.getElementById('lbEditBar').classList.remove('active');
-  document.getElementById('lbEditBtn').style.display = '';
-  // Rebuild normal read-only map
-  if (f) openLb(lbEditFieldIdx);
-}
-
-// ── BATCH PREVIEW GRID ─────────────────────────────────────────────────────
-let bpgFlagged = new Set(); // fieldIds flagged for review
-const BPG_PAGE = 120;
-let bpgPage    = 0;
-
-function openBpg() {
-  bpgPage = 0;
-  // Auto-flag risky fields
-  bpgFlagged = new Set();
-  batchQueue.forEach(item => {
-    if (item.autoFlag) bpgFlagged.add(item.fieldId);
-  });
-  document.getElementById('bpgModal').classList.add('open');
-  bpgRender();
-}
-
-function closeBpg() {
-  document.getElementById('bpgModal').classList.remove('open');
-  document.getElementById('batchModal').classList.add('open');
-}
-
-function closeBpgAndStart() {
-  document.getElementById('bpgModal').classList.remove('open');
-  document.getElementById('batchModal').classList.add('open');
-  // Uncheck dry run and start live run
-  const cb = document.getElementById('batchDryRun');
-  cb.checked  = false;
-  cb.disabled = false;
-  startBatch();
-}
-
-function bpgToggleFlag(fieldId, e) {
-  e.stopPropagation();
-  if (bpgFlagged.has(fieldId)) bpgFlagged.delete(fieldId);
-  else bpgFlagged.add(fieldId);
-  // Update card border
-  const card = document.querySelector(`.bpg-card[data-fid="${fieldId}"]`);
-  if (card) card.classList.toggle('flagged', bpgFlagged.has(fieldId));
-  // Update stats
-  updateBpgStats();
-}
-
-function updateBpgStats() {
-  const flagged   = bpgFlagged.size;
-  const eligible  = batchQueue.length - flagged;
-  const reclaimed = batchQueue
-    .filter(q => !bpgFlagged.has(q.fieldId))
-    .reduce((s, q) => s + q.gain, 0);
-  document.getElementById('bpgFlagCount').textContent =
-    `${flagged} flagged · ${eligible} will be corrected · ${reclaimed.toLocaleString()} trees to reclaim`;
-  document.getElementById('bpgStartBtn').textContent =
-    `▶ Start Live Run (${eligible.toLocaleString()} fields)`;
-}
-
-function bpgRender() {
-  const q      = (document.getElementById('bpgSearch').value || '').toLowerCase();
-  const filter = document.getElementById('bpgFilter').value;
-
-  const items = batchQueue.filter(item => {
-    const f = fieldByIdMap.get(item.fieldId);
-    if (q && !item.fieldId.toLowerCase().includes(q) &&
-        !(f?.owner||'').toLowerCase().includes(q)) return false;
-    if (filter === 'flagged' && !bpgFlagged.has(item.fieldId)) return false;
-    if (filter === 'ok'      &&  bpgFlagged.has(item.fieldId)) return false;
-    return true;
-  });
-
-  document.getElementById('bpgStats').textContent =
-    `${items.length.toLocaleString()} of ${batchQueue.length.toLocaleString()} fields`;
-
-  const grid = document.getElementById('bpgGrid');
-  grid.innerHTML = items.slice(0, BPG_PAGE + 120).map((item, i) => {
-    const f       = fieldByIdMap.get(item.fieldId);
-    const flagged = bpgFlagged.has(item.fieldId);
-    const oldPct  = item.total ? Math.round(item.oldIn / item.total * 100) : 0;
-    const newPct  = item.total ? Math.round(item.newIn / item.total * 100) : 0;
-    const thumb   = bpgMakeSvg(f, item);
-
-    const riskBadges = item.risks && item.risks.length
-      ? `<div style="font-family:var(--mono);font-size:8px;color:#f59e0b;
-          margin-top:2px;line-height:1.6">${item.risks.join('<br>')}</div>`
-      : `<div style="font-family:var(--mono);font-size:8px;color:#22c55e;
-          margin-top:2px">\u2705 Clean</div>`;
-
-    return `<div class="bpg-card${flagged?' flagged':''}"
-      data-fid="${item.fieldId}"
-      onclick="previewBatchField('${item.fieldId}');closeBpg()">
-      <button class="bpg-flag-btn"
-        onclick="bpgToggleFlag('${item.fieldId}',event)"
-        title="${flagged?'Remove flag':'Flag for review'}">⚑</button>
-      ${thumb}
-      <div class="bpg-info">
-        <div class="bpg-fid">${item.fieldId}</div>
-        <div class="bpg-owner">${f?.owner||'—'}</div>
-        <div class="bpg-gain">${oldPct}% → ${newPct}%
-          <span style="color:#22c55e">+${item.gain} trees</span>
-        </div>
-        ${riskBadges}
-      </div>
-    </div>`;
-  }).join('');
-
-  // Infinite scroll sentinel
-  if (items.length > bpgPage + 120) {
-    const sentinel = document.createElement('div');
-    sentinel.style.gridColumn = '1/-1';
-    sentinel.style.height     = '40px';
-    grid.appendChild(sentinel);
-    const obs = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) { bpgPage += 120; obs.disconnect(); bpgRender(); }
-    });
-    obs.observe(sentinel);
-  }
-
-  updateBpgStats();
-}
-
-function bpgMakeSvg(f, item) {
-  if (!f || !f.ring) return `<svg class="bpg-thumb" viewBox="0 0 220 130"></svg>`;
-
-  const ring = f.ring;
-  const exp  = item.expanded;
-  const trees = treesByField[f.fieldId] || [];
-  const allRings = [ring, exp].filter(Boolean);
-
-  // Compute bounding box across both polygons and trees
-  let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
-  allRings.forEach(r => r.forEach(c => {
-    mnx = Math.min(mnx, c[0]); mxx = Math.max(mxx, c[0]);
-    mny = Math.min(mny, c[1]); mxy = Math.max(mxy, c[1]);
-  }));
-  trees.forEach(t => {
-    mnx = Math.min(mnx, t.lng); mxx = Math.max(mxx, t.lng);
-    mny = Math.min(mny, t.lat); mxy = Math.max(mxy, t.lat);
-  });
-
-  const W = 220, H = 130, PAD = 8;
-  const rngX = mxx - mnx || 0.001, rngY = mxy - mny || 0.001;
-  const scl  = Math.min((W-PAD*2)/rngX, (H-PAD*2)/rngY);
-  const tx   = c => PAD + (c - mnx) * scl;
-  const ty   = c => H - PAD - (c - mny) * scl;
-
-  const ringPath = r => r.map((c,i) =>
-    `${i?'L':'M'}${tx(c[0]).toFixed(1)},${ty(c[1]).toFixed(1)}`).join(' ') + ' Z';
-
-  // Tree dots coloured against proposed ring
-  const dots = trees.slice(0, 300).map(t => {
-    const inside = exp ? pip(t.lat, t.lng, exp) : pip(t.lat, t.lng, ring);
-    return `<circle cx="${tx(t.lng).toFixed(1)}" cy="${ty(t.lat).toFixed(1)}"
-      r="3" fill="${inside?'#22c55e':'#ef4444'}" opacity="0.85"/>`;
-  }).join('');
-
-  return `<svg class="bpg-thumb" viewBox="0 0 ${W} ${H}"
-    xmlns="http://www.w3.org/2000/svg">
-    <rect width="${W}" height="${H}" fill="#0d1b2a"/>
-    ${exp ? `<path d="${ringPath(exp)}" fill="rgba(34,197,94,0.12)"
-      stroke="#22c55e" stroke-width="1.5"/>` : ''}
-    <path d="${ringPath(ring)}" fill="none"
-      stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,3"/>
-    ${dots}
-  </svg>`;
-}
-const BATCH_STATE_KEY = 'ccs_batch_state';
-let batchQueue      = [];
-let batchIdx        = 0;
-let batchRunning    = false;
-let batchPaused     = false;
-let batchStats      = { corrected:0, skipped:0, failed:0, reclaimed:0 };
-let batchReport     = [];
-let batchDryRun     = true;
-
-function openBatch() {
-  // Always start with dry run enforced
-  const cb = document.getElementById('batchDryRun');
-  cb.checked  = true;
-  cb.disabled = true;
-  cb.onchange = null;
-
-  document.getElementById('batchModal').classList.add('open');
-  document.getElementById('batchProgress').style.display  = 'none';
-  document.getElementById('batchSettings').style.display  = '';
-  document.getElementById('batchStartBtn').disabled       = true;
-  document.getElementById('batchStartBtn').textContent    = '▶ Start';
-  document.getElementById('batchStartBtn').style.background = '';
-  document.getElementById('batchPauseBtn').style.display  = 'none';
-  document.getElementById('batchResumeBtn').style.display = 'none';
-  document.getElementById('batchStopBtn').style.display   = 'none';
-  document.getElementById('batchReportBtn').style.display = 'none';
-  document.getElementById('batchScanBtn').style.display   = '';
-  document.getElementById('batchGridBtn').style.display   = 'none';
-
-  // Restore any paused state
-  try {
-    const saved = JSON.parse(localStorage.getItem(BATCH_STATE_KEY) || 'null');
-    if (saved && saved.queue && saved.idx < saved.queue.length) {
-      document.getElementById('batchEligibility').innerHTML =
-        `<span style="color:#f59e0b">⏸ Paused batch found — ${saved.queue.length - saved.idx} fields remaining.
-        Click Resume to continue or Scan to start fresh.</span>`;
-      document.getElementById('batchResumeBtn').style.display = '';
-      document.getElementById('batchScanBtn').textContent = '🔍 Rescan';
-    }
-  } catch(e) {}
-}
-
-function closeBatch() {
-  if (batchRunning) {
-    if (!confirm('A batch is running. Pause and close?')) return;
-    pauseBatch();
-  }
-  document.getElementById('batchModal').classList.remove('open');
-}
-
-function getBatchBuffer() {
-  return Math.max(0, Math.min(20, parseFloat(
-    document.getElementById('batchBuffer').value) || 5));
-}
-
-function scanBatch() {
-  // Always reset dry-run to required state on each scan
-  const cb = document.getElementById('batchDryRun');
-  cb.checked  = true;
-  cb.disabled = true;
-  cb.onchange = null;
-  window._batchDryRunCompleted = false;
-  document.getElementById('batchStartBtn').textContent    = '▶ Start';
-  document.getElementById('batchStartBtn').style.background = '';
-  document.getElementById('batchGridBtn').style.display   = 'none';
-
-  const bufferM      = getBatchBuffer();
-  const threshold    = getLargeThreshold();
-  const degPerM      = 1 / 111320;
-  const bufDeg       = bufferM * degPerM;
-
-  batchQueue = [];
-
-  fieldsData.forEach(f => {
-    if (!f.ring || !f.guid) return;
-    if (ringAreaHa(f.ring) > threshold) return; // skip large
-
-    const trees  = treesByField[f.fieldId] || [];
-    if (!trees.length) return;
-
-    const cm     = ringMetrics(f.ring);
-    const cLat   = cm.cLat, cLng = cm.cLng;
-    const outside = trees.filter(t => !pip(t.lat, t.lng, f.ring));
-    if (!outside.length) return; // already compliant
-
-    // Safety: no rogue GPS trees in outside set
-    const rogues = outside.filter(t => rogueFlag(t, cLat, cLng));
-    if (rogues.length > 0) return;
-
-    // Compute selective expansion
-    const expanded = selectiveExpand(f.ring, outside, bufDeg);
-    const newArea  = ringAreaHa(expanded);
-    const oldArea  = ringAreaHa(f.ring);
-    const areaPct  = Math.round(newArea / oldArea * 100);
-    if (areaPct > 130) return; // area increase too large
-
-    const newIn  = trees.filter(t => pip(t.lat, t.lng, expanded)).length;
-    const oldIn  = trees.length - outside.length;
-    const gain   = newIn - oldIn;
-    if (gain <= 0) return; // no improvement
-
-    // ── Auto-risk scoring ─────────────────────────────────────────────────
-    const nb           = neighbourMap.get(f.fieldId);
-    const hasNeighbour = nb && (nb.overlapping.length > 0 || nb.adjacent.length > 0);
-    const reAllocated  = outside.filter(t =>
-      t.actualFieldId && t.actualFieldId !== f.fieldId).length;
-    const stillOrphaned = trees.filter(t => !pip(t.lat, t.lng, expanded)).length;
-
-    const risks = [];
-    if (reAllocated > 0)   risks.push(`🔴 ${reAllocated} re-allocated trees`);
-    if (areaPct >= 115)    risks.push(`🟡 Area +${areaPct-100}%`);
-    if (hasNeighbour)      risks.push(`🟡 Has neighbours`);
-    if (stillOrphaned > 0) risks.push(`🟠 ${stillOrphaned} still outside`);
-    const autoFlag = risks.length > 0;
-
-    batchQueue.push({
-      fieldId: f.fieldId,
-      guid:    f.guid,
-      gain,  oldIn,  newIn,
-      total:   trees.length,
-      expanded,
-      bufferM, areaPct,
-      risks,       // array of risk descriptions
-      autoFlag     // pre-flagged if any risk
-    });
-  });
-
-  // Sort by gain descending — biggest improvement first
-  batchQueue.sort((a, b) => b.gain - a.gain);
-
-  // Show visual review button if we have results
-  document.getElementById('batchGridBtn').style.display =
-    batchQueue.length ? '' : 'none';
-
-  const totalGain   = batchQueue.reduce((s, q) => s + q.gain, 0);
-  const autoFlagged = batchQueue.filter(q => q.autoFlag).length;
-  const clean       = batchQueue.length - autoFlagged;
-  const el = document.getElementById('batchEligibility');
-  if (batchQueue.length) {
-    el.innerHTML =
-      `<span style="color:#22c55e;font-weight:700">` +
-      `\u2713 ${batchQueue.length.toLocaleString()} fields eligible` +
-      ` \u00b7 ${totalGain.toLocaleString()} trees to be reclaimed</span><br>` +
-      `<span style="color:#22c55e">\u2705 ${clean.toLocaleString()} clean — will be auto-corrected</span>` +
-      ` \u00b7 ` +
-      `<span style="color:#f59e0b">\u26a0 ${autoFlagged.toLocaleString()} auto-flagged — review in Visual Review</span><br>` +
-      `<span style="color:var(--muted)">Skipped: large polygon, rogue GPS, area above 130%, no improvement, missing GUID</span>`;
-  } else {
-    el.innerHTML = '<span style="color:var(--muted)">No eligible fields found with current settings.</span>';
-  }
-
-  document.getElementById('batchStartBtn').disabled = !batchQueue.length;
-}
-
-async function startBatch() {
-  batchDryRun = document.getElementById('batchDryRun').checked;
-
-  // Safety guard — if dry run has never completed, force dry run
-  if (!batchDryRun && !window._batchDryRunCompleted) {
-    alert('Please complete a dry run first before starting the live run.');
-    const cb = document.getElementById('batchDryRun');
-    cb.checked = true; cb.disabled = true;
-    return;
-  }
-  batchIdx     = 0;
-  batchStats   = { corrected:0, skipped:0, failed:0, reclaimed:0 };
-  batchReport  = [];
-  batchRunning = true;
-  batchPaused  = false;
-
-  document.getElementById('batchSettings').style.display  = 'none';
-  document.getElementById('batchProgress').style.display  = '';
-  document.getElementById('batchStartBtn').style.display  = 'none';
-  document.getElementById('batchScanBtn').style.display   = 'none';
-  document.getElementById('batchPauseBtn').style.display  = '';
-  document.getElementById('batchStopBtn').style.display   = '';
-
-  document.getElementById('bsTotal').textContent = batchQueue.length.toLocaleString();
-  document.getElementById('batchLog').innerHTML  = '';
-  document.getElementById('batchSubtitle').textContent =
-    batchDryRun ? '🔵 Dry run — simulating without writing to Fieldforce'
-                : '🟢 Live run — writing corrections to Fieldforce';
-
-  await runBatch();
-}
-
-async function runBatch() {
-  const token = batchDryRun ? null : await getToken();
-
-  while (batchIdx < batchQueue.length && batchRunning) {
-    if (batchPaused) {
-      // Save state for resume
-      localStorage.setItem(BATCH_STATE_KEY, JSON.stringify({
-        queue: batchQueue, idx: batchIdx, stats: batchStats,
-        report: batchReport, dryRun: batchDryRun
-      }));
-      return;
-    }
-
-    const item = batchQueue[batchIdx];
-    const f    = fieldByIdMap.get(item.fieldId);
-    batchIdx++;
-
-    // Skip flagged fields
-    if (bpgFlagged.has(item.fieldId)) {
-      batchStats.skipped++;
-      logBatch(item.fieldId, 'skip', '⚑ Flagged for review — skipped');
-      updateBatchProgress();
-      continue;
-    }
-
-    updateBatchProgress();
-
-    if (!f) { batchStats.skipped++; logBatch(item.fieldId, 'skip', 'Field not found'); continue; }
-
-    try {
-      const geojson = JSON.stringify({
-        type:'Feature',
-        geometry:{ type:'Polygon', coordinates:[[...item.expanded, item.expanded[0]]] },
-        properties:{}
-      });
-
-      if (!batchDryRun) {
-        const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
-          method:'PATCH',
-          headers:{
-            'Authorization': `Bearer ${token}`,
-            'Content-Type':  'application/json',
-            'Accept':        'application/json',
-            'OData-MaxVersion':'4.0','OData-Version':'4.0','If-Match':'*'
-          },
-          body: JSON.stringify({ ccs_fieldgeojson_field: geojson })
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        // Update in-memory ring
-        const oldRing = f.ring ? f.ring.map(c=>[...c]) : null;
-        f.ring    = item.expanded.map(c=>[...c]);
-        f.geoJSON = geojson;
-
-        // Write change log
-        try {
-          const correctedBy = window._currentUserName || 'Daniel Jones';
-          const entry = clBuildEntry(f, oldRing, f.ring,
-            `Batch Auto-Correct (Selective, buffer ${item.bufferM}m)`, correctedBy);
-          clAppend(entry);
-        } catch(e) {}
-      }
-
-      batchStats.corrected++;
-      batchStats.reclaimed += item.gain;
-
-      const row = {
-        fieldId: item.fieldId, owner: f.owner || '',
-        status: batchDryRun ? 'Simulated' : 'Corrected',
-        oldIn: item.oldIn, newIn: item.newIn,
-        gain: item.gain, total: item.total,
-        areaPct: item.areaPct, bufferM: item.bufferM
-      };
-      batchReport.push(row);
-      logBatch(item.fieldId,
-        batchDryRun ? 'sim' : 'ok',
-        `+${item.gain} trees (${item.oldIn}→${item.newIn}/${item.total})`);
-
-    } catch(err) {
-      batchStats.failed++;
-      batchReport.push({ fieldId: item.fieldId, owner: f?.owner||'',
-        status:'Failed', error: err.message });
-      logBatch(item.fieldId, 'fail', err.message);
-    }
-
-    updateBatchProgress();
-    await new Promise(r => setTimeout(r, batchDryRun ? 0 : 600));
-  }
-
-  batchRunning = false;
-  localStorage.removeItem(BATCH_STATE_KEY);
-  finishBatch();
-}
-
-function updateBatchProgress() {
-  const pct = batchQueue.length
-    ? Math.round(batchIdx / batchQueue.length * 100) : 0;
-  document.getElementById('batchProgressBar').style.width  = pct + '%';
-  document.getElementById('batchProgressPct').textContent  = pct + '%';
-  document.getElementById('batchProgressLabel').textContent =
-    `${batchIdx.toLocaleString()} / ${batchQueue.length.toLocaleString()} fields`;
-  document.getElementById('bsCorrected').textContent = batchStats.corrected.toLocaleString();
-  document.getElementById('bsSkipped').textContent   = batchStats.skipped.toLocaleString();
-  document.getElementById('bsFailed').textContent    = batchStats.failed.toLocaleString();
-  document.getElementById('bsReclaimed').textContent = batchStats.reclaimed.toLocaleString();
-
-  // Live compliance update
-  if (!batchDryRun) {
-    let totalIn = 0, totalOut = 0;
-    const threshold = getLargeThreshold();
-    fieldsData.forEach(f => {
-      if (!f.ring || ringAreaHa(f.ring) > threshold) return;
-      const trees = treesByField[f.fieldId] || [];
-      trees.forEach(t => pip(t.lat, t.lng, f.ring) ? totalIn++ : totalOut++);
-    });
-    const pct = totalIn + totalOut > 0
-      ? Math.round(totalIn / (totalIn+totalOut) * 100) : 0;
-    document.getElementById('bsCompliance').textContent = pct + '%';
-  }
-}
-
-function logBatch(fieldId, type, msg) {
-  const log  = document.getElementById('batchLog');
-  const col  = type==='ok'?'#22c55e':type==='sim'?'#38bdf8':type==='fail'?'#ef4444':'var(--muted)';
-  const icon = type==='ok'?'✓':type==='sim'?'~':type==='fail'?'✖':'–';
-  const clickable = (type==='sim'||type==='ok');
-  log.innerHTML +=
-    `<div data-fieldid="${fieldId}"
-      style="cursor:${clickable?'pointer':'default'};padding:1px 2px;border-radius:3px"
-      ${clickable ? `onclick="previewBatchField('${fieldId}')"
-        onmouseenter="this.style.background='rgba(56,189,248,0.08)'"
-        onmouseleave="this.style.background=''"` : ''}>
-      <span style="color:${col}">${icon}</span>
-      <span style="color:var(--muted)">${fieldId}</span>
-      <span style="color:var(--text);margin-left:6px">${msg}</span>
-      ${clickable ? `<span style="color:#38bdf8;font-size:9px;margin-left:6px;opacity:0.7">
-        preview →</span>` : ''}
-    </div>`;
-  log.scrollTop = log.scrollHeight;
-}
-
-function previewBatchField(fieldId) {
-  const idx = fieldsData.findIndex(f => f.fieldId === fieldId);
-  if (idx < 0) { alert('Field not found in loaded data.'); return; }
-
-  const item = batchQueue.find(q => q.fieldId === fieldId);
-
-  // Close batch modal and open lightbox
-  document.getElementById('batchModal').classList.remove('open');
-  openLb(idx);
-
-  setTimeout(() => {
-    const f = fieldsData[idx];
-    if (!f || !f.ring) return;
-
-    // Set up auto-correct state
-    acFieldIdx     = idx;
-    acBufferM      = item ? item.bufferM : getBatchBuffer();
-    acMode         = 'selective';
-    acSelRing      = null; // let buildAutoCorrectPreview compute it
-    acHullRing     = null;
-    lbEditFieldIdx = idx;
-
-    // Show the ac bar
-    document.getElementById('lbAcBar').classList.add('active');
-    document.getElementById('lbAcBtn').style.display   = 'none';
-    document.getElementById('lbEditBtn').style.display = 'none';
-    document.getElementById('lbAcModeBtn').textContent = '⬡ Selective mode';
-    document.getElementById('lbAcBufVal').textContent  = acBufferM + 'm';
-    document.getElementById('lbAcSaveBtn').style.display = 'none'; // hide save in preview
-    document.getElementById('lbAcBar').querySelector('[onclick="cancelAutoCorrect()"]')
-      .style.display = 'none'; // hide discard too
-
-    // Build preview
-    buildAutoCorrectPreview(f);
-
-    // Add ← Back to Batch button — inject into ac bar so it's always visible
-    const acBar = document.getElementById('lbAcBar');
-    if (acBar && !document.getElementById('backToBatchBtn')) {
-      const backBtn = document.createElement('button');
-      backBtn.id        = 'backToBatchBtn';
-      backBtn.className = 'btn';
-      backBtn.textContent = '← Back to Batch';
-      backBtn.style.cssText =
-        'background:rgba(56,189,248,0.15);color:#38bdf8;' +
-        'border:1px solid rgba(56,189,248,0.4)';
-      backBtn.onclick = () => closeLb();
-      acBar.insertBefore(backBtn, acBar.firstChild);
-    }
-  }, 400);
-}
-
-function pauseBatch() {
-  batchPaused = true;
-  batchRunning = false;
-  document.getElementById('batchPauseBtn').style.display  = 'none';
-  document.getElementById('batchResumeBtn').style.display = '';
-  document.getElementById('batchProgressLabel').textContent = '⏸ Paused';
-}
-
-async function resumeBatch() {
-  // Check for saved state
-  try {
-    const saved = JSON.parse(localStorage.getItem(BATCH_STATE_KEY) || 'null');
-    if (saved) {
-      batchQueue   = saved.queue;
-      batchIdx     = saved.idx;
-      batchStats   = saved.stats;
-      batchReport  = saved.report;
-      batchDryRun  = saved.dryRun;
-    }
-  } catch(e) {}
-
-  batchRunning = true;
-  batchPaused  = false;
-  document.getElementById('batchProgress').style.display  = '';
-  document.getElementById('batchSettings').style.display  = 'none';
-  document.getElementById('batchPauseBtn').style.display  = '';
-  document.getElementById('batchResumeBtn').style.display = 'none';
-  document.getElementById('batchStopBtn').style.display   = '';
-  document.getElementById('bsTotal').textContent = batchQueue.length.toLocaleString();
-  await runBatch();
-}
-
-function stopBatch() {
-  if (!confirm('Stop the batch? Progress so far will be kept in the change log.')) return;
-  batchRunning = false;
-  batchPaused  = false;
-  localStorage.removeItem(BATCH_STATE_KEY);
-  finishBatch();
-}
-
-function finishBatch() {
-  document.getElementById('batchPauseBtn').style.display  = 'none';
-  document.getElementById('batchResumeBtn').style.display = 'none';
-  document.getElementById('batchStopBtn').style.display   = 'none';
-  document.getElementById('batchReportBtn').style.display = '';
-
-  if (batchDryRun) {
-    window._batchDryRunCompleted = true;
-    document.getElementById('batchProgressLabel').textContent =
-      `✓ Dry run complete — ${batchStats.corrected} fields would be corrected · ${batchStats.reclaimed.toLocaleString()} trees to be reclaimed`;
-    // Show visual review button
-    document.getElementById('batchGridBtn').style.display = '';
-    // Unlock live run
-    const cb = document.getElementById('batchDryRun');
-    cb.disabled = false;
-    cb.checked  = false;
-    cb.onchange = () => {
-      const isLive = !cb.checked;
-      document.getElementById('batchStartBtn').style.display = '';
-      document.getElementById('batchStartBtn').textContent   =
-        isLive ? '▶ Start Live Run' : '▶ Start Dry Run';
-      document.getElementById('batchStartBtn').style.background =
-        isLive ? '#22c55e' : '';
-    };
-    document.getElementById('batchSubtitle').textContent =
-      '✓ Dry run done — uncheck "Dry run" above and click Start to apply corrections';
-    document.getElementById('batchStartBtn').style.display  = '';
-    document.getElementById('batchStartBtn').textContent    = '▶ Start Dry Run Again';
-    document.getElementById('batchScanBtn').style.display   = '';
-  } else {
-    document.getElementById('batchProgressLabel').textContent =
-      `✓ Live run complete — ${batchStats.corrected} fields corrected · ${batchStats.reclaimed.toLocaleString()} trees reclaimed`;
-    // Refresh KPIs and grid
-    updateKPIs();
-    renderPage();
-  }
-}
-
-function downloadBatchReport() {
-  const headers = [
-    'Field ID','Owner','Status','Old Inside','New Inside',
-    'Trees Reclaimed','Total Trees','Area Change %','Buffer (m)','Error'
-  ];
-  const rows = batchReport.map(r => [
-    r.fieldId, r.owner||'', r.status,
-    r.oldIn??'', r.newIn??'', r.gain??'',
-    r.total??'', r.areaPct??'', r.bufferM??'', r.error||''
-  ]);
-  const ts  = new Date().toISOString().slice(0,10);
-  const csv = [headers,...rows]
-    .map(r => r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `CCS_Batch_Correct_Report_${ts}.csv`;
-  document.body.appendChild(a); a.click();
-  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
-}
-const CL_KEY = 'ccs_polygon_changelog';
-
-function clLoad() {
-  try {
-    return JSON.parse(localStorage.getItem(CL_KEY) || '[]');
-  } catch(e) { return []; }
-}
-
-function clSave(entries) {
-  try { localStorage.setItem(CL_KEY, JSON.stringify(entries)); } catch(e) {}
-}
-
-function clAppend(entry) {
-  const entries = clLoad();
-  entries.push(entry);
-  clSave(entries);
-  // Also auto-download a single-row CSV backup immediately
-  clDownloadRow(entry);
-}
-
-function clBuildEntry(f, oldRing, newRing, method, correctedBy) {
-  const trees     = treesByField[f.fieldId] || [];
-  const oldIn     = oldRing ? trees.filter(t => pip(t.lat, t.lng, oldRing)).length : 0;
-  const newIn     = newRing ? trees.filter(t => pip(t.lat, t.lng, newRing)).length : 0;
-  const oldArea   = oldRing ? ringAreaHa(oldRing).toFixed(4) : '';
-  const newArea   = newRing ? ringAreaHa(newRing).toFixed(4) : '';
-  const oldPct    = trees.length ? Math.round(oldIn / trees.length * 100) : null;
-  const newPct    = trees.length ? Math.round(newIn / trees.length * 100) : null;
-  const areaPct   = (oldRing && newRing)
-    ? Math.round(ringAreaHa(newRing) / ringAreaHa(oldRing) * 100) : null;
-
-  return {
-    timestamp:        new Date().toISOString(),
-    fieldId:          f.fieldId,
-    fieldGuid:        f.guid,
-    owner:            f.owner || '',
-    createdBy:        f.createdBy || '',
-    createdOn:        f.createdOn || '',
-    originalModifiedBy:  f.modifiedBy || '',
-    originalModifiedOn:  f.modifiedOn || '',
-    correctedBy,
-    correctionMethod: method,
-    totalTrees:       trees.length,
-    oldInside:        oldIn,
-    oldOutside:       trees.length - oldIn,
-    oldCompliance:    oldPct !== null ? oldPct + '%' : '—',
-    newInside:        newIn,
-    newOutside:       trees.length - newIn,
-    newCompliance:    newPct !== null ? newPct + '%' : '—',
-    complianceGain:   (oldPct !== null && newPct !== null) ? (newPct - oldPct) + '%' : '—',
-    oldVertices:      oldRing ? oldRing.length : '',
-    newVertices:      newRing ? newRing.length : '',
-    oldAreaHa:        oldArea,
-    newAreaHa:        newArea,
-    areaChangePct:    areaPct !== null ? areaPct + '%' : '—',
-    oldGeoJSON:       oldRing ? JSON.stringify({
-      type:'Feature', geometry:{ type:'Polygon',
-        coordinates:[[...oldRing, oldRing[0]]] }, properties:{} }) : '',
-    newGeoJSON:       newRing ? JSON.stringify({
-      type:'Feature', geometry:{ type:'Polygon',
-        coordinates:[[...newRing, newRing[0]]] }, properties:{} }) : ''
-  };
-}
-
-const CL_HEADERS = [
-  'Timestamp','Field ID','Field GUID','Owner',
-  'Originally Created By','Originally Created On',
-  'Previously Modified By','Previously Modified On',
-  'Corrected By','Correction Method',
-  'Total Trees',
-  'Old Inside','Old Outside','Old Compliance %',
-  'New Inside','New Outside','New Compliance %','Compliance Gain',
-  'Old Vertices','New Vertices',
-  'Old Area (ha)','New Area (ha)','Area Change %',
-  'Old GeoJSON','New GeoJSON'
-];
-
-function clEntryToRow(e) {
-  return [
-    e.timestamp, e.fieldId, e.fieldGuid, e.owner,
-    e.createdBy, e.createdOn,
-    e.originalModifiedBy, e.originalModifiedOn,
-    e.correctedBy, e.correctionMethod,
-    e.totalTrees,
-    e.oldInside, e.oldOutside, e.oldCompliance,
-    e.newInside, e.newOutside, e.newCompliance, e.complianceGain,
-    e.oldVertices, e.newVertices,
-    e.oldAreaHa, e.newAreaHa, e.areaChangePct,
-    e.oldGeoJSON, e.newGeoJSON
-  ];
-}
-
-function clDownloadRow(entry) {
-  const csv = [CL_HEADERS, clEntryToRow(entry)]
-    .map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `CCS_Polygon_Change_${entry.fieldId}_${entry.timestamp.slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-}
-
-function clDownloadAll() {
-  const entries = clLoad();
-  if (!entries.length) {
-    alert('No polygon corrections have been logged yet.');
-    return;
-  }
-  const csv = [CL_HEADERS, ...entries.map(clEntryToRow)]
-    .map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `CCS_Polygon_Change_Log_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-}
-
-function clClear() {
-  if (confirm(`Clear the change log? This cannot be undone.\n\nMake sure you have downloaded the full log first.`)) {
-    clSave([]);
-    alert('Change log cleared.');
-  }
-}
-
-async function savePolygon() {
-  const f = fieldsData[lbEditFieldIdx];
-  if (!f || !editRing || !f.guid) return;
-
-  // Capture old ring BEFORE any write
-  const oldRing = f.ring ? f.ring.map(c => [...c]) : null;
-
-  // Determine correction method
-  const isAcMode = document.getElementById('lbAcBar').classList.contains('active');
-  const method   = isAcMode
-    ? `Auto-Correct (${acMode === 'selective' ? 'Selective' : 'Hull'}, buffer ${acBufferM}m)`
-    : 'Manual Edit';
-
-  const saveBtn = document.getElementById('lbSaveBtn');
-  saveBtn.disabled = true;
-  saveBtn.textContent = '⏳ Saving…';
-  document.getElementById('lbEditStatus').textContent = 'Saving to Fieldforce…';
-
-  try {
-    const token = await getToken();
-
-    // Build GeoJSON Polygon
-    const geojson = JSON.stringify({
-      type: 'Feature',
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[...editRing, editRing[0]]] // close the ring
-      },
-      properties: {}
-    });
-
-    const res = await fetch(
-      `${DV_API}/ccs_fields(${f.guid})`,
-      {
-        method: 'PATCH',
-        headers: {
-          'Authorization':  `Bearer ${token}`,
-          'Content-Type':   'application/json',
-          'Accept':         'application/json',
-          'OData-MaxVersion':'4.0',
-          'OData-Version':  '4.0',
-          'If-Match':       '*'
-        },
-        body: JSON.stringify({ ccs_fieldgeojson_field: geojson })
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`HTTP ${res.status}: ${err}`);
-    }
-
-    // Update in-memory ring so card SVG and KPIs reflect the correction
-    f.ring    = editRing.map(c => [...c]);
-    f.geoJSON = geojson;
-
-    // Write change log entry
-    try {
-      // Get corrected-by from the current user's display name if available
-      const correctedBy = window._currentUserName || 'Daniel Jones';
-      const entry = clBuildEntry(f, oldRing, f.ring, method, correctedBy);
-      // Update f.modifiedOn/By in memory so lightbox shows correct values
-      f.modifiedOn    = entry.timestamp.slice(0,10);
-      f.modifiedOnFmt = new Date(entry.timestamp).toLocaleString();
-      f.modifiedBy    = correctedBy;
-      clAppend(entry);
-    } catch(clErr) {
-      console.warn('Change log write failed:', clErr);
-    }
-
-    document.getElementById('lbEditStatus').textContent =
-      `✓ Saved — ${f.fieldId} polygon updated · Change log updated`;
-    saveBtn.textContent  = '✓ Saved';
-    saveBtn.style.background = '#22c55e';
-
-    // Exit edit mode and redraw lightbox with new ring
-    document.getElementById('lbEditBar').classList.remove('active');
-    document.getElementById('lbEditBtn').style.display = '';
-    editRing = null;
-
-    // Rebuild lightbox map read-only with corrected ring
-    openLb(lbEditFieldIdx);
-
-    // Refresh KPIs and re-render card
-    updateKPIs();
-    renderPage();
-
-  } catch(e) {
-    document.getElementById('lbEditStatus').textContent = '✖ Save failed: ' + e.message;
-    saveBtn.disabled = false;
-    saveBtn.textContent = '💾 Save to Fieldforce';
-    saveBtn.style.background = '';
-  }
-}
-
-// ── TREE ROW → MAP FOCUS ───────────────────────────────────────────────────
-let _lbFocusMarker = null;
-
-function focusTreeOnMap(idx) {
-  const t      = (window._lbOutsideTrees || [])[idx];
-  const marker = (window._lbTreeMarkers  || {})[idx];
-  if (!t || !lbMap) return;
-
-  // Highlight selected row
-  document.querySelectorAll('#lbTreeBody tr').forEach(r => r.classList.remove('selected'));
-  const row = document.querySelector(`#lbTreeBody tr[data-tidx="${idx}"]`);
-  if (row) row.classList.add('selected');
-
-  // Pan map to tree
-  lbMap.setView([t.lat, t.lng], Math.max(lbMap.getZoom(), 18), { animate:true });
-
-  // Remove previous pulse marker
-  if (_lbFocusMarker) { try { lbMap.removeLayer(_lbFocusMarker); } catch(e){} }
-
-  // Add pulsing highlight ring
-  _lbFocusMarker = L.circleMarker([t.lat, t.lng], {
-    radius: 14, color:'#fff', weight:2,
-    fillColor:'transparent', fillOpacity:0,
-    className:'tree-pulse-ring'
-  }).addTo(lbMap);
-
-  // Animate: shrink back after 1.5s
-  let r = 14;
-  const interval = setInterval(() => {
-    r = Math.max(5, r - 1);
-    try { _lbFocusMarker.setRadius(r); } catch(e) {}
-    if (r <= 5) {
-      clearInterval(interval);
-      try { lbMap.removeLayer(_lbFocusMarker); } catch(e){}
-      _lbFocusMarker = null;
-    }
-  }, 80);
-
-  // Also make the original marker flash white briefly
-  if (marker) {
-    const origColor = marker.options.fillColor;
-    marker.setStyle({ fillColor:'#ffffff', radius:9 });
-    setTimeout(() => {
-      try { marker.setStyle({ fillColor: origColor, radius:5 }); } catch(e){}
-    }, 600);
-  }
-}
-function openCrossCheck() {
-  document.getElementById('ccModal').classList.add('open');
-  document.getElementById('ccInput').focus();
-}
-function closeCrossCheck() {
-  document.getElementById('ccModal').classList.remove('open');
-}
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLb(); closeExportMenu(); closeCrossCheck(); closeAcWarn(); }
-  if (e.key === 'Enter' && document.getElementById('ccModal').classList.contains('open')) {
-    runCrossCheck();
-  }
-});
-
-function runCrossCheck() {
-  const query = document.getElementById('ccInput').value.trim().toUpperCase();
-  const out   = document.getElementById('ccResult');
-  if (!query) { out.innerHTML = '<span style="color:var(--muted)">Enter a tree code.</span>'; return; }
-
-  // Find the tree
-  let found = null, foundField = null;
-  for (const [fid, trees] of Object.entries(treesByField)) {
-    for (const t of trees) {
-      if (t.code.toUpperCase() === query) { found = t; foundField = fieldByIdMap.get(fid); break; }
-    }
-    if (found) break;
-  }
-
-  if (!found) {
-    out.innerHTML = `<span style="color:#ef4444">Tree code <b>${query}</b> not found in loaded data.</span>`;
-    return;
-  }
-
-  const f      = foundField;
-  const ring   = f ? f.ring : null;
-  const inside = ring ? pip(found.lat, found.lng, ring) : null;
-  const distM  = (f && ring) ? Math.round(haversineM(found.lat, found.lng,
-    ring.reduce((s,c)=>s+c[1],0)/ring.length,
-    ring.reduce((s,c)=>s+c[0],0)/ring.length)) : null;
-  const rf     = (f && ring) ? rogueFlag(found, ring.reduce((s,c)=>s+c[1],0)/ring.length,
-    ring.reduce((s,c)=>s+c[0],0)/ring.length) : null;
-
-  const tick  = '<span style="color:#22c55e">✓</span>';
-  const cross = '<span style="color:#ef4444">✗</span>';
-  const warn  = '<span style="color:#f59e0b">⚠</span>';
-
-  const rows = [
-    ['Tree Code',       found.code],
-    ['Species',         found.species || '—'],
-    ['Raw Latitude',    `${found.lat} &nbsp;<span style="color:var(--muted)">(ccs_treelatitude_tree)</span>`],
-    ['Raw Longitude',   `${found.lng} &nbsp;<span style="color:var(--muted)">(ccs_treelongitude_tree)</span>`],
-    ['GPS Accuracy',    found.accuracy != null ? `${found.accuracy}m ${found.accuracy > 50 ? warn : tick}` : '—'],
-    ['Tagged Field',    f ? f.fieldId : '—'],
-    ['Field Owner',     f ? (f.owner || '—') : '—'],
-    ['Assignment Method', found.assignMethod === 'code'
-      ? `${tick} Tree code (authoritative)`
-      : found.assignMethod === 'guid'
-      ? `${warn} GUID fallback (tree code did not resolve to a known field)`
-      : '—'],
-    ['Code→Field',      found.codeFieldId
-      ? (found.codeGuidMismatch
-          ? `${found.codeFieldId} ${cross} <span style="color:#ef4444">MISMATCH — code says ${found.codeFieldId}, GUID links to ${f?.fieldId}</span>`
-          : `${found.codeFieldId} ${tick} Match`)
-      : '—'],
-    ['Polygon Vertices', ring ? ring.length : 'No polygon'],
-    ['Polygon Coords',  ring
-      ? '<br>' + ring.map((c,i) =>
-          `&nbsp;&nbsp;[${i}] lng=${c[0].toFixed(7)}, lat=${c[1].toFixed(7)}`
-        ).join('<br>')
-      : 'No polygon'],
-    ['Distance from Centroid', distM != null ? `${distM.toLocaleString()}m ${distM > 1000 ? cross + ' ROGUE' : tick}` : '—'],
-    ['pip() Result',    inside === null ? '— (no polygon)' :
-      inside
-        ? `${tick} <span style="color:#22c55e">INSIDE polygon</span>`
-        : `${cross} <span style="color:#ef4444">OUTSIDE polygon</span>`],
-    ['Rogue GPS Flag',  rf ? `${cross} ${rf.flag} — ${rf.reason}` : `${tick} No rogue flag`],
-    ['Actual Field',    found.actualFieldId === undefined ? '⏳ Pending detection'
-      : found.actualFieldId === null ? `${cross} Orphaned — outside every polygon`
-      : found.actualFieldId === f?.fieldId ? `${tick} Inside tagged field`
-      : `→ ${found.actualFieldId}`],
-    ['Data loaded at',  window._catalogLoadedAt || '—'],
-  ];
-
-  out.innerHTML = `
-    <table style="width:100%;border-collapse:collapse">
-      ${rows.map(([k,v]) => `
-        <tr style="border-bottom:1px solid rgba(31,46,66,0.6)">
-          <td style="color:var(--muted);padding:4px 8px;white-space:nowrap;
-            width:40%;vertical-align:top">${k}</td>
-          <td style="color:var(--text);padding:4px 8px">${v}</td>
-        </tr>`).join('')}
-    </table>
-    <div style="margin-top:12px;padding:8px;background:rgba(56,189,248,0.05);
-      border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:9px">
-      To independently verify: paste the polygon coords into geojson.io as a GeoJSON Polygon,
-      then drop a marker at (${found.lat}, ${found.lng}) — it should ${inside ? 'be inside' : 'be outside'} the polygon.
-    </div>`;
-}
-
-// ── EXPORT HELPERS ─────────────────────────────────────────────────────────
-function exportHeader(type, count) {
-  const ts = window._catalogLoadedAt || new Date().toISOString();
-  return [
-    `# CCS Field Tree Catalog — ${type}`,
-    `# Generated: ${new Date().toUTCString()}`,
-    `# Data loaded from Fieldforce at: ${ts}`,
-    `# Fields loaded: ${fieldsData.length.toLocaleString()}`,
-    `# Trees loaded: ${Object.values(treesByField).reduce((s,a)=>s+a.length,0).toLocaleString()}`,
-    `# Duplicates removed: ${(window._catalogDupesDropped||0).toLocaleString()}`,
-    `# Code/field mismatches: ${(window._catalogCodeGuidMismatches||0).toLocaleString()}`,
-    `# Trees assigned by tree code: ${(window._catalogAssignedByCode||0).toLocaleString()}`,
-    `# Trees assigned by GUID (code fallback): ${(window._catalogAssignedByGuid||0).toLocaleString()}`,
-    `# Trees unassigned: ${(window._catalogAssignedNeither||0).toLocaleString()}`,
-    `# Test user fields excluded: ${(window._catalogTestFields||0).toLocaleString()}`,
-    `# Large fields excluded from compliance: ${(window._largeExcludedFields||0).toLocaleString()} fields · ${(window._largeExcludedTrees||0).toLocaleString()} trees`,
-    `# Records in this export: ${count}`,
-    ``
-  ].join('\n');
-}
-
-function toggleOutsideTree() {
-  const body = document.getElementById('lbOutsideBody');
-  const lbl  = document.querySelector('#lbOutsideSection [onclick="toggleOutsideTree()"] span');
-  const open = body.style.display === 'none';
-  body.style.display = open ? '' : 'none';
-  if (open) {
-    const s = document.getElementById('lbTreeSearch');
-    if (s) { s.value = ''; filterTreeTable(); }
-  }
-  lbl.textContent = (open ? '▾ ' : '▸ ') + 'Outside Trees';
-}
-
 function closeLb() {
   document.getElementById('lb').classList.remove('open');
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
-  // Restore hidden buttons in case we were in batch preview
-  const saveBtn   = document.getElementById('lbAcSaveBtn');
-  const discardBtn = document.querySelector('#lbAcBar [onclick="cancelAutoCorrect()"]');
-  if (saveBtn)    saveBtn.style.display   = '';
-  if (discardBtn) discardBtn.style.display = '';
-  // Remove back-to-batch button
-  const bb = document.getElementById('backToBatchBtn');
-  if (bb) {
-    bb.remove();
-    document.getElementById('batchModal').classList.add('open');
-  }
 }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLb(); closeExportMenu(); }
+});
 
 // ── EXPORT MENU ────────────────────────────────────────────────────────────
 function toggleExportMenu(e) {
@@ -3987,392 +1115,8 @@ function exportCSV(type) {
 
   const labels = {
     all:'Field_Compliance_Summary', outside:'Has_Trees_Outside',
-    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons',
-    overlapping:'Overlapping_Fields', adjacent:'Adjacent_Fields',
-    realloc:'Reallocation_Report', audit:'Audit_Trail',
-    codemismatch:'Code_Field_Mismatches', bulkac:'Bulk_AutoCorrect_Preview'
+    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons'
   };
-
-  // ── Re-allocation export ───────────────────────────────────────────────────
-  if (type === 'realloc') {
-    const reallocRows = [];
-    fieldsData.forEach(f => {
-      if (f.ring && ringAreaHa(f.ring) > threshold) return; // exclude large
-      const trees  = treesByField[f.fieldId] || [];
-      const cm     = f.ring ? ringMetrics(f.ring) : null;
-      const centLat = cm ? cm.cLat : 0;
-      const centLng = cm ? cm.cLng : 0;
-      trees.forEach(t => {
-        if (f.ring && pip(t.lat, t.lng, f.ring)) return;
-        const isRealloc   = t.actualFieldId && t.actualFieldId !== f.fieldId;
-        const isOrphan    = t.actualFieldId === null;
-        const status      = isRealloc ? 'Re-allocated' : isOrphan ? 'Orphaned' : 'Pending detection';
-        const actualField = isRealloc ? fieldByIdMap.get(t.actualFieldId) : null;
-        const distM       = Math.round(haversineM(t.lat, t.lng, centLat, centLng));
-        const rf          = rogueFlag(t, centLat, centLng);
-        reallocRows.push([
-          t.code    || '',
-          t.species || '',
-          t.lat.toFixed(6),
-          t.lng.toFixed(6),
-          t.accuracy != null ? Math.round(t.accuracy) : '',
-          distM,
-          rf ? rf.flag + ' — ' + rf.reason : 'OK',
-          f.fieldId,
-          f.owner   || '',
-          isRealloc ? t.actualFieldId : '',
-          actualField ? (actualField.owner || '') : '',
-          status
-        ]);
-      });
-    });
-
-    const reallocHeaders = [
-      'Tree Code','Species','Lat','Lng',
-      'GPS Accuracy (m)','Dist from Centroid (m)','Rogue Flag',
-      'Tagged Field','Tagged Owner',
-      'Actual Field','Actual Owner',
-      'Status'
-    ];
-    const csv = [reallocHeaders, ...reallocRows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob(['\uFEFF' + exportHeader('Re-allocation Report', reallocRows.length) + csv],
-      { type:'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `CCS_Reallocation_Report_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    return;
-  }
-
-  // ── Bulk auto-correct preview export ──────────────────────────────────────
-  if (type === 'bulkac') {
-    const acRows = [];
-    fieldsData.forEach(f => {
-      if (!f.ring || !f.guid) return;
-      if (ringAreaHa(f.ring) > threshold) return; // skip large
-      const trees = treesByField[f.fieldId] || [];
-      if (!trees.length) return;
-      const cm   = ringMetrics(f.ring);
-      const cLat = cm.cLat, cLng = cm.cLng;
-      const oldIn  = trees.filter(t => pip(t.lat, t.lng, f.ring)).length;
-      const oldOut = trees.length - oldIn;
-      if (oldOut === 0) return; // all inside — no correction needed
-      const oldPct = Math.round(oldIn / trees.length * 100);
-
-      // Compute hull with default 5m buffer
-      const cleanPts = trees
-        .filter(t => !rogueFlag(t, cLat, cLng))
-        .map(t => [t.lng, t.lat]);
-      if (cleanPts.length < 3) return;
-      const hull     = convexHull(cleanPts);
-      const buffered = bufferRingM(hull, 3);
-      const newIn    = trees.filter(t => pip(t.lat, t.lng, buffered)).length;
-      const newOut   = trees.length - newIn;
-      const newPct   = Math.round(newIn / trees.length * 100);
-      const gain     = newPct - oldPct;
-      const rogueCt  = trees.length - cleanPts.length;
-      const areaPct  = Math.round(ringAreaHa(buffered) / ringAreaHa(f.ring) * 100);
-      const areaFlag = areaPct >= 200 ? 'BLOCKED >200%'
-                     : areaPct >= 130 ? `WARN +${areaPct-100}%` : 'OK';
-
-      acRows.push([
-        f.fieldId, f.owner || '', f.createdOn || '',
-        f.createdBy || '', f.modifiedOn || '', f.modifiedBy || '',
-        trees.length, oldIn, oldOut, oldPct + '%',
-        newIn, newOut, newPct + '%',
-        gain > 0 ? '+' + gain + '%' : gain + '%',
-        hull.length, ringAreaHa(f.ring).toFixed(2),
-        ringAreaHa(buffered).toFixed(2),
-        areaPct + '%', areaFlag,
-        rogueCt, 3
-      ]);
-    });
-
-    // Sort by biggest gain first
-    acRows.sort((a, b) => parseFloat(b[10]) - parseFloat(a[10]));
-
-    const acHeaders = [
-      'Field ID','Owner','Registered',
-      'Created By','Modified On','Modified By',
-      'Total Trees','Current Inside','Current Outside','Current Compliance %',
-      'Projected Inside','Projected Outside','Projected Compliance %',
-      'Gain','Hull Vertices','Current Area (ha)','Projected Area (ha)',
-      'Area Increase %','Area Flag',
-      'Rogue Trees Excluded','Buffer (m)'
-    ];
-    const csvBody = [acHeaders, ...acRows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob(
-      ['\uFEFF' + exportHeader('Bulk Auto-Correct Preview', acRows.length) + csvBody],
-      { type:'text/csv;charset=utf-8;' }
-    );
-    const url = URL.createObjectURL(blob);
-    const a   = document.createElement('a');
-    a.href = url;
-    a.download = `CCS_Bulk_AutoCorrect_Preview_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    return;
-  }
-
-  // ── Audit trail export ────────────────────────────────────────────────────
-  if (type === 'audit') {
-    const auditRows = [];
-    fieldsData.forEach(f => {
-      if (f.ring && ringAreaHa(f.ring) > threshold) return; // exclude large
-      const trees = treesByField[f.fieldId] || [];
-      const ring  = f.ring;
-      const cm    = ring ? ringMetrics(ring) : null;
-      const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
-      const polyCoords = ring
-        ? ring.map(c => `[lng=${c[0].toFixed(7)} lat=${c[1].toFixed(7)}]`).join(' | ')
-        : '';
-      trees.forEach(t => {
-        if (ring && pip(t.lat, t.lng, ring)) return; // inside — skip
-        const distM  = ring ? Math.round(haversineM(t.lat, t.lng, cLat, cLng)) : '';
-        const rf     = ring ? rogueFlag(t, cLat, cLng) : null;
-        const inside = ring ? pip(t.lat, t.lng, ring) : null;
-        auditRows.push([
-          t.code || '',
-          t.species || '',
-          t.lat.toFixed(7),
-          t.lng.toFixed(7),
-          t.accuracy != null ? Math.round(t.accuracy) : '',
-          f.fieldId,
-          f.owner || '',
-          t.codeFieldId || '',
-          t.codeGuidMismatch ? 'MISMATCH' : 'OK',
-          ring ? ring.length : '',
-          polyCoords,
-          cLat ? cLat.toFixed(7) : '',
-          cLng ? cLng.toFixed(7) : '',
-          distM,
-          inside === null ? 'No polygon' : inside ? 'INSIDE' : 'OUTSIDE',
-          rf ? rf.flag + ' — ' + rf.reason : 'OK',
-          t.actualFieldId === undefined ? 'Pending'
-            : t.actualFieldId === null ? 'Orphaned'
-            : t.actualFieldId !== f.fieldId ? 'Re-allocated: ' + t.actualFieldId
-            : 'Inside tagged field',
-          window._catalogLoadedAt || ''
-        ]);
-      });
-    });
-    const auditHeaders = [
-      'Tree Code','Species','Raw Lat','Raw Lng','GPS Accuracy (m)',
-      'Tagged Field','Tagged Owner',
-      'Code→Field','Code/GUID Check',
-      'Polygon Vertices','Polygon Coordinates',
-      'Centroid Lat','Centroid Lng','Dist from Centroid (m)',
-      'pip() Result','Rogue Flag','Allocation Status','Data Loaded At'
-    ];
-    const csvBody = [auditHeaders, ...auditRows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob(['\uFEFF' + exportHeader('Audit Trail', auditRows.length) + csvBody],
-      { type:'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a   = document.createElement('a');
-    a.href = url;
-    a.download = `CCS_Audit_Trail_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    return;
-  }
-
-  // ── Code / field mismatch export ─────────────────────────────────────────
-  if (type === 'codemismatch') {
-    const mmRows = [];
-    fieldsData.forEach(f => {
-      const trees = treesByField[f.fieldId] || [];
-      const ring  = f.ring;
-      const cm    = ring ? ringMetrics(ring) : null;
-      const cLat  = cm ? cm.cLat : 0, cLng = cm ? cm.cLng : 0;
-      trees.forEach(t => {
-        if (!t.codeGuidMismatch) return;
-        const inside = ring ? pip(t.lat, t.lng, ring) : null;
-        const distM  = ring ? Math.round(haversineM(t.lat, t.lng, cLat, cLng)) : '';
-        mmRows.push([
-          t.code || '',
-          t.species || '',
-          t.lat.toFixed(7),
-          t.lng.toFixed(7),
-          t.accuracy != null ? Math.round(t.accuracy) : '',
-          t.codeFieldId || '',
-          f.fieldId,
-          f.owner || '',
-          inside === null ? 'No polygon' : inside ? 'Inside GUID field' : 'Outside GUID field',
-          distM,
-          t.actualFieldId === undefined ? 'Pending'
-            : t.actualFieldId === null ? 'Orphaned'
-            : 'Re-allocated: ' + t.actualFieldId,
-          window._catalogLoadedAt || ''
-        ]);
-      });
-    });
-    const mmHeaders = [
-      'Tree Code','Species','Lat','Lng','GPS Accuracy (m)',
-      'Field from Tree Code','GUID-Linked Field','GUID Field Owner',
-      'pip() vs GUID Field','Dist from GUID Centroid (m)',
-      'Re-allocation Status','Data Loaded At'
-    ];
-    const csvBody = [mmHeaders, ...mmRows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob(['\uFEFF' + exportHeader('Code/Field Mismatches', mmRows.length) + csvBody],
-      { type:'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a   = document.createElement('a');
-    a.href = url;
-    a.download = `CCS_Code_Field_Mismatches_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    return;
-  }
-
-  // ── Standard exports ───────────────────────────────────────────────────────
-  if (type === 'overlapping' || type === 'adjacent') {
-    const rel = type === 'overlapping' ? 'overlapping' : 'adjacent';
-    const seen = new Set();
-    const pairRows = [];
-
-    fieldsData.forEach(f => {
-      const nb = neighbourMap.get(f.fieldId);
-      if (!nb || nb[rel].length === 0) return;
-      const trees  = treesByField[f.fieldId] || [];
-      const m      = f.ring ? ringMetrics(f.ring) : null;
-      let inCount = 0, outCount = 0;
-      if (f.ring && trees.length) {
-        trees.forEach(t => pip(t.lat, t.lng, f.ring) ? inCount++ : outCount++);
-      }
-      const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
-      const isLarge = m && m.area > threshold;
-
-      nb[rel].forEach(nid => {
-        // Deduplicate symmetric pairs (A↔B and B↔A → one row)
-        const pk = f.fieldId < nid ? `${f.fieldId}|${nid}` : `${nid}|${f.fieldId}`;
-        if (seen.has(pk)) return;
-        seen.add(pk);
-
-        const nf     = fieldByIdMap.get(nid);
-        const ntrees = treesByField[nid] || [];
-        const nm     = nf && nf.ring ? ringMetrics(nf.ring) : null;
-        let nIn = 0, nOut = 0;
-        if (nf && nf.ring && ntrees.length) {
-          ntrees.forEach(t => pip(t.lat, t.lng, nf.ring) ? nIn++ : nOut++);
-        }
-        const nPct = ntrees.length > 0 ? Math.round(nIn / ntrees.length * 100) : null;
-
-        // Correction artifact check (only for overlapping pairs)
-        const artifactFlag = type === 'overlapping'
-          ? correctionArtifactFlag(f.ring, nf ? nf.ring : null)
-          : '—';
-
-        // Embedded relationship
-        const embRel = type === 'overlapping' && nf && nf.ring
-          ? embeddedRelation(f.ring, nf.ring) : 'none';
-        const embeddedFlag = embRel === 'A_in_B' ? 'Field A inside Field B'
-          : embRel === 'B_in_A' ? 'Field B inside Field A'
-          : embRel === 'partial' ? 'Partial overlap'
-          : '—';
-
-        // Priority score — higher = fix this pair first
-        // Formula: outside trees at risk × relationship weight
-        // Embedded = weight 3 (clearest error, most trees recoverable)
-        // Correction artifact = weight 2 (easy fix, deactivate old polygon)
-        // Partial overlap = weight 1
-        const relWeight = embRel !== 'none' ? 3
-          : artifactFlag.startsWith('Likely') ? 2
-          : artifactFlag.startsWith('Possible') ? 1.5 : 1;
-        const treesAtRisk = outCount + nOut;
-        const priorityScore = Math.round(treesAtRisk * relWeight);
-        const priorityLabel = priorityScore >= 100 ? 'Critical'
-          : priorityScore >= 50 ? 'High'
-          : priorityScore >= 20 ? 'Medium' : 'Low';
-
-        pairRows.push([
-          priorityScore,
-          priorityLabel,
-          // Field A
-          f.fieldId,
-          f.owner || '',
-          f.createdOn || '',
-          f.createdBy || '',
-          f.modifiedOn || '',
-          f.modifiedBy || '',
-          trees.length,
-          inCount,
-          outCount,
-          pct !== null ? pct + '%' : '—',
-          m ? m.area.toFixed(2) : '',
-          m ? Math.round(m.perimeter) : '',
-          m ? m.vertices : '',
-          m ? m.cLat.toFixed(6) : '',
-          m ? m.cLng.toFixed(6) : '',
-          isLarge ? 'Yes' : 'No',
-          // Field B
-          nf ? nf.fieldId : nid,
-          nf ? (nf.owner || '') : '',
-          nf ? (nf.createdOn || '') : '',
-          nf ? (nf.createdBy || '') : '',
-          nf ? (nf.modifiedOn || '') : '',
-          nf ? (nf.modifiedBy || '') : '',
-          ntrees.length,
-          nIn,
-          nOut,
-          nPct !== null ? nPct + '%' : '—',
-          nm ? nm.area.toFixed(2) : '',
-          nm ? Math.round(nm.perimeter) : '',
-          nm ? nm.vertices : '',
-          nm ? nm.cLat.toFixed(6) : '',
-          nm ? nm.cLng.toFixed(6) : '',
-          (nm && nm.area > threshold) ? 'Yes' : 'No',
-          artifactFlag,
-          embeddedFlag,
-          treesAtRisk
-        ]);
-      });
-    });
-
-    // Sort by priority score descending — highest impact first
-    pairRows.sort((a, b) => b[0] - a[0]);
-
-    const pairHeaders = [
-      'Priority Score','Priority Level',
-      'Field A ID','Field A Owner','Field A Registered',
-      'Field A Created By','Field A Modified On','Field A Modified By',
-      'Field A Trees',
-      'Field A Inside','Field A Outside','Field A Compliance %',
-      'Field A Area (ha)','Field A Perimeter (m)','Field A Vertices',
-      'Field A Centroid Lat','Field A Centroid Lng','Field A Large Polygon',
-      'Field B ID','Field B Owner','Field B Registered',
-      'Field B Created By','Field B Modified On','Field B Modified By',
-      'Field B Trees',
-      'Field B Inside','Field B Outside','Field B Compliance %',
-      'Field B Area (ha)','Field B Perimeter (m)','Field B Vertices',
-      'Field B Centroid Lat','Field B Centroid Lng','Field B Large Polygon',
-      'Correction Artifact','Embedded Relationship','Trees at Risk'
-    ];
-
-    const csv = [pairHeaders, ...pairRows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-      .join('\n');
-
-    const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `CCS_${labels[type]}_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    return;
-  }
-
-  // ── Standard exports (all / outside / inside / no_trees / large) ──────────
   const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
