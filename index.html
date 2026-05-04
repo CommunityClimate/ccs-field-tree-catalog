@@ -39,25 +39,36 @@ body { font-family:var(--sans); background:var(--bg); color:var(--text);
 /* ── HEADER ── */
 header {
   background:var(--panel); border-bottom:1px solid var(--border);
-  padding:0 14px; height:46px; display:flex; align-items:center;
-  gap:10px; flex-shrink:0;
+  padding:0 10px; height:46px; display:flex; align-items:center;
+  gap:6px; flex-shrink:0; overflow:hidden;
 }
 .logo { font-family:var(--mono); font-size:11px; font-weight:700;
-  letter-spacing:1.5px; text-transform:uppercase; color:var(--text); }
+  letter-spacing:1.5px; text-transform:uppercase; color:var(--text);
+  flex-shrink:0; white-space:nowrap; }
 .logo span { color:var(--green); }
-.hd { width:1px; height:22px; background:var(--border); }
-.kpi { display:flex; align-items:center; gap:6px; background:var(--card);
-  border:1px solid var(--border); border-radius:4px; padding:3px 10px;
-  font-family:var(--mono); font-size:11px; }
-.kpi .v { font-weight:700; font-size:13px; }
+.hd { width:1px; height:22px; background:var(--border); flex-shrink:0; }
+.kpi { display:flex; align-items:center; gap:4px; background:var(--card);
+  border:1px solid var(--border); border-radius:4px; padding:3px 8px;
+  font-family:var(--mono); font-size:11px; flex-shrink:0; white-space:nowrap; }
+.kpi .v { font-weight:700; font-size:12px; }
 .kpi.g { border-color:var(--green-b); background:var(--green-bg); }
 .kpi.g .v { color:var(--green); }
 .kpi.r { border-color:var(--red-b); background:var(--red-bg); }
 .kpi.r .v { color:var(--red); }
 .kpi.b { border-color:var(--blue-b); background:var(--blue-bg); }
 .kpi.b .v { color:var(--blue); }
-.kpi .l { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:1px; }
-.sp { flex:1; }
+.kpi.a { border-color:var(--amber-b); background:var(--amber-bg); }
+.kpi.a .v { color:var(--amber); }
+.kpi .l { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:.5px; }
+.sp { flex:1; min-width:8px; }
+
+/* Responsive — hide label text on narrow screens, keep numbers */
+@media (max-width:1400px) {
+  .kpi { padding:3px 6px; gap:3px; }
+  .kpi .l { display:none; }
+  .kpi .v { font-size:11px; }
+  header { gap:4px; }
+}
 
 /* ── MAIN ── */
 .main { display:flex; flex:1; overflow:hidden; }
@@ -255,7 +266,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
 
   <div class="sp"></div>
   <div class="kpi" id="kpiPct"
-    style="font-family:var(--mono);font-size:12px;font-weight:700;white-space:nowrap"
+    style="font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0"
     title="Verra-compliant percentage: (inside + tolerance) / total trees with polygons">—</div>
   <div class="hd"></div>
   <div style="position:relative">
