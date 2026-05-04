@@ -221,8 +221,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
   <div class="hd"></div>
   <div class="kpi b"><span class="v" id="kpiFields">—</span><span class="l">Fields</span></div>
   <div class="kpi b"><span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
-  <div class="kpi g"><span class="v" id="kpiInside">—</span><span class="l">Inside</span></div>
-  <div class="kpi r"><span class="v" id="kpiOutside">—</span><span class="l">Outside</span></div>
+  <div class="kpi g"><span class="v" id="kpiInside">—</span><span class="l">Compliant</span></div>
+  <div class="kpi" style="border-color:rgba(74,222,128,0.2);background:rgba(74,222,128,0.06)"><span class="v" id="kpiTolerance" style="color:#4ade80">—</span><span class="l">Tolerance</span></div>
+  <div class="kpi" style="border-color:var(--amber-b);background:var(--amber-bg)"><span class="v" id="kpiReview" style="color:var(--amber)">—</span><span class="l">Review</span></div>
+  <div class="kpi r"><span class="v" id="kpiOutside">—</span><span class="l">Correct</span></div>
   <div class="kpi a"><span class="v" id="kpiLarge">—</span><span class="l">Large poly</span></div>
   <div class="sp"></div>
   <div class="kpi" id="kpiPct" style="font-family:var(--mono);font-size:13px;font-weight:700">—</div>
@@ -268,7 +270,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <select id="fltStatus" onchange="render()">
         <option value="">All fields</option>
         <option value="inside">✓ All trees inside</option>
-        <option value="outside">✗ Has trees outside</option>
+        <option value="tolerance">✓ All within tolerance (0–5m)</option>
+        <option value="review">⚠ Has trees in review zone (5–10m)</option>
+        <option value="correction">✗ Needs correction (&gt;10m outside)</option>
+        <option value="outside">✗ Has any trees outside</option>
         <option value="no_trees">No trees recorded</option>
         <option value="no_poly">No polygon</option>
         <option value="large">⚠ Large polygons</option>
@@ -298,7 +303,39 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       </div>
     </div>
     <div class="sec">
-      <span class="sec-lbl">Large polygon threshold</span>
+      <span class="sec-lbl">Verra GPS Tolerance Zones</span>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:10px;color:#22c55e">✓ Tolerance zone</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:#22c55e"
+            id="toleranceLbl">0–5m</span>
+        </div>
+        <input type="range" id="toleranceM" min="0" max="15" value="5" step="1"
+          oninput="updateToleranceLbl();renderPage()" style="accent-color:#22c55e"/>
+        <div style="font-size:9px;color:var(--muted);line-height:1.5;margin-top:2px">
+          Trees within this distance are accepted — GPS noise, not a real error.
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:10px;color:var(--amber)">⚠ Review zone</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--amber)"
+            id="reviewLbl">5–10m</span>
+        </div>
+        <input type="range" id="reviewM" min="5" max="30" value="10" step="1"
+          oninput="updateToleranceLbl();renderPage()" style="accent-color:#f59e0b"/>
+        <div style="font-size:9px;color:var(--muted);line-height:1.5;margin-top:2px">
+          Trees here need checking — may need polygon correction.
+        </div>
+      </div>
+      <div style="margin-top:6px;font-size:9px;color:var(--muted);line-height:1.5;
+        background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);
+        border-radius:4px;padding:5px 8px">
+        <span style="color:var(--red)">✗ Correction zone:</span> trees &gt;
+        <span id="correctionLbl" style="font-weight:700">10m</span> outside —
+        flag for polygon correction.
+      </div>
+    </div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
         <input type="range" id="largeThreshold" min="1" max="100" value="10"
           oninput="updateThresholdLabel();render()"/>
@@ -361,9 +398,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     </div>
     <div class="lb-map" id="lbMap" style="height:300px"></div>
     <div class="lb-legend">
-      <span><span class="dot" style="background:#22c55e"></span>Inside polygon</span>
-      <span><span class="dot" style="background:#ef4444"></span>Outside polygon</span>
-      <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Field boundary</span>
+      <span><span class="dot" style="background:#22c55e"></span>Inside</span>
+      <span><span class="dot" style="background:#4ade80"></span>Tolerance (GPS)</span>
+      <span><span class="dot" style="background:#f59e0b"></span>Review zone</span>
+      <span><span class="dot" style="background:#ef4444"></span>Needs correction</span>
+      <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Boundary</span>
     </div>
     <!-- Tree stats row -->
     <div class="lb-stats">
@@ -373,17 +412,19 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       </div>
       <div class="lb-stat">
         <div class="v" id="lbInside" style="color:var(--green)">—</div>
-        <div class="l">Inside</div>
+        <div class="l">Compliant</div>
       </div>
       <div class="lb-stat">
         <div class="v" id="lbOutside" style="color:var(--red)">—</div>
-        <div class="l">Outside</div>
+        <div class="l">Needs Correction</div>
       </div>
       <div class="lb-stat">
         <div class="v" id="lbPct">—</div>
-        <div class="l">Compliance</div>
+        <div class="l">Verra Compliance</div>
       </div>
     </div>
+    <!-- Zone breakdown -->
+    <div id="lbZoneBreakdown" style="padding:6px 14px;border-bottom:1px solid var(--border);flex-shrink:0"></div>
     <!-- Polygon metrics row -->
     <div class="lb-metrics">
       <div class="lb-m">
@@ -489,6 +530,47 @@ function haversineM(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+// Distance from a point to the nearest edge of a polygon ring (metres)
+// Returns 0 if inside, positive distance if outside
+function distToRing(lat, lng, ring) {
+  if (pip(lat, lng, ring)) return 0; // inside — distance is 0
+  const R = 6378137;
+  const toRad = d => d * Math.PI / 180;
+  let minDist = Infinity;
+  const n = ring.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    // Edge from ring[j] to ring[i] — find closest point on segment
+    const ax = ring[j][0], ay = ring[j][1]; // [lng, lat]
+    const bx = ring[i][0], by = ring[i][1];
+    const px = lng, py = lat;
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx*dx + dy*dy;
+    let t = 0;
+    if (lenSq > 0) {
+      t = ((px - ax)*dx + (py - ay)*dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+    }
+    const cx = ax + t*dx, cy = ay + t*dy;
+    const d = haversineM(py, px, cy, cx);
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
+}
+
+// Classify a tree relative to its field polygon using Verra tolerance zones
+// Returns { zone, dist } where zone is 'inside'|'tolerance'|'review'|'outside'
+function classifyTree(lat, lng, ring, toleranceM, reviewM) {
+  if (!ring) return { zone: 'no_poly', dist: null };
+  const dist = distToRing(lat, lng, ring);
+  if (dist === 0)           return { zone: 'inside',    dist: 0 };
+  if (dist <= toleranceM)   return { zone: 'tolerance', dist };
+  if (dist <= reviewM)      return { zone: 'review',    dist };
+  return                           { zone: 'outside',   dist };
+}
+
+function getToleranceM() { return parseFloat(document.getElementById('toleranceM')?.value || 5); }
+function getReviewM()    { return parseFloat(document.getElementById('reviewM')?.value    || 10); }
+
 function ringMetrics(ring) {
   if (!ring || ring.length < 3) return null;
   const n = ring.length;
@@ -509,6 +591,13 @@ function ringMetrics(ring) {
     c[0] >= ZAMBIA.minLng && c[0] <= ZAMBIA.maxLng
   );
   return { area, perimeter, vertices: n, avg, min, max, cLat, cLng, inZambia };
+}
+
+function updateToleranceLbl() {
+  const t = getToleranceM(), r = getReviewM();
+  document.getElementById('toleranceLbl').textContent  = `0–${t}m`;
+  document.getElementById('reviewLbl').textContent     = `${t}–${r}m`;
+  document.getElementById('correctionLbl').textContent = `${r}m`;
 }
 
 function getLargeThreshold() {
@@ -674,26 +763,34 @@ async function connect() {
 }
 
 function updateKPIs() {
-  let totalIn = 0, totalOut = 0, largeCount = 0;
+  let totalInside = 0, totalTolerance = 0, totalReview = 0, totalOutside = 0, largeCount = 0;
   const threshold = getLargeThreshold();
   fieldsData.forEach(f => {
     const trees = treesByField[f.fieldId] || [];
     if (f.ring) {
       if (ringAreaHa(f.ring) > threshold) largeCount++;
-      trees.forEach(t => pip(t.lat, t.lng, f.ring) ? totalIn++ : totalOut++);
+      if (trees.length > 0) {
+        const cl = classifyField(f);
+        totalInside    += cl.inside + cl.tolerance; // compliant
+        totalTolerance += cl.tolerance;
+        totalReview    += cl.review;
+        totalOutside   += cl.outside;
+      }
     }
   });
-  const total = totalIn + totalOut;
-  const pct = total > 0 ? Math.round(totalIn / total * 100) : 0;
+  const totalTrees = totalInside + totalReview + totalOutside;
+  const pct = totalTrees > 0 ? Math.round(totalInside / totalTrees * 100) : 0;
   const pctCol = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
-  document.getElementById('kpiFields').textContent  = fieldsData.length.toLocaleString();
-  document.getElementById('kpiTrees').textContent   = total.toLocaleString();
-  document.getElementById('kpiInside').textContent  = totalIn.toLocaleString();
-  document.getElementById('kpiOutside').textContent = totalOut.toLocaleString();
-  document.getElementById('kpiLarge').textContent   = largeCount.toLocaleString();
+  document.getElementById('kpiFields').textContent    = fieldsData.length.toLocaleString();
+  document.getElementById('kpiTrees').textContent    = totalTrees.toLocaleString();
+  document.getElementById('kpiInside').textContent   = totalInside.toLocaleString();
+  document.getElementById('kpiTolerance').textContent= totalTolerance.toLocaleString();
+  document.getElementById('kpiReview').textContent   = totalReview.toLocaleString();
+  document.getElementById('kpiOutside').textContent  = totalOutside.toLocaleString();
+  document.getElementById('kpiLarge').textContent    = largeCount.toLocaleString();
   document.getElementById('btnExport').disabled = false;
   const kpiPct = document.getElementById('kpiPct');
-  kpiPct.textContent = pct + '% compliant';
+  kpiPct.textContent = pct + '% Verra compliant';
   kpiPct.style.color = pctCol;
 }
 
@@ -701,6 +798,26 @@ function updateKPIs() {
 const PAGE_SIZE = 48;
 let currentPage = 1;
 let visibleCache = [];
+
+// Classify all trees for a field — returns { inside, tolerance, review, outside, maxDist }
+function classifyField(f) {
+  const trees = treesByField[f.fieldId] || [];
+  const ring  = f.ring;
+  const tM = getToleranceM(), rM = getReviewM();
+  let inside = 0, tolerance = 0, review = 0, outside = 0, maxDist = 0;
+  trees.forEach(t => {
+    const c = classifyTree(t.lat, t.lng, ring, tM, rM);
+    if      (c.zone === 'inside')    inside++;
+    else if (c.zone === 'tolerance') { tolerance++; if (c.dist > maxDist) maxDist = c.dist; }
+    else if (c.zone === 'review')    { review++;    if (c.dist > maxDist) maxDist = c.dist; }
+    else                             { outside++;   if (c.dist > maxDist) maxDist = c.dist; }
+  });
+  // Verra-compliant count: inside + tolerance = effectively compliant
+  const compliant = inside + tolerance;
+  const total     = trees.length;
+  const pct       = total > 0 ? Math.round(compliant / total * 100) : null;
+  return { inside, tolerance, review, outside, maxDist, compliant, total, pct };
+}
 
 function render() {
   const filter = document.getElementById('fltStatus').value;
@@ -714,8 +831,6 @@ function render() {
   visibleCache = fieldsData.filter(f => {
     if (q && !f.fieldId.toLowerCase().includes(q) &&
               !f.owner.toLowerCase().includes(q)) return false;
-
-    // Date filter — based on field registration date
     if (dateFrom && f.createdOn && f.createdOn < dateFrom) return false;
     if (dateTo   && f.createdOn && f.createdOn > dateTo)   return false;
 
@@ -728,9 +843,18 @@ function render() {
     if (filter === 'large')         return isLarge;
     if (filter === 'large_with')    return isLarge && trees.length > 0;
     if (filter === 'large_without') return isLarge && trees.length === 0;
-    if (!f.ring) return filter === '';
-    if (filter === 'inside')        return trees.length > 0 && trees.every(t => pip(t.lat, t.lng, f.ring));
-    if (filter === 'outside')       return trees.some(t => !pip(t.lat, t.lng, f.ring));
+
+    // Zone-aware filters
+    if (filter === 'inside' || filter === 'tolerance' ||
+        filter === 'review' || filter === 'correction' || filter === 'outside') {
+      if (!f.ring || trees.length === 0) return false;
+      const cl = classifyField(f);
+      if (filter === 'inside')     return cl.outside === 0 && cl.review === 0 && cl.tolerance === 0;
+      if (filter === 'tolerance')  return cl.outside === 0 && cl.review === 0 && cl.tolerance > 0;
+      if (filter === 'review')     return cl.review > 0;
+      if (filter === 'correction') return cl.outside > 0;
+      if (filter === 'outside')    return (cl.outside + cl.review + cl.tolerance) > 0;
+    }
     return true;
   });
 
@@ -762,38 +886,56 @@ function renderPage() {
   applyGridClass();
 
   grid.innerHTML = page.map(f => {
-    const trees   = treesByField[f.fieldId] || [];
-    const hasRing = !!f.ring;
+    const trees     = treesByField[f.fieldId] || [];
+    const hasRing   = !!f.ring;
     const threshold = getLargeThreshold();
-    let inCount = 0, outCount = 0;
     let area = null, isLarge = false;
-    if (hasRing) {
-      trees.forEach(t => pip(t.lat, t.lng, f.ring) ? inCount++ : outCount++);
-      area = ringAreaHa(f.ring);
-      isLarge = area > threshold;
-    }
-    const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
+    if (hasRing) { area = ringAreaHa(f.ring); isLarge = area > threshold; }
+
+    // Use zone-aware classification
+    const cl = hasRing && trees.length > 0 ? classifyField(f) : null;
+    const pct    = cl ? cl.pct : null;
     const pctCol = pct === null ? '' : pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
     const pctBadge = pct !== null
       ? `<span class="badge" style="background:${pctCol}18;color:${pctCol};border:1px solid ${pctCol}44">${pct}%</span>` : '';
     const areaBadge = area !== null
       ? `<span class="badge" style="background:${isLarge?'rgba(245,158,11,0.1)':'rgba(56,189,248,0.08)'};color:${isLarge?'#f59e0b':'var(--muted)'};border:1px solid ${isLarge?'rgba(245,158,11,0.3)':'var(--border)'}">${isLarge?'⚠ ':''}${area.toFixed(1)}ha</span>` : '';
-    const thumb = hasRing ? makeSVG(f, trees)
+
+    // Zone badges
+    let zoneBadges = '';
+    if (cl) {
+      if (cl.outside > 0)
+        zoneBadges += `<span class="badge" style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3)">✗ ${cl.outside} &gt;${getReviewM()}m</span>`;
+      if (cl.review > 0)
+        zoneBadges += `<span class="badge" style="background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)">⚠ ${cl.review} review</span>`;
+      if (cl.tolerance > 0 && cl.outside === 0 && cl.review === 0)
+        zoneBadges += `<span class="badge" style="background:rgba(34,197,94,0.08);color:#22c55e;border:1px solid rgba(34,197,94,0.2)">✓ tolerance</span>`;
+    }
+
+    // Max distance badge
+    const maxDistBadge = cl && cl.maxDist > 0
+      ? `<span class="badge" style="background:rgba(56,189,248,0.08);color:var(--muted);border:1px solid var(--border)">max ${cl.maxDist.toFixed(1)}m</span>` : '';
+
+    const thumb = hasRing ? makeSVGZoned(f, trees)
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-family:var(--mono)">No polygon</div>`;
+
     return `<div class="cat-card" onclick="openLb(${fieldsData.indexOf(f)})"
-      style="${isLarge?'border-color:rgba(245,158,11,0.35)':''}">
+      style="${isLarge?'border-color:rgba(245,158,11,0.35)':cl&&cl.outside>0?'border-color:rgba(239,68,68,0.3)':cl&&cl.review>0?'border-color:rgba(245,158,11,0.2)':''}">
       <div class="map-thumb">${thumb}</div>
       <div class="info">
         <div class="fid">${f.fieldId}</div>
         <div class="owner">${f.owner || '—'}</div>
         ${f.createdOn ? `<div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-bottom:3px">${f.createdOn}</div>` : ''}
         <div class="stats">
-          ${trees.length > 0
-            ? `<span class="badge in">${inCount} in</span>
-               ${outCount > 0 ? `<span class="badge out">${outCount} out</span>` : ''}
-               ${pctBadge}`
-            : `<span class="badge na">No trees</span>`}
-          ${!hasRing ? `<span class="badge na">No polygon</span>` : ''}
+          ${cl
+            ? `<span class="badge in">${cl.inside} in</span>
+               ${cl.tolerance > 0 ? `<span class="badge" style="background:rgba(34,197,94,0.06);color:#4ade80;border:1px solid rgba(34,197,94,0.2)">${cl.tolerance} ±</span>` : ''}
+               ${zoneBadges}
+               ${pctBadge}
+               ${maxDistBadge}`
+            : trees.length === 0
+              ? `<span class="badge na">No trees</span>`
+              : `<span class="badge na">No polygon</span>`}
           ${areaBadge}
         </div>
       </div>
@@ -887,7 +1029,49 @@ function svgWrap(W, H, pts, dots) {
   </svg>`;
 }
 
-// ── VIEW CONTROLS ──────────────────────────────────────────────────────────
+// Zone-aware SVG thumbnail — green=inside, lime=tolerance, amber=review, red=correction needed
+function makeSVGZoned(f, trees) {
+  const ring = f.ring;
+  const tM = getToleranceM(), rM = getReviewM();
+  const W = 200, H = 160, PAD = 14;
+
+  const lats = ring.map(c => c[1]);
+  const lngs = ring.map(c => c[0]);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  let spanLat = maxLat - minLat;
+  let spanLng = maxLng - minLng;
+
+  const MIN_SPAN = 0.001;
+  let cLat = (minLat + maxLat) / 2, cLng = (minLng + maxLng) / 2;
+  let newMinLat = minLat, newMaxLat = maxLat, newMinLng = minLng;
+
+  if (spanLat < MIN_SPAN || spanLng < MIN_SPAN) {
+    const s = Math.max(spanLat, spanLng, MIN_SPAN);
+    spanLat = s; spanLng = s;
+    newMinLat = cLat - s/2; newMaxLat = cLat + s/2; newMinLng = cLng - s/2;
+  }
+
+  const sc   = Math.min((W - PAD*2) / spanLng, (H - PAD*2) / spanLat);
+  const offX = (W - spanLng * sc) / 2;
+  const offY = (H - spanLat * sc) / 2;
+  const tx = lng => ((lng - newMinLng) * sc + offX).toFixed(1);
+  const ty = lat => ((newMaxLat - lat) * sc + offY).toFixed(1);
+
+  const pts  = ring.map(c => `${tx(c[0])},${ty(c[1])}`).join(' ');
+  const step = trees.length > 200 ? Math.ceil(trees.length / 200) : 1;
+  const dots = trees.filter((_, i) => i % step === 0).map(t => {
+    const c = classifyTree(t.lat, t.lng, ring, tM, rM);
+    const col = c.zone === 'inside'    ? '#22c55e'
+              : c.zone === 'tolerance' ? '#4ade80'
+              : c.zone === 'review'    ? '#f59e0b'
+              :                          '#ef4444';
+    return `<circle cx="${tx(t.lng)}" cy="${ty(t.lat)}" r="3"
+      fill="${col}" fill-opacity="0.9" stroke="rgba(0,0,0,0.4)" stroke-width="0.5"/>`;
+  }).join('');
+
+  return svgWrap(W, H, pts, dots);
+}
 let currentSize = 'md';
 let currentView = 'grid';
 
@@ -935,20 +1119,30 @@ function openLb(idx) {
 
   const trees  = treesByField[f.fieldId] || [];
   const ring   = f.ring;
-  let inCount = 0, outCount = 0;
-  if (ring && trees.length) {
-    trees.forEach(t => pip(t.lat, t.lng, ring) ? inCount++ : outCount++);
-  }
+  const cl     = ring && trees.length > 0 ? classifyField(f) : null;
   const total  = trees.length;
-  const pct    = total > 0 ? Math.round(inCount / total * 100) : null;
+  const pct    = cl ? cl.pct : null;
   const pctCol = pct === null ? 'var(--muted)'
     : pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
 
   document.getElementById('lbTotal').textContent   = total.toLocaleString();
-  document.getElementById('lbInside').textContent  = ring ? inCount.toLocaleString() : '—';
-  document.getElementById('lbOutside').textContent = ring ? outCount.toLocaleString() : '—';
+  document.getElementById('lbInside').textContent  = cl ? cl.compliant.toLocaleString() : '—';
+  document.getElementById('lbOutside').textContent = cl ? cl.outside.toLocaleString() : '—';
   document.getElementById('lbPct').textContent     = pct !== null ? pct + '%' : '—';
   document.getElementById('lbPct').style.color     = pctCol;
+
+  // Zone breakdown
+  const lbZone = document.getElementById('lbZoneBreakdown');
+  if (lbZone && cl) {
+    const tM = getToleranceM(), rM = getReviewM();
+    lbZone.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap">
+      <span style="font-size:9px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">✓ ${cl.inside} inside</span>
+      ${cl.tolerance > 0 ? `<span style="font-size:9px;background:rgba(74,222,128,0.08);color:#4ade80;border:1px solid rgba(74,222,128,0.2);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">± ${cl.tolerance} within ${tM}m</span>` : ''}
+      ${cl.review > 0 ? `<span style="font-size:9px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">⚠ ${cl.review} review (${tM}–${rM}m)</span>` : ''}
+      ${cl.outside > 0 ? `<span style="font-size:9px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">✗ ${cl.outside} correct (&gt;${rM}m)</span>` : ''}
+      ${cl.maxDist > 0 ? `<span style="font-size:9px;background:rgba(56,189,248,0.06);color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-family:var(--mono)">max ${cl.maxDist.toFixed(1)}m outside</span>` : ''}
+    </div>`;
+  } else if (lbZone) { lbZone.innerHTML = ''; }
 
   // Polygon metrics
   const m = ring ? ringMetrics(ring) : null;
@@ -1007,11 +1201,17 @@ function openLb(idx) {
       fillOpacity:0.08, dashArray:'6,4'
     }).addTo(lbMap);
 
+    // Zone-coloured tree dots
+    const tM = getToleranceM(), rM = getReviewM();
     trees.forEach(t => {
+      const c = classifyTree(t.lat, t.lng, ring, tM, rM);
+      const col = c.zone === 'inside'    ? '#22c55e'
+                : c.zone === 'tolerance' ? '#4ade80'
+                : c.zone === 'review'    ? '#f59e0b'
+                :                          '#ef4444';
       L.circleMarker([t.lat, t.lng], {
         radius:5, color:'rgba(255,255,255,0.4)', weight:1,
-        fillColor: pip(t.lat, t.lng, ring) ? '#22c55e' : '#ef4444',
-        fillOpacity:0.9
+        fillColor: col, fillOpacity:0.9
       }).addTo(lbMap);
     });
 
@@ -1049,51 +1249,55 @@ document.addEventListener('click', () => closeExportMenu());
 function exportCSV(type) {
   const threshold = getLargeThreshold();
 
+  const tM = getToleranceM(), rM = getReviewM();
   const rows = fieldsData.map(f => {
     const trees  = treesByField[f.fieldId] || [];
     const ring   = f.ring;
-    let inCount = 0, outCount = 0;
-    if (ring && trees.length) {
-      trees.forEach(t => pip(t.lat, t.lng, ring) ? inCount++ : outCount++);
-    }
-    const m   = ring ? ringMetrics(ring) : null;
-    const pct = trees.length > 0 ? Math.round(inCount / trees.length * 100) : null;
-    return { f, trees, ring, inCount, outCount, m, pct, isLarge: m && m.area > threshold };
+    const cl     = ring && trees.length > 0 ? classifyField(f) : null;
+    const m      = ring ? ringMetrics(ring) : null;
+    const isLarge = m && m.area > threshold;
+
+    let flag = '';
+    if (!ring)             flag = 'No polygon';
+    else if (!trees.length)flag = 'No trees recorded';
+    else if (cl.outside > 0) flag = `${cl.outside} trees need correction (>${rM}m outside)`;
+    else if (cl.review > 0)  flag = `${cl.review} trees in review zone (${tM}–${rM}m)`;
+    else if (cl.tolerance > 0)flag= `Within GPS tolerance — Verra compliant`;
+    else                   flag = 'Clean — all trees inside';
+    if (isLarge) flag += (flag?', ':'') + `Large polygon (>${getLargeThreshold()}ha)`;
+    if (m && !m.inZambia)  flag += (flag?', ':'') + 'Vertices outside Zambia';
+
+    return { f, trees, cl, m, isLarge, flag };
   });
 
-  // Filter by type
   const filtered = rows.filter(r => {
-    if (type === 'outside')  return r.outCount > 0;
-    if (type === 'inside')   return r.trees.length > 0 && r.outCount === 0;
-    if (type === 'no_trees') return r.trees.length === 0 && r.ring;
+    if (type === 'outside')  return r.cl && r.cl.outside > 0;
+    if (type === 'inside')   return r.trees.length > 0 && r.cl && r.cl.outside === 0 && r.cl.review === 0;
+    if (type === 'no_trees') return r.trees.length === 0 && r.f.ring;
     if (type === 'large')    return r.isLarge;
-    return true; // 'all'
+    return true;
   });
 
   const headers = [
-    'Field ID','Owner','Registered Date','Total Trees','Inside','Outside','Compliance %',
+    'Field ID','Owner','Registered Date','Total Trees',
+    'Inside','Tolerance Zone','Review Zone','Needs Correction',
+    'Verra Compliant %','Max Distance Outside (m)',
     'Area (ha)','Perimeter (m)','Vertices','Avg Side (m)','Min Side (m)','Max Side (m)',
-    'Trees per ha','Centroid Lat','Centroid Lng','Within Zambia','Large Polygon',
-    'Flag'
+    'Trees per ha','Centroid Lat','Centroid Lng','Within Zambia','Large Polygon','Flag'
   ];
 
   const csvRows = [headers, ...filtered.map(r => {
-    const { f, trees, inCount, outCount, m, pct, isLarge } = r;
-    let flag = '';
-    if (!r.ring)              flag = 'No polygon';
-    else if (trees.length===0)flag = 'No trees recorded';
-    else if (outCount > 0)    flag = 'Has trees outside';
-    else if (isLarge)         flag = `Large polygon (>${threshold}ha)`;
-    if (m && !m.inZambia)     flag += (flag?', ':'') + 'Vertices outside Zambia';
-    if (!flag && pct === 100) flag = 'Clean';
+    const { f, trees, cl, m, isLarge, flag } = r;
+    const pct = cl ? cl.pct : null;
     return [
-      f.fieldId,
-      f.owner || '',
-      f.createdOn || '',
+      f.fieldId, f.owner || '', f.createdOn || '',
       trees.length,
-      inCount,
-      outCount,
+      cl ? cl.inside    : '',
+      cl ? cl.tolerance : '',
+      cl ? cl.review    : '',
+      cl ? cl.outside   : '',
       pct !== null ? pct + '%' : '—',
+      cl && cl.maxDist > 0 ? cl.maxDist.toFixed(1) : '0',
       m ? m.area.toFixed(2) : '',
       m ? Math.round(m.perimeter) : '',
       m ? m.vertices : '',
