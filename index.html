@@ -217,7 +217,35 @@ input[type=text]:focus { border-color:var(--green); }
 .kpi.a { border-color:var(--amber-b); background:var(--amber-bg); }
 .kpi.a .v { color:var(--amber); }
 
-/* ── CORRECTION QUEUE ── */
+/* ── DISABLE / ENABLE ── */
+.btn-deactivate { background:rgba(239,68,68,0.1); color:#ef4444;
+  border:1px solid rgba(239,68,68,0.3); border-radius:4px;
+  padding:4px 10px; font-family:var(--mono); font-size:10px;
+  font-weight:700; cursor:pointer; transition:opacity .15s; }
+.btn-deactivate:hover { opacity:.8; }
+.btn-activate { background:rgba(34,197,94,0.1); color:#22c55e;
+  border:1px solid rgba(34,197,94,0.3); border-radius:4px;
+  padding:4px 10px; font-family:var(--mono); font-size:10px;
+  font-weight:700; cursor:pointer; transition:opacity .15s; }
+.btn-activate:hover { opacity:.8; }
+.field-inactive { opacity:0.45; }
+.field-inactive .map-thumb { filter:grayscale(1); }
+
+/* Bulk select in queue */
+.q-check { width:16px; height:16px; cursor:pointer; accent-color:#ef4444; }
+.queue-actions { display:flex; align-items:center; gap:8px; padding:6px 14px;
+  background:var(--panel); border-bottom:1px solid var(--border);
+  font-family:var(--mono); font-size:10px; flex-shrink:0; }
+
+/* Toast */
+.toast { position:fixed; bottom:20px; right:20px; z-index:99999;
+  background:var(--panel); border:1px solid var(--border); border-radius:6px;
+  padding:10px 16px; font-family:var(--mono); font-size:11px;
+  box-shadow:0 4px 16px rgba(0,0,0,.5); transition:opacity .3s;
+  max-width:320px; }
+.toast.warn  { border-color:rgba(239,68,68,0.4); color:#ef4444; }
+.toast.ok    { border-color:rgba(34,197,94,0.4); color:#22c55e; }
+.toast.info  { border-color:rgba(56,189,248,0.4); color:var(--blue); }
 .queue-wrap { flex:1; overflow-y:auto; display:none; flex-direction:column; }
 .queue-wrap.active { display:flex; }
 .cat-grid.hidden { display:none; }
@@ -566,10 +594,23 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     <!-- Correction Queue -->
     <div class="queue-wrap" id="queueWrap">
       <div class="queue-summary" id="queueSummary">—</div>
+      <div class="queue-actions" id="queueActions" style="display:none">
+        <input type="checkbox" class="q-check" id="qSelectAll"
+          onchange="toggleSelectAll()" title="Select all visible">
+        <span id="qSelCount" style="color:var(--muted)">0 selected</span>
+        <div style="flex:1"></div>
+        <button class="btn-export" onclick="exportQueueSelection()"
+          style="font-size:9px;padding:3px 8px">⬇ Export selected</button>
+        <button class="btn-deactivate" id="btnBulkDeactivate"
+          onclick="bulkDeactivate()" style="font-size:9px;padding:3px 8px"
+          title="Print record then disable selected fields in Fieldforce">
+          ⊘ Disable selected</button>
+      </div>
       <div style="flex:1;overflow-y:auto">
         <table class="queue-table">
           <thead>
             <tr>
+              <th style="width:32px"></th>
               <th class="q-rank">#</th>
               <th>Field ID</th>
               <th>Owner</th>
@@ -848,6 +889,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       </div>
     </div>
     <div class="lb-foot">
+      <button class="btn-deactivate" id="lbBtnDeactivate" onclick="lbDeactivate()">⊘ Disable in Fieldforce</button>
+      <button class="btn-activate"   id="lbBtnActivate"   onclick="lbActivate()" style="display:none">✓ Reactivate</button>
+      <button class="btn-export" onclick="printFieldRecord()" style="margin-left:auto"
+        title="Print field record with GeoJSON coordinates">🖨 Print record</button>
       <button class="btn btn-sec" onclick="closeLb()">Close</button>
     </div>
   </div>
@@ -1664,6 +1709,188 @@ function applyGridClass() {
   if (currentSize !== 'md') grid.classList.add(currentSize);
 }
 
+// ── TOAST ──────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+// ── DISABLE / ACTIVATE ─────────────────────────────────────────────────────
+const _deactivatedIds = new Set();
+let   _lbCurrentIdx   = -1;
+
+async function patchFieldState(guid, fieldId, activate) {
+  const token = await getToken();
+  const res = await fetch(`${DV_API}/ccs_fields(${guid})`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'OData-MaxVersion': '4.0',
+      'OData-Version': '4.0',
+      'If-Match': '*'
+    },
+    body: JSON.stringify(activate
+      ? { statecode: 0, statuscode: 1 }
+      : { statecode: 1, statuscode: 2 })
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+}
+
+async function lbDeactivate() {
+  const f = fieldsData[_lbCurrentIdx];
+  if (!f) return;
+  const trees = treesByField[f.fieldId] || [];
+  const msg = trees.length > 0
+    ? `⚠ "${f.fieldId}" has ${trees.length} trees.\n\nDisabling will not delete them but they will appear unallocated.\n\nContinue?`
+    : `Disable "${f.fieldId}" in Fieldforce?\n\nThis field has no trees. It will be set to Inactive.`;
+  if (!confirm(msg)) return;
+  try {
+    await patchFieldState(f.guid, f.fieldId, false);
+    _deactivatedIds.add(f.fieldId);
+    updateLbButtons(f);
+    showToast(`⊘ ${f.fieldId} disabled`, 'warn');
+  } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
+}
+
+async function lbActivate() {
+  const f = fieldsData[_lbCurrentIdx];
+  if (!f) return;
+  if (!confirm(`Reactivate "${f.fieldId}" in Fieldforce?`)) return;
+  try {
+    await patchFieldState(f.guid, f.fieldId, true);
+    _deactivatedIds.delete(f.fieldId);
+    updateLbButtons(f);
+    showToast(`✓ ${f.fieldId} reactivated`, 'ok');
+  } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
+}
+
+function updateLbButtons(f) {
+  const inactive = _deactivatedIds.has(f.fieldId);
+  const btnD = document.getElementById('lbBtnDeactivate');
+  const btnA = document.getElementById('lbBtnActivate');
+  if (btnD) btnD.style.display = inactive ? 'none' : 'inline-block';
+  if (btnA) btnA.style.display = inactive ? 'inline-block' : 'none';
+}
+
+// ── PRINT FIELD RECORD ─────────────────────────────────────────────────────
+function printFieldRecord(fieldsArr) {
+  const fields = fieldsArr || (
+    _lbCurrentIdx >= 0 ? [fieldsData[_lbCurrentIdx]] : []
+  );
+  if (!fields.length) return;
+
+  const rows = fields.map(f => {
+    const cl  = _classCache[f.fieldId] || {};
+    const m   = f.ring ? ringMetrics(f.ring) : null;
+    const geo = f.geoJSON || '';
+    return `
+      <div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #ccc;page-break-inside:avoid">
+        <h3 style="font-family:monospace;margin:0 0 6px">${f.fieldId}</h3>
+        <table style="font-family:monospace;font-size:11px;border-collapse:collapse;width:100%;margin-bottom:8px">
+          <tr><td style="padding:2px 8px 2px 0;color:#666;width:150px">Owner</td><td>${f.owner||'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Created</td><td>${f.createdOn||'—'} by ${f.createdBy||'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Modified by</td><td>${f.modifiedBy||'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Area</td><td>${m?m.area.toFixed(2)+' ha':'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Vertices</td><td>${m?m.vertices:'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Perimeter</td><td>${m?Math.round(m.perimeter)+' m':'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Total Trees</td><td>${(treesByField[f.fieldId]||[]).length}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Verra Compliant</td><td>${cl.compliant??'—'} (${cl.pct??'—'}%)</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Needs Correction</td><td>${cl.outside??'—'}</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;color:#666">Record Status</td>
+            <td style="color:#c00;font-weight:bold">⊘ Disabled ${new Date().toISOString().slice(0,10)}</td></tr>
+        </table>
+        <div style="font-size:10px;color:#666;margin-bottom:4px;font-family:monospace">GeoJSON Polygon Coordinates:</div>
+        <pre style="font-size:9px;background:#f5f5f5;padding:8px;border:1px solid #ddd;
+          overflow:auto;white-space:pre-wrap;word-break:break-all">${geo||'(no geometry)'}</pre>
+      </div>`;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <title>CCS Field Record — ${new Date().toISOString().slice(0,10)}</title>
+    <style>body{font-family:monospace;font-size:12px;padding:24px;max-width:900px;margin:0 auto}
+    h2{margin-bottom:4px}
+    .sub{color:#666;font-size:11px;margin-bottom:20px}
+    @media print{.no-print{display:none}}</style>
+  </head><body>
+    <h2>CCS Field Polygon Record</h2>
+    <p class="sub">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp;
+      ${fields.length} field${fields.length>1?'s':''} &nbsp;|&nbsp;
+      Archived before disablement in Fieldforce</p>
+    ${rows}
+    <button class="no-print" onclick="window.print()"
+      style="margin-top:16px;padding:8px 20px;font-size:12px">🖨 Print / Save as PDF</button>
+  </body></html>`);
+  win.document.close();
+}
+
+// ── BULK SELECT & DEACTIVATE ───────────────────────────────────────────────
+function toggleSelectAll() {
+  const all = document.getElementById('qSelectAll')?.checked;
+  document.querySelectorAll('.q-row-check').forEach(cb => { cb.checked = all; });
+  updateQueueSelectionCount();
+}
+
+function updateQueueSelectionCount() {
+  const checked = document.querySelectorAll('.q-row-check:checked').length;
+  const total   = document.querySelectorAll('.q-row-check').length;
+  const selEl   = document.getElementById('qSelCount');
+  const deactEl = document.getElementById('btnBulkDeactivate');
+  if (selEl) selEl.textContent = checked > 0
+    ? `${checked} of ${total} selected` : `${total} fields`;
+  if (deactEl) {
+    deactEl.disabled = checked === 0;
+    deactEl.style.opacity = checked === 0 ? '0.4' : '1';
+  }
+}
+
+function getSelectedQueueFields() {
+  const selected = [];
+  document.querySelectorAll('.q-row-check:checked').forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    if (!isNaN(idx) && fieldsData[idx]) selected.push(fieldsData[idx]);
+  });
+  return selected;
+}
+
+function exportQueueSelection() {
+  const fields = getSelectedQueueFields();
+  if (!fields.length) { showToast('No fields selected', 'info'); return; }
+  printFieldRecord(fields);
+}
+
+async function bulkDeactivate() {
+  const fields = getSelectedQueueFields();
+  if (!fields.length) return;
+  const withTrees    = fields.filter(f => (treesByField[f.fieldId]||[]).length > 0);
+  const withoutTrees = fields.filter(f => (treesByField[f.fieldId]||[]).length === 0);
+  let msg = `⊘ Disable ${fields.length} field${fields.length>1?'s':''} in Fieldforce?\n\n`;
+  if (withoutTrees.length) msg += `✓ ${withoutTrees.length} field${withoutTrees.length>1?'s':''} have no trees — safe to disable.\n`;
+  if (withTrees.length)    msg += `⚠ ${withTrees.length} field${withTrees.length>1?'s':''} have trees — they will appear unallocated.\n`;
+  msg += `\nA printable record with GeoJSON coordinates will open first.\n\nContinue?`;
+  if (!confirm(msg)) return;
+
+  printFieldRecord(fields);
+
+  const btn = document.getElementById('btnBulkDeactivate');
+  btn.textContent = '⊘ Disabling…'; btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (const f of fields) {
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _deactivatedIds.add(f.fieldId);
+      ok++;
+    } catch(e) { fail++; }
+  }
+  btn.textContent = '⊘ Disable selected'; btn.disabled = false;
+  showToast(`⊘ ${ok} disabled${fail>0?` · ${fail} failed`:''}`, fail>0?'warn':'ok');
+  renderQueue();
+}
+
 function setKpiFilter(value) {
   document.getElementById('fltStatus').value = value;
   // Exit queue mode if active
@@ -1687,6 +1914,8 @@ let lbMap = null;
 function openLb(idx, navList, navPos) {
   const f = fieldsData[idx];
   if (!f) return;
+  _lbCurrentIdx = idx;
+  updateLbButtons(f);
 
   document.getElementById('lbTitle').textContent = f.fieldId;
   document.getElementById('lbSub').textContent   =
@@ -2007,6 +2236,10 @@ async function renderQueue() {
   // Build nav list for queue — indices into fieldsData
   window.queueNavList = rows.map(r => fieldsData.indexOf(r.f));
 
+  // Show actions bar
+  const actBar = document.getElementById('queueActions');
+  if (actBar) actBar.style.display = 'flex';
+
   document.getElementById('queueBody').innerHTML = rows.map((r, i) => {
     const { f, cl } = r;
     const pct       = cl.total > 0 ? Math.round(cl.compliant / cl.total * 100) : 0;
@@ -2014,7 +2247,13 @@ async function renderQueue() {
     const barPct    = Math.round(cl.outside / maxOut * 100);
     const corrUrl   = `${POLY_CORRECTOR}?fieldId=${encodeURIComponent(f.fieldId)}`;
     const fidIdx    = fieldsData.indexOf(f);
-    return `<tr onclick="openLb(${fidIdx}, queueNavList, ${i})">
+    const inactive  = _deactivatedIds.has(f.fieldId);
+    return `<tr onclick="openLb(${fidIdx}, window.queueNavList, ${i})"
+      style="${inactive?'opacity:0.4;':''}">
+      <td onclick="event.stopPropagation()">
+        <input type="checkbox" class="q-check q-row-check" data-idx="${fidIdx}"
+          onchange="updateQueueSelectionCount()">
+      </td>
       <td class="q-rank">${i + 1}</td>
       <td class="q-fid">${f.fieldId}</td>
       <td class="q-owner">${f.owner || '—'}</td>
@@ -2029,11 +2268,12 @@ async function renderQueue() {
         </div>
       </td>
       <td onclick="event.stopPropagation()">
-        <a class="q-open" href="${corrUrl}" target="_blank"
-          title="Open in Polygon Corrector">✎ Correct</a>
+        <a class="q-open" href="${corrUrl}" target="_blank">✎ Correct</a>
       </td>
     </tr>`;
   }).join('');
+
+  updateQueueSelectionCount();
 }
 async function openOverview() {
   const modal = document.getElementById('ovModal');
