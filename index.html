@@ -190,7 +190,42 @@ input[type=text]:focus { border-color:var(--green); }
 .kpi.a { border-color:var(--amber-b); background:var(--amber-bg); }
 .kpi.a .v { color:var(--amber); }
 
-/* ── OVERVIEW MODAL ── */
+/* ── CORRECTION QUEUE ── */
+.queue-wrap { flex:1; overflow-y:auto; display:none; flex-direction:column; }
+.queue-wrap.active { display:flex; }
+.cat-grid.hidden { display:none; }
+.queue-table { width:100%; border-collapse:collapse; font-size:11px; }
+.queue-table thead th { position:sticky; top:0; background:var(--panel);
+  padding:7px 12px; text-align:left; font-family:var(--mono); font-size:9px;
+  font-weight:700; letter-spacing:1px; text-transform:uppercase;
+  color:var(--muted); border-bottom:1px solid var(--border); white-space:nowrap; }
+.queue-table thead th.r { text-align:right; }
+.queue-table tbody tr { border-bottom:1px solid var(--border);
+  transition:background .1s; cursor:pointer; }
+.queue-table tbody tr:hover { background:var(--card); }
+.queue-table tbody td { padding:7px 12px; font-family:var(--mono);
+  font-size:11px; white-space:nowrap; }
+.queue-table tbody td.r { text-align:right; }
+.q-rank { color:var(--muted); font-size:10px; width:36px; }
+.q-fid { color:var(--blue); font-weight:700; }
+.q-owner { color:var(--muted); font-size:10px; max-width:140px;
+  overflow:hidden; text-overflow:ellipsis; }
+.q-bar { width:80px; }
+.q-bar-inner { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.q-bar-fill { height:100%; background:#ef4444; border-radius:3px; }
+.q-out { color:#ef4444; font-weight:700; }
+.q-rev { color:#f59e0b; }
+.q-pct { }
+.q-max { color:var(--muted); }
+.q-open { background:rgba(56,189,248,0.1); color:var(--blue);
+  border:1px solid rgba(56,189,248,0.3); border-radius:3px;
+  padding:3px 8px; font-family:var(--mono); font-size:9px;
+  font-weight:700; cursor:pointer; white-space:nowrap; }
+.q-open:hover { opacity:.8; }
+.queue-summary { padding:8px 14px; background:var(--panel);
+  border-bottom:1px solid var(--border); font-size:10px;
+  font-family:var(--mono); color:var(--muted); display:flex;
+  gap:16px; align-items:center; flex-shrink:0; }
 .ov { position:fixed; inset:0; z-index:9100; background:rgba(0,0,0,0.85);
   backdrop-filter:blur(4px); display:none; align-items:flex-start;
   justify-content:center; overflow-y:auto; padding:24px 16px; }
@@ -489,12 +524,41 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <button class="view-btn" onclick="setView('list')" id="btnList">≡ List</button>
       </div>
       <div style="width:1px;height:18px;background:var(--border)"></div>
+      <button class="view-btn" id="btnQueue" onclick="toggleQueue()"
+        style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
+        title="Show correction queue — fields ranked by trees outside">✗ Queue</button>
+      <div style="width:1px;height:18px;background:var(--border)"></div>
       <button class="view-btn" onclick="clearFilters()" style="color:var(--amber)">✕ Clear</button>
     </div>
+
+    <!-- Correction Queue -->
+    <div class="queue-wrap" id="queueWrap">
+      <div class="queue-summary" id="queueSummary">—</div>
+      <div style="flex:1;overflow-y:auto">
+        <table class="queue-table">
+          <thead>
+            <tr>
+              <th class="q-rank">#</th>
+              <th>Field ID</th>
+              <th>Owner</th>
+              <th class="r">✗ Correct</th>
+              <th class="r">⚠ Review</th>
+              <th class="r">Total</th>
+              <th class="r">Compliance</th>
+              <th class="r">Max dist</th>
+              <th class="q-bar">Outside share</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="cat-grid" id="catGrid">
       <div class="empty" style="grid-column:1/-1">Connect to Fieldforce to load fields and trees</div>
     </div>
-    <div style="padding:8px 12px;background:var(--panel);border-top:1px solid var(--border);
+    <div id="pagerRow" style="padding:8px 12px;background:var(--panel);border-top:1px solid var(--border);
       display:flex;align-items:center;gap:8px;flex-shrink:0;font-family:var(--mono);font-size:10px">
       <button class="view-btn" id="btnPrev" onclick="changePage(-1)" disabled>← Prev</button>
       <span style="color:var(--muted)" id="pageInfo">—</span>
@@ -1630,7 +1694,89 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ── OVERVIEW MODAL ─────────────────────────────────────────────────────────
+// ── CORRECTION QUEUE ──────────────────────────────────────────────────────
+let queueActive = false;
+
+function toggleQueue() {
+  queueActive = !queueActive;
+  const btn   = document.getElementById('btnQueue');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+
+  btn.classList.toggle('active', queueActive);
+  if (queueActive) {
+    btn.style.background = 'rgba(239,68,68,0.12)';
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    renderQueue();
+  } else {
+    btn.style.background = '';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+  }
+}
+
+function renderQueue() {
+  if (!fieldsData.length) return;
+  const tM = getToleranceM(), rM = getReviewM();
+
+  // Build ranked list — fields with correction-zone trees, sorted desc
+  const rows = fieldsData
+    .filter(f => f.ring && (treesByField[f.fieldId] || []).length > 0)
+    .map(f => {
+      const cl = classifyField(f);
+      return { f, cl };
+    })
+    .filter(r => r.cl.outside > 0 || r.cl.review > 0)
+    .sort((a, b) => (b.cl.outside - a.cl.outside) || (b.cl.review - a.cl.review));
+
+  // Summary
+  const totalCorrect = rows.reduce((s, r) => s + r.cl.outside, 0);
+  const totalReview  = rows.reduce((s, r) => s + r.cl.review, 0);
+  const affectedFields = rows.length;
+  document.getElementById('queueSummary').innerHTML =
+    `<span style="color:#ef4444;font-weight:700">${affectedFields.toLocaleString()} fields</span>
+     <span>need attention</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:#ef4444">${totalCorrect.toLocaleString()} trees need correction (&gt;${rM}m)</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:#f59e0b">${totalReview.toLocaleString()} trees in review zone</span>
+     <span style="color:var(--border)">|</span>
+     <span>Sorted by most critical first</span>`;
+
+  const maxOut = rows[0]?.cl.outside || 1;
+  const POLY_CORRECTOR = 'https://communityclimate.github.io/ccs-polygon-corrector/';
+
+  document.getElementById('queueBody').innerHTML = rows.map((r, i) => {
+    const { f, cl } = r;
+    const pct       = cl.total > 0 ? Math.round(cl.compliant / cl.total * 100) : 0;
+    const pctCol    = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+    const barPct    = Math.round(cl.outside / maxOut * 100);
+    const corrUrl   = `${POLY_CORRECTOR}?fieldId=${encodeURIComponent(f.fieldId)}`;
+    return `<tr onclick="openLb(${fieldsData.indexOf(f)})">
+      <td class="q-rank">${i + 1}</td>
+      <td class="q-fid">${f.fieldId}</td>
+      <td class="q-owner">${f.owner || '—'}</td>
+      <td class="r q-out">${cl.outside.toLocaleString()}</td>
+      <td class="r q-rev">${cl.review > 0 ? cl.review.toLocaleString() : '—'}</td>
+      <td class="r">${cl.total.toLocaleString()}</td>
+      <td class="r" style="color:${pctCol};font-weight:700">${pct}%</td>
+      <td class="r q-max">${cl.maxDist > 0 ? cl.maxDist.toFixed(0) + 'm' : '—'}</td>
+      <td class="q-bar">
+        <div class="q-bar-inner">
+          <div class="q-bar-fill" style="width:${barPct}%"></div>
+        </div>
+      </td>
+      <td onclick="event.stopPropagation()">
+        <a class="q-open" href="${corrUrl}" target="_blank"
+          title="Open in Polygon Corrector">✎ Correct</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
 function openOverview() {
   const modal = document.getElementById('ovModal');
   if (!fieldsData.length) {
