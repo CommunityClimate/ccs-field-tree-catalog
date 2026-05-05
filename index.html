@@ -181,6 +181,30 @@ input[type=text]:focus { border-color:var(--green); }
 .lb-stat .l { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
 .lb-foot { padding:10px 14px; border-top:1px solid var(--border);
   display:flex; justify-content:flex-end; gap:8px; flex-shrink:0; }
+
+/* Tree list in lightbox */
+.lb-tree-list { flex-shrink:0; border-top:1px solid var(--border); }
+.lb-tree-hdr { display:flex; align-items:center; justify-content:space-between;
+  padding:6px 14px; background:var(--panel); border-bottom:1px solid var(--border);
+  font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:1px;
+  color:var(--muted); text-transform:uppercase; cursor:pointer; }
+.lb-tree-hdr:hover { color:var(--text); }
+.lb-tree-scroll { max-height:140px; overflow-y:auto; }
+.lb-tree-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:0; }
+.lb-tree-row { display:flex; align-items:center; gap:8px; padding:4px 14px;
+  border-bottom:1px solid var(--border); font-family:var(--mono); font-size:10px; }
+.lb-tree-row:last-child { border-bottom:none; }
+.lb-tree-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.lb-tree-code { flex:1; color:var(--text); }
+.lb-tree-dist { color:var(--muted); font-size:9px; }
+
+/* Lightbox Prev/Next nav */
+.lb-nav-btn { background:none; border:1px solid var(--border); color:var(--muted);
+  border-radius:4px; padding:3px 10px; font-size:13px; cursor:pointer;
+  font-family:var(--mono); transition:all .15s; }
+.lb-nav-btn:hover { border-color:var(--blue); color:var(--blue); }
+.lb-nav-btn:disabled { opacity:0.25; cursor:default; }
 .btn { border:none; border-radius:4px; cursor:pointer; font-weight:700;
   font-size:11px; padding:7px 14px; font-family:var(--mono); transition:opacity .15s; }
 .btn:hover { opacity:.85; }
@@ -727,7 +751,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <div class="lb-title" id="lbTitle">—</div>
         <div class="lb-sub" id="lbSub">—</div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="lb-nav-btn" id="lbPrevBtn" onclick="stepLb(-1)" title="Previous field">←</button>
+        <span id="lbNavInfo" style="font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap"></span>
+        <button class="lb-nav-btn" id="lbNextBtn" onclick="stepLb(1)" title="Next field">→</button>
+        <div style="width:1px;height:18px;background:var(--border);margin:0 2px"></div>
         <span id="lbLargeBadge"></span>
         <span id="lbBoundsBadge"></span>
         <button class="lb-close" onclick="closeLb()">✕</button>
@@ -798,6 +826,16 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <div class="lb-m">
         <div class="v" id="lbCentroid">—</div>
         <div class="l">Centroid</div>
+      </div>
+    </div>
+    <!-- Tree list -->
+    <div class="lb-tree-list">
+      <div class="lb-tree-hdr" onclick="toggleLbTreeList()">
+        <span id="lbTreeListHdr">🌳 Trees — click to expand</span>
+        <span id="lbTreeListChevron" style="font-size:10px">▶</span>
+      </div>
+      <div id="lbTreeScroll" class="lb-tree-scroll" style="display:none">
+        <div class="lb-tree-grid" id="lbTreeGrid"></div>
       </div>
     </div>
     <div class="lb-foot">
@@ -1065,7 +1103,7 @@ async function connect() {
     // Load trees
     setStatus('Loading trees…', 'ok');
     const tRows = await dvFetchAll(token,
-      `${DV_API}/ccs_trees?$select=ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
+      `${DV_API}/ccs_trees?$select=ccs_treecode,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
       'Trees'
     );
 
@@ -1084,7 +1122,11 @@ async function connect() {
       const fid    = guidToId[guid];
       if (!fid) return;
       if (!treesByField[fid]) treesByField[fid] = [];
-      treesByField[fid].push({ lat: coords.lat, lng: coords.lng });
+      treesByField[fid].push({
+        lat:  coords.lat,
+        lng:  coords.lng,
+        code: r.ccs_treecode || ''
+      });
       treeCount++;
     });
 
@@ -1622,7 +1664,7 @@ function clearFilters() {
 // ── LIGHTBOX ───────────────────────────────────────────────────────────────
 let lbMap = null;
 
-function openLb(idx) {
+function openLb(idx, navList, navPos) {
   const f = fieldsData[idx];
   if (!f) return;
 
@@ -1692,7 +1734,36 @@ function openLb(idx) {
 
   document.getElementById('lb').classList.add('open');
 
-  // Build Leaflet map
+  // Nav list — use passed list, or default to all fields
+  const list = navList || fieldsData.map((_, i) => i);
+  const pos  = navPos  !== undefined ? navPos : list.indexOf(idx);
+  setLbNav(list, pos);
+
+  // Reset tree list to collapsed
+  _lbTreeOpen = false;
+  document.getElementById('lbTreeScroll').style.display = 'none';
+  document.getElementById('lbTreeListChevron').textContent = '▶';
+
+  // Populate tree list
+  const tM2 = getToleranceM(), rM2 = getReviewM();
+  const treesForList = treesByField[f.fieldId] || [];
+  document.getElementById('lbTreeListHdr').textContent =
+    `🌳 ${treesForList.length.toLocaleString()} trees — click to expand`;
+  document.getElementById('lbTreeGrid').innerHTML = treesForList
+    .map(t => {
+      const c    = ring ? classifyTree(t.lat, t.lng, ring, tM2, rM2) : { zone:'no_poly', dist:null };
+      const col  = c.zone === 'inside'    ? '#22c55e'
+                 : c.zone === 'tolerance' ? '#4ade80'
+                 : c.zone === 'review'    ? '#f59e0b'
+                 : c.zone === 'outside'   ? '#ef4444'
+                 :                          'var(--muted)';
+      const dist = c.dist > 0 ? `${c.dist.toFixed(1)}m` : '';
+      return `<div class="lb-tree-row">
+        <span class="lb-tree-dot" style="background:${col}"></span>
+        <span class="lb-tree-code">${t.code || '—'}</span>
+        <span class="lb-tree-dist">${dist}</span>
+      </div>`;
+    }).join('');
   const mapEl = document.getElementById('lbMap');
   mapEl.innerHTML = '';
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
@@ -1733,18 +1804,52 @@ function openLb(idx) {
   }, 60);
 }
 
+// ── LIGHTBOX NAVIGATION ────────────────────────────────────────────────────
+let _lbNavList  = []; // list of fieldsData indices to navigate (queue or all)
+let _lbNavPos   = -1; // current position in _lbNavList
+let _lbTreeOpen = false;
+
+function setLbNav(list, pos) {
+  _lbNavList = list;
+  _lbNavPos  = pos;
+  const prev = document.getElementById('lbPrevBtn');
+  const next = document.getElementById('lbNextBtn');
+  const info = document.getElementById('lbNavInfo');
+  if (prev) prev.disabled = pos <= 0;
+  if (next) next.disabled = pos >= list.length - 1;
+  if (info) info.textContent = list.length > 1 ? `${pos + 1} / ${list.length}` : '';
+}
+
+function stepLb(dir) {
+  const newPos = _lbNavPos + dir;
+  if (newPos < 0 || newPos >= _lbNavList.length) return;
+  openLb(_lbNavList[newPos], _lbNavList, newPos);
+}
+
+function toggleLbTreeList() {
+  _lbTreeOpen = !_lbTreeOpen;
+  document.getElementById('lbTreeScroll').style.display = _lbTreeOpen ? 'block' : 'none';
+  document.getElementById('lbTreeListChevron').textContent = _lbTreeOpen ? '▼' : '▶';
+}
+
+document.addEventListener('keydown', e => {
+  const lbOpen = document.getElementById('lb')?.classList.contains('open');
+  if (e.key === 'Escape') {
+    if (lbOpen) { closeLb(); return; }
+    closeOverview();
+    closeExportMenu();
+    return;
+  }
+  if (lbOpen) {
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); stepLb(-1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); stepLb(1); }
+  }
+});
+
 function closeLb() {
   document.getElementById('lb').classList.remove('open');
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
 }
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeOverview();
-    closeLb();
-    closeExportMenu();
-  }
-});
 
 // ── CORRECTION QUEUE ──────────────────────────────────────────────────────
 let queueActive = false;
@@ -1815,13 +1920,17 @@ async function renderQueue() {
   const maxOut = rows[0]?.cl.outside || 1;
   const POLY_CORRECTOR = 'https://communityclimate.github.io/ccs-polygon-corrector/';
 
+  // Build nav list for queue — indices into fieldsData
+  window.queueNavList = rows.map(r => fieldsData.indexOf(r.f));
+
   document.getElementById('queueBody').innerHTML = rows.map((r, i) => {
     const { f, cl } = r;
     const pct       = cl.total > 0 ? Math.round(cl.compliant / cl.total * 100) : 0;
     const pctCol    = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
     const barPct    = Math.round(cl.outside / maxOut * 100);
     const corrUrl   = `${POLY_CORRECTOR}?fieldId=${encodeURIComponent(f.fieldId)}`;
-    return `<tr onclick="openLb(${fieldsData.indexOf(f)})">
+    const fidIdx    = fieldsData.indexOf(f);
+    return `<tr onclick="openLb(${fidIdx}, queueNavList, ${i})">
       <td class="q-rank">${i + 1}</td>
       <td class="q-fid">${f.fieldId}</td>
       <td class="q-owner">${f.owner || '—'}</td>
