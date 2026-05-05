@@ -1714,6 +1714,7 @@ function setView(v) {
 function applyGridClass() {
   const grid = document.getElementById('catGrid');
   grid.className = 'cat-grid';
+  if (queueActive) { grid.classList.add('hidden'); return; }
   if (currentView === 'list') { grid.classList.add('list'); return; }
   if (currentSize !== 'md') grid.classList.add(currentSize);
 }
@@ -2190,8 +2191,14 @@ function toggleQueue() {
     queue.classList.add('active');
     grid.classList.add('hidden');
     if (pager) pager.style.display = 'none';
-    // Clear catalog count — queue has its own summary
-    document.getElementById('catCount').textContent = '✗ Correction Queue — all fields with trees outside polygon';
+    // Update toolbar count to reflect queue context
+    const activeFilter = document.getElementById('fltStatus').value;
+    const filterText   = activeFilter
+      ? document.querySelector(`#fltStatus option[value="${activeFilter}"]`)?.textContent?.trim()
+      : null;
+    document.getElementById('catCount').textContent = filterText
+      ? `✗ Queue — ${filterText}`
+      : '✗ Queue — all correction-zone fields';
     renderQueue();
   } else {
     btn.style.background = '';
@@ -2219,29 +2226,37 @@ async function renderQueue() {
   }
 
   const tM = getToleranceM(), rM = getReviewM();
+  const filter = document.getElementById('fltStatus').value;
 
-  // Build ranked list — fields with correction-zone trees, sorted desc
-  const rows = fieldsData
-    .filter(f => f.ring && (treesByField[f.fieldId] || []).length > 0)
+  // Use visibleCache if a filter is active — queue respects the current sidebar filter.
+  // If no filter, show all correction-zone fields across the full dataset.
+  const sourceFields = (filter && visibleCache.length > 0) ? visibleCache : fieldsData;
+  const filterLabel  = filter
+    ? `Filtered: ${document.querySelector(`#fltStatus option[value="${filter}"]`)?.textContent?.trim() || filter}`
+    : 'All fields — sorted by most critical first';
+
+  // Build ranked list
+  const rows = sourceFields
+    .filter(f => f.ring)
     .map(f => {
       const cl = classifyField(f);
       return { f, cl };
     })
-    .filter(r => r.cl.outside > 0 || r.cl.review > 0)
+    .filter(r => r.cl.outside > 0 || r.cl.review > 0 || r.cl.total === 0)
     .sort((a, b) => (b.cl.outside - a.cl.outside) || (b.cl.review - a.cl.review));
 
   // Summary
-  const totalCorrect = rows.reduce((s, r) => s + r.cl.outside, 0);
-  const totalReview  = rows.reduce((s, r) => s + r.cl.review, 0);
+  const totalCorrect   = rows.reduce((s, r) => s + r.cl.outside, 0);
+  const totalReview    = rows.reduce((s, r) => s + r.cl.review, 0);
   const affectedFields = rows.length;
   document.getElementById('queueSummary').innerHTML =
-    `<span style="color:#ef4444;font-weight:700;font-size:12px">${affectedFields.toLocaleString()} fields need attention</span>
+    `<span style="color:#ef4444;font-weight:700;font-size:12px">${affectedFields.toLocaleString()} fields</span>
+     ${totalCorrect > 0 ? `<span style="color:var(--border)">|</span>
+     <span style="color:#ef4444">${totalCorrect.toLocaleString()} trees &gt;${rM}m outside</span>` : ''}
+     ${totalReview > 0 ? `<span style="color:var(--border)">|</span>
+     <span style="color:#f59e0b">${totalReview.toLocaleString()} in review zone</span>` : ''}
      <span style="color:var(--border)">|</span>
-     <span style="color:#ef4444">${totalCorrect.toLocaleString()} trees &gt;${rM}m outside</span>
-     <span style="color:var(--border)">|</span>
-     <span style="color:#f59e0b">${totalReview.toLocaleString()} in review zone</span>
-     <span style="color:var(--border)">|</span>
-     <span style="color:var(--muted)">Sorted: most critical first · independent of sidebar filter</span>`;
+     <span style="color:var(--muted);font-size:9px">${filterLabel}</span>`;
 
   const maxOut = rows[0]?.cl.outside || 1;
   const POLY_CORRECTOR = 'https://communityclimate.github.io/ccs-polygon-corrector/';
