@@ -2186,15 +2186,20 @@ function toggleQueue() {
   btn.classList.toggle('active', queueActive);
   if (queueActive) {
     btn.style.background = 'rgba(239,68,68,0.12)';
+    btn.textContent = '✗ Queue ✓';
     queue.classList.add('active');
     grid.classList.add('hidden');
     if (pager) pager.style.display = 'none';
+    // Clear catalog count — queue has its own summary
+    document.getElementById('catCount').textContent = '✗ Correction Queue — all fields with trees outside polygon';
     renderQueue();
   } else {
     btn.style.background = '';
+    btn.textContent = '✗ Queue';
     queue.classList.remove('active');
     grid.classList.remove('hidden');
     if (pager) pager.style.display = 'flex';
+    renderPage(); // restore card count
   }
 }
 
@@ -2230,14 +2235,13 @@ async function renderQueue() {
   const totalReview  = rows.reduce((s, r) => s + r.cl.review, 0);
   const affectedFields = rows.length;
   document.getElementById('queueSummary').innerHTML =
-    `<span style="color:#ef4444;font-weight:700">${affectedFields.toLocaleString()} fields</span>
-     <span>need attention</span>
+    `<span style="color:#ef4444;font-weight:700;font-size:12px">${affectedFields.toLocaleString()} fields need attention</span>
      <span style="color:var(--border)">|</span>
-     <span style="color:#ef4444">${totalCorrect.toLocaleString()} trees need correction (&gt;${rM}m)</span>
+     <span style="color:#ef4444">${totalCorrect.toLocaleString()} trees &gt;${rM}m outside</span>
      <span style="color:var(--border)">|</span>
-     <span style="color:#f59e0b">${totalReview.toLocaleString()} trees in review zone</span>
+     <span style="color:#f59e0b">${totalReview.toLocaleString()} in review zone</span>
      <span style="color:var(--border)">|</span>
-     <span>Sorted by most critical first</span>`;
+     <span style="color:var(--muted)">Sorted: most critical first · independent of sidebar filter</span>`;
 
   const maxOut = rows[0]?.cl.outside || 1;
   const POLY_CORRECTOR = 'https://communityclimate.github.io/ccs-polygon-corrector/';
