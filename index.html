@@ -193,7 +193,10 @@ input[type=text]:focus { border-color:var(--green); }
 .lb-tree-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
   gap:0; }
 .lb-tree-row { display:flex; align-items:center; gap:8px; padding:4px 14px;
-  border-bottom:1px solid var(--border); font-family:var(--mono); font-size:10px; }
+  border-bottom:1px solid var(--border); font-family:var(--mono); font-size:10px;
+  cursor:pointer; transition:background .1s; }
+.lb-tree-row:hover { background:var(--card); }
+.lb-tree-row.selected { background:rgba(56,189,248,0.1); }
 .lb-tree-row:last-child { border-bottom:none; }
 .lb-tree-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
 .lb-tree-code { flex:1; color:var(--text); }
@@ -1739,8 +1742,11 @@ function openLb(idx, navList, navPos) {
   const pos  = navPos  !== undefined ? navPos : list.indexOf(idx);
   setLbNav(list, pos);
 
-  // Reset tree list to collapsed
-  _lbTreeOpen = false;
+  // Reset tree list and highlight state
+  _lbTreeOpen    = false;
+  _lbTreeMarkers = [];
+  _lbHighlight   = null;
+  _lbSelectedRow = -1;
   document.getElementById('lbTreeScroll').style.display = 'none';
   document.getElementById('lbTreeListChevron').textContent = '▶';
 
@@ -1748,9 +1754,9 @@ function openLb(idx, navList, navPos) {
   const tM2 = getToleranceM(), rM2 = getReviewM();
   const treesForList = treesByField[f.fieldId] || [];
   document.getElementById('lbTreeListHdr').textContent =
-    `🌳 ${treesForList.length.toLocaleString()} trees — click to expand`;
+    `🌳 ${treesForList.length.toLocaleString()} trees — click to expand · click a tree to locate it on the map`;
   document.getElementById('lbTreeGrid').innerHTML = treesForList
-    .map(t => {
+    .map((t, i) => {
       const c    = ring ? classifyTree(t.lat, t.lng, ring, tM2, rM2) : { zone:'no_poly', dist:null };
       const col  = c.zone === 'inside'    ? '#22c55e'
                  : c.zone === 'tolerance' ? '#4ade80'
@@ -1758,12 +1764,13 @@ function openLb(idx, navList, navPos) {
                  : c.zone === 'outside'   ? '#ef4444'
                  :                          'var(--muted)';
       const dist = c.dist > 0 ? `${c.dist.toFixed(1)}m` : '';
-      return `<div class="lb-tree-row">
+      return `<div class="lb-tree-row" onclick="highlightLbTree(${i})" id="lbtr_${i}">
         <span class="lb-tree-dot" style="background:${col}"></span>
         <span class="lb-tree-code">${t.code || '—'}</span>
         <span class="lb-tree-dist">${dist}</span>
       </div>`;
     }).join('');
+
   const mapEl = document.getElementById('lbMap');
   mapEl.innerHTML = '';
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
@@ -1785,18 +1792,22 @@ function openLb(idx, navList, navPos) {
       fillOpacity:0.08, dashArray:'6,4'
     }).addTo(lbMap);
 
-    // Zone-coloured tree dots
+    // Zone-coloured tree markers — stored by index for click-to-highlight
     const tM = getToleranceM(), rM = getReviewM();
-    trees.forEach(t => {
+    _lbTreeMarkers = [];
+    trees.forEach((t, i) => {
       const c = classifyTree(t.lat, t.lng, ring, tM, rM);
       const col = c.zone === 'inside'    ? '#22c55e'
                 : c.zone === 'tolerance' ? '#4ade80'
                 : c.zone === 'review'    ? '#f59e0b'
                 :                          '#ef4444';
-      L.circleMarker([t.lat, t.lng], {
+      const marker = L.circleMarker([t.lat, t.lng], {
         radius:5, color:'rgba(255,255,255,0.4)', weight:1,
         fillColor: col, fillOpacity:0.9
       }).addTo(lbMap);
+      // Clicking marker in map also selects row in list
+      marker.on('click', () => highlightLbTree(i));
+      _lbTreeMarkers.push({ marker, lat: t.lat, lng: t.lng, col });
     });
 
     lbMap.fitBounds(poly.getBounds(), { padding:[24,24] });
@@ -1805,9 +1816,52 @@ function openLb(idx, navList, navPos) {
 }
 
 // ── LIGHTBOX NAVIGATION ────────────────────────────────────────────────────
-let _lbNavList  = []; // list of fieldsData indices to navigate (queue or all)
-let _lbNavPos   = -1; // current position in _lbNavList
-let _lbTreeOpen = false;
+let _lbNavList    = [];
+let _lbNavPos     = -1;
+let _lbTreeOpen   = false;
+let _lbTreeMarkers = [];   // { marker, lat, lng, col } — populated when map builds
+let _lbHighlight  = null;  // current highlight circle layer
+let _lbSelectedRow = -1;   // currently selected tree row index
+
+function highlightLbTree(idx) {
+  if (!lbMap || !_lbTreeMarkers[idx]) return;
+
+  // Clear previous highlight
+  if (_lbHighlight) { try { lbMap.removeLayer(_lbHighlight); } catch(e){} _lbHighlight = null; }
+
+  // Deselect previous row
+  if (_lbSelectedRow >= 0) {
+    const prev = document.getElementById(`lbtr_${_lbSelectedRow}`);
+    if (prev) prev.classList.remove('selected');
+  }
+
+  // Select new row
+  const row = document.getElementById(`lbtr_${idx}`);
+  if (row) {
+    row.classList.add('selected');
+    row.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  }
+  _lbSelectedRow = idx;
+
+  // Pan map to tree and add pulsing highlight ring
+  const { lat, lng, col } = _lbTreeMarkers[idx];
+  lbMap.panTo([lat, lng], { animate:true, duration:0.4 });
+
+  // Outer ring — white border for contrast
+  _lbHighlight = L.circleMarker([lat, lng], {
+    radius:12, color:'#ffffff', weight:2,
+    fillColor: col, fillOpacity:0.35,
+    className:'lb-highlight-ring'
+  }).addTo(lbMap);
+
+  // Open the tree list if it's collapsed
+  if (!_lbTreeOpen) {
+    _lbTreeOpen = true;
+    document.getElementById('lbTreeScroll').style.display = 'block';
+    document.getElementById('lbTreeListChevron').textContent = '▼';
+    setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 50);
+  }
+}
 
 function setLbNav(list, pos) {
   _lbNavList = list;
