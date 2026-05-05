@@ -935,6 +935,9 @@ function updateToleranceLbl() {
   document.getElementById('toleranceLbl').textContent  = `0–${t}m`;
   document.getElementById('reviewLbl').textContent     = `${t}–${r}m`;
   document.getElementById('correctionLbl').textContent = `${r}m`;
+  // Invalidate cache — sliders changed, all classifications need rebuilding
+  invalidateCache();
+  setTimeout(() => buildClassCache(), 400);
 }
 
 function getLargeThreshold() {
@@ -1091,6 +1094,8 @@ async function connect() {
     document.getElementById('fieldCount').textContent =
       `Fields (${fieldsData.length.toLocaleString()})`;
     render();
+    // Build classification cache in background after UI renders
+    setTimeout(() => buildClassCache(), 800);
   } catch(e) {
     btn.disabled = false;
     btn.textContent = 'Connect to Fieldforce';
@@ -1257,10 +1262,29 @@ let currentPage = 1;
 let visibleCache = [];
 
 // Classify all trees for a field — returns { inside, tolerance, review, outside, maxDist }
+// ── FIELD CLASSIFICATION CACHE ─────────────────────────────────────────────
+// Building on every call was causing browser hang — distToRing × all trees
+// × all fields = millions of haversine calls on the main thread.
+// Cache is built once after data loads, invalidated when tolerance changes.
+
+let _classCache     = {};   // fieldId → classification result
+let _cacheTM        = -1;   // tolerance value when cache was built
+let _cacheRM        = -1;   // review value when cache was built
+let _cacheBuilding  = false;
+
 function classifyField(f) {
+  const tM = getToleranceM(), rM = getReviewM();
+  const cached = _classCache[f.fieldId];
+  if (cached && _cacheTM === tM && _cacheRM === rM) return cached;
+  // Cache miss — compute and store
+  const result = _computeClassifyField(f, tM, rM);
+  _classCache[f.fieldId] = result;
+  return result;
+}
+
+function _computeClassifyField(f, tM, rM) {
   const trees = treesByField[f.fieldId] || [];
   const ring  = f.ring;
-  const tM = getToleranceM(), rM = getReviewM();
   let inside = 0, tolerance = 0, review = 0, outside = 0, maxDist = 0;
   trees.forEach(t => {
     const c = classifyTree(t.lat, t.lng, ring, tM, rM);
@@ -1269,11 +1293,39 @@ function classifyField(f) {
     else if (c.zone === 'review')    { review++;    if (c.dist > maxDist) maxDist = c.dist; }
     else                             { outside++;   if (c.dist > maxDist) maxDist = c.dist; }
   });
-  // Verra-compliant count: inside + tolerance = effectively compliant
   const compliant = inside + tolerance;
   const total     = trees.length;
   const pct       = total > 0 ? Math.round(compliant / total * 100) : null;
   return { inside, tolerance, review, outside, maxDist, compliant, total, pct };
+}
+
+// Build the full cache in the background after data loads
+// Yields every CHUNK fields so the browser stays responsive
+async function buildClassCache() {
+  if (_cacheBuilding) return;
+  _cacheBuilding = true;
+  const tM = getToleranceM(), rM = getReviewM();
+  _classCache  = {};
+  _cacheTM     = tM;
+  _cacheRM     = rM;
+  const CHUNK  = 50;
+  const fields = fieldsData.filter(f => f.ring && (treesByField[f.fieldId]||[]).length > 0);
+  for (let i = 0; i < fields.length; i++) {
+    if (i % CHUNK === 0) await new Promise(r => setTimeout(r, 0));
+    if (_cacheTM !== tM || _cacheRM !== rM) { _cacheBuilding = false; return; } // sliders changed
+    _classCache[fields[i].fieldId] = _computeClassifyField(fields[i], tM, rM);
+  }
+  _cacheBuilding = false;
+  // Refresh KPIs and queue once cache is ready
+  updateKPIs();
+  if (queueActive) renderQueue();
+}
+
+function invalidateCache() {
+  _classCache    = {};
+  _cacheTM       = -1;
+  _cacheRM       = -1;
+  _cacheBuilding = false;
 }
 
 function render() {
@@ -1719,8 +1771,21 @@ function toggleQueue() {
   }
 }
 
-function renderQueue() {
+async function renderQueue() {
   if (!fieldsData.length) return;
+
+  // If cache is still building, show a spinner and wait
+  if (_cacheBuilding || Object.keys(_classCache).length === 0) {
+    document.getElementById('queueSummary').innerHTML =
+      `<span style="color:var(--muted)">⏳ Building classification cache… please wait</span>`;
+    document.getElementById('queueBody').innerHTML =
+      `<tr><td colspan="10" style="padding:24px;text-align:center;color:var(--muted);
+        font-family:var(--mono);font-size:11px">Calculating tree distances — this takes a moment on first load…</td></tr>`;
+    // Poll until cache is ready
+    while (_cacheBuilding) await new Promise(r => setTimeout(r, 200));
+    if (Object.keys(_classCache).length === 0) await buildClassCache();
+  }
+
   const tM = getToleranceM(), rM = getReviewM();
 
   // Build ranked list — fields with correction-zone trees, sorted desc
@@ -1777,7 +1842,7 @@ function renderQueue() {
     </tr>`;
   }).join('');
 }
-function openOverview() {
+async function openOverview() {
   const modal = document.getElementById('ovModal');
   if (!fieldsData.length) {
     modal.classList.add('open');
@@ -1791,7 +1856,13 @@ function closeOverview() {
   document.getElementById('ovModal').classList.remove('open');
 }
 
-function populateOverview() {
+async function populateOverview() {
+  // Wait for cache if still building
+  while (_cacheBuilding) await new Promise(r => setTimeout(r, 200));
+  if (Object.keys(_classCache).length === 0 && fieldsData.length > 0) {
+    await buildClassCache();
+  }
+
   // Pull live numbers
   let nInside = 0, nTolerance = 0, nReview = 0, nOutside = 0;
   fieldsData.forEach(f => {
