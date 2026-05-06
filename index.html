@@ -630,6 +630,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
               <th class="q-col-pct r">Comply</th>
               <th class="q-col-max r">Max dist</th>
               <th class="q-col-bar">Outside</th>
+              <th style="width:44px;text-align:center" title="Overlapping neighbours">⧖</th>
               <th class="q-col-act"></th>
             </tr>
           </thead>
@@ -2376,6 +2377,15 @@ async function renderQueue() {
           <div class="q-bar-fill" style="width:${barPct}%"></div>
         </div>
       </td>
+      <td style="width:44px;text-align:center;padding:6px 4px" onclick="event.stopPropagation()">${(() => {
+        const neighbours = (_overlapNeighbours[f.fieldId] || []);
+        return neighbours.length > 0
+          ? `<span style="background:rgba(167,139,250,0.15);color:#a78bfa;
+              border:1px solid rgba(167,139,250,0.35);border-radius:3px;
+              padding:1px 5px;font-family:var(--mono);font-size:9px;
+              font-weight:700;cursor:default" title="Overlaps with: ${neighbours.slice(0,5).join(', ')}${neighbours.length>5?'…':''}">⧖${neighbours.length}</span>`
+          : '<span style="color:var(--border);font-size:10px">—</span>';
+      })()}</td>
       <td class="q-col-act" onclick="event.stopPropagation()">
         <a class="q-open" href="${corrUrl}" target="_blank">✎ Fix</a>
       </td>
