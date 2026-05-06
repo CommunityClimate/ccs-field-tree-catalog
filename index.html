@@ -1803,6 +1803,7 @@ function lbOpenFix() {
 }
 
 function updateLbButtons(f) {
+  const inactive = _deactivatedIds.has(f.fieldId);
   const btnD = document.getElementById('lbBtnDeactivate');
   const btnA = document.getElementById('lbBtnActivate');
   if (btnD) btnD.style.display = inactive ? 'none' : 'inline-block';
