@@ -828,6 +828,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span><span class="dot" style="background:#f59e0b"></span>Review zone</span>
       <span><span class="dot" style="background:#ef4444"></span>Needs correction</span>
       <span><span class="dot" style="background:#38bdf8;width:8px;height:8px;border-radius:2px"></span>Boundary</span>
+      <span><span class="dot" style="background:#a78bfa;width:8px;height:8px;border-radius:2px"></span>Overlapping neighbour</span>
+      <span><span class="dot" style="background:#f59e0b;width:8px;height:8px;border-radius:2px;opacity:.5"></span>Adjacent neighbour</span>
     </div>
     <!-- Tree stats row -->
     <div class="lb-stats">
@@ -1310,7 +1312,8 @@ async function detectOverlapsKPI() {
 
   // ── Step 3: Test each candidate pair ─────────────────────────────────────
   const overlapping = new Set();
-  const CHUNK       = 200; // yield every 200 pairs
+  const CHUNK       = 200;
+  _overlapNeighbours = {}; // reset on each detection run
 
   for (let i = 0; i < candidates.length; i++) {
     if (i % CHUNK === 0) {
@@ -1349,6 +1352,11 @@ async function detectOverlapsKPI() {
     if (hit) {
       overlapping.add(fA.fieldId);
       overlapping.add(fB.fieldId);
+      // Store the pair so each field knows its specific neighbours
+      if (!_overlapNeighbours[fA.fieldId]) _overlapNeighbours[fA.fieldId] = [];
+      if (!_overlapNeighbours[fB.fieldId]) _overlapNeighbours[fB.fieldId] = [];
+      _overlapNeighbours[fA.fieldId].push(fB.fieldId);
+      _overlapNeighbours[fB.fieldId].push(fA.fieldId);
     }
   }
 
@@ -1358,6 +1366,7 @@ async function detectOverlapsKPI() {
   el.style.color = count > 0 ? '#a78bfa' : '#22c55e';
 
   window._overlappingFieldIds = overlapping;
+  window._overlapNeighbours   = _overlapNeighbours;
 
   // Update the filter option label with real count
   const opt = document.querySelector('#fltStatus option[value="overlapping"]');
@@ -1370,7 +1379,7 @@ let currentPage = 1;
 let visibleCache = [];
 
 // Classify all trees for a field — returns { inside, tolerance, review, outside, maxDist }
-// ── FIELD CLASSIFICATION CACHE ─────────────────────────────────────────────
+let _overlapNeighbours = {}; // fieldId → [neighbouring fieldIds that overlap]
 // Building on every call was causing browser hang — distToRing × all trees
 // × all fields = millions of haversine calls on the main thread.
 // Cache is built once after data loads, invalidated when tolerance changes.
@@ -1887,7 +1896,7 @@ async function bulkDeactivate() {
   printFieldRecord(fields);
 
   const btn = document.getElementById('btnBulkDeactivate');
-  btn.textContent = '⊘ Disabling…'; btn.disabled = true;
+  btn.textContent = '⊘ Disabling 0 / ' + fields.length; btn.disabled = true;
   let ok = 0, fail = 0;
   for (const f of fields) {
     try {
@@ -1895,9 +1904,14 @@ async function bulkDeactivate() {
       _deactivatedIds.add(f.fieldId);
       ok++;
     } catch(e) { fail++; }
+    // Live counter on the button
+    btn.textContent = `⊘ ${ok + fail} / ${fields.length}${fail > 0 ? ` (${fail} failed)` : ''}`;
   }
-  btn.textContent = '⊘ Disable selected'; btn.disabled = false;
-  showToast(`⊘ ${ok} disabled${fail>0?` · ${fail} failed`:''}`, fail>0?'warn':'ok');
+  btn.textContent = `⊘ Done — ${ok} disabled${fail > 0 ? ` · ${fail} failed` : ''}`;
+  btn.disabled = false;
+  // Auto-reset button label after 5 seconds
+  setTimeout(() => { btn.textContent = '⊘ Disable selected'; }, 5000);
+  showToast(`⊘ ${ok} disabled${fail > 0 ? ` · ${fail} failed` : ''}`, fail > 0 ? 'warn' : 'ok');
   renderQueue();
 }
 
@@ -1960,9 +1974,17 @@ function openLb(idx, navList, navPos) {
 
   // Zone breakdown
   const lbZone = document.getElementById('lbZoneBreakdown');
+  const neighbourIds = _overlapNeighbours[f.fieldId] || [];
+  const neighbourBadge = neighbourIds.length > 0
+    ? `<span style="font-size:9px;background:rgba(167,139,250,0.1);color:#a78bfa;
+        border:1px solid rgba(167,139,250,0.3);border-radius:3px;padding:2px 7px;
+        font-family:var(--mono);font-weight:700">⧖ ${neighbourIds.length} overlapping neighbour${neighbourIds.length>1?'s':''}: ${neighbourIds.slice(0,3).join(', ')}${neighbourIds.length>3?'…':''}</span>`
+    : '';
+
   if (lbZone && cl) {
     const tM = getToleranceM(), rM = getReviewM();
     lbZone.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${neighbourBadge}
       <span style="font-size:9px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">✓ ${cl.inside} inside</span>
       ${cl.tolerance > 0 ? `<span style="font-size:9px;background:rgba(74,222,128,0.08);color:#4ade80;border:1px solid rgba(74,222,128,0.2);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">± ${cl.tolerance} within ${tM}m</span>` : ''}
       ${cl.review > 0 ? `<span style="font-size:9px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">⚠ ${cl.review} review (${tM}–${rM}m)</span>` : ''}
@@ -2057,9 +2079,67 @@ function openLb(idx, navList, navPos) {
     const latLngs = ring.map(c => [c[1], c[0]]);
     const poly = L.polygon(latLngs, {
       color: isLarge ? '#f59e0b' : '#38bdf8',
-      weight:2, fillColor: isLarge ? '#f59e0b' : '#38bdf8',
+      weight:2.5, fillColor: isLarge ? '#f59e0b' : '#38bdf8',
       fillOpacity:0.08, dashArray:'6,4'
     }).addTo(lbMap);
+
+    // ── Draw overlapping and adjacent neighbour polygons ──────────────────
+    const overlapNeighbourIds = (_overlapNeighbours[f.fieldId] || []);
+    const bounds = L.latLngBounds(latLngs);
+
+    // Find all nearby fields using spatial proximity (bounding box expansion)
+    const bLats = ring.map(c => c[1]), bLngs = ring.map(c => c[0]);
+    const bBox = {
+      minLat: Math.min(...bLats) - 0.002,
+      maxLat: Math.max(...bLats) + 0.002,
+      minLng: Math.min(...bLngs) - 0.002,
+      maxLng: Math.max(...bLngs) + 0.002
+    };
+
+    const drawnNeighbours = [];
+    fieldsData.forEach(nf => {
+      if (nf.fieldId === f.fieldId || !nf.ring) return;
+      const nLats = nf.ring.map(c => c[1]), nLngs = nf.ring.map(c => c[0]);
+      const nMinLat = Math.min(...nLats), nMaxLat = Math.max(...nLats);
+      const nMinLng = Math.min(...nLngs), nMaxLng = Math.max(...nLngs);
+      // Only draw fields that fall within the expanded bounding box
+      if (nMaxLat < bBox.minLat || nMinLat > bBox.maxLat ||
+          nMaxLng < bBox.minLng || nMinLng > bBox.maxLng) return;
+
+      const isOverlapping = overlapNeighbourIds.includes(nf.fieldId);
+      const nLatLngs = nf.ring.map(c => [c[1], c[0]]);
+
+      if (isOverlapping) {
+        // Confirmed overlapping — purple, solid border
+        L.polygon(nLatLngs, {
+          color:'#a78bfa', weight:2, fillColor:'#a78bfa',
+          fillOpacity:0.12, dashArray:null
+        }).addTo(lbMap).bindTooltip(
+          `<span style="font-family:monospace;font-size:10px">⧖ ${nf.fieldId}<br>${nf.owner||'—'}</span>`,
+          { sticky:true }
+        );
+      } else {
+        // Adjacent / nearby — amber, dashed, lighter
+        L.polygon(nLatLngs, {
+          color:'#f59e0b', weight:1.5, fillColor:'#f59e0b',
+          fillOpacity:0.04, dashArray:'3,5'
+        }).addTo(lbMap).bindTooltip(
+          `<span style="font-family:monospace;font-size:10px">◌ ${nf.fieldId}<br>${nf.owner||'—'}</span>`,
+          { sticky:true }
+        );
+      }
+      drawnNeighbours.push(nf);
+    });
+
+    // Expand map bounds to show neighbours if any overlap detected
+    if (overlapNeighbourIds.length > 0) {
+      overlapNeighbourIds.forEach(nid => {
+        const nf = fieldsData.find(x => x.fieldId === nid);
+        if (nf && nf.ring) {
+          nf.ring.forEach(c => bounds.extend([c[1], c[0]]));
+        }
+      });
+    }
 
     // Zone-coloured tree markers — stored by index for click-to-highlight
     const tM = getToleranceM(), rM = getReviewM();
@@ -2079,7 +2159,7 @@ function openLb(idx, navList, navPos) {
       _lbTreeMarkers.push({ marker, lat: t.lat, lng: t.lng, col });
     });
 
-    lbMap.fitBounds(poly.getBounds(), { padding:[24,24] });
+    lbMap.fitBounds(bounds, { padding:[24,24] });
     setTimeout(() => { try { lbMap.invalidateSize(); } catch(e){} }, 150);
   }, 60);
 }
