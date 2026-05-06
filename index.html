@@ -599,6 +599,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnQueue" onclick="toggleQueue()"
         style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
         title="Show correction queue — fields ranked by trees outside">✗ Queue</button>
+      <button class="view-btn" id="btnGoodExample" onclick="toggleGoodExample()"
+        style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
+        title="Find clean simple fields — good for screenshots and demonstrations">⭐ Example</button>
       <div style="width:1px;height:18px;background:var(--border)"></div>
       <button class="view-btn" onclick="clearFilters()" style="color:var(--amber)">✕ Clear</button>
     </div>
@@ -907,6 +910,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="btn-activate"   id="lbBtnActivate"   onclick="lbActivate()" style="display:none">✓ Reactivate</button>
       <button class="btn-export" onclick="printFieldRecord()" style="margin-left:auto"
         title="Print field record with GeoJSON coordinates">🖨 Print record</button>
+      <button class="btn-export" id="lbBtnFix" onclick="lbOpenFix()"
+        style="background:rgba(56,189,248,0.1);color:var(--blue);border-color:rgba(56,189,248,0.3)"
+        title="Open in Polygon Corrector">✎ Fix in Corrector</button>
       <button class="btn btn-sec" onclick="closeLb()">Close</button>
     </div>
   </div>
@@ -1789,8 +1795,14 @@ async function lbActivate() {
   } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
 }
 
+function lbOpenFix() {
+  const f = fieldsData[_lbCurrentIdx];
+  if (!f) return;
+  const url = `https://communityclimate.github.io/ccs-polygon-corrector/?fieldId=${encodeURIComponent(f.fieldId)}`;
+  window.open(url, '_blank');
+}
+
 function updateLbButtons(f) {
-  const inactive = _deactivatedIds.has(f.fieldId);
   const btnD = document.getElementById('lbBtnDeactivate');
   const btnA = document.getElementById('lbBtnActivate');
   if (btnD) btnD.style.display = inactive ? 'none' : 'inline-block';
@@ -2395,6 +2407,109 @@ async function renderQueue() {
 
   updateQueueSelectionCount();
 }
+// ── GOOD EXAMPLE FINDER ───────────────────────────────────────────────────
+let goodExampleActive = false;
+
+function toggleGoodExample() {
+  goodExampleActive = !goodExampleActive;
+  const btn   = document.getElementById('btnGoodExample');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+  btn.classList.toggle('active', goodExampleActive);
+  if (goodExampleActive) {
+    btn.style.background = 'rgba(167,139,250,0.12)';
+    btn.textContent = '⭐ Example ✓';
+    if (queueActive) toggleQueue();
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    document.getElementById('catCount').textContent =
+      '⭐ Good example candidates — simple polygon · few trees outside · no overlaps';
+    renderGoodExamples();
+  } else {
+    btn.style.background = '';
+    btn.textContent = '⭐ Example';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+    renderPage();
+  }
+}
+
+async function renderGoodExamples() {
+  if (!fieldsData.length) return;
+  if (_cacheBuilding || Object.keys(_classCache).length === 0) {
+    document.getElementById('queueSummary').innerHTML =
+      `<span style="color:var(--muted)">⏳ Building cache… please wait</span>`;
+    while (_cacheBuilding) await new Promise(r => setTimeout(r, 200));
+    if (Object.keys(_classCache).length === 0) await buildClassCache();
+  }
+
+  const candidates = fieldsData
+    .filter(f => {
+      if (!f.ring) return false;
+      const cl = classifyField(f);
+      const m  = ringMetrics(f.ring);
+      if (!cl || !m) return false;
+      return m.vertices >= 4 && m.vertices <= 12      // simple polygon
+          && cl.total >= 15 && cl.total <= 100         // moderate trees
+          && cl.outside >= 3 && cl.outside <= 40       // some outside
+          && cl.maxDist >= 8 && cl.maxDist <= 50       // moderate distance
+          && !(_overlapNeighbours[f.fieldId]?.length)  // no overlapping neighbours
+          && m.area >= 0.05 && m.area <= 3             // plausible field size
+          && cl.pct >= 30 && cl.pct <= 90;             // not perfect, not hopeless
+    })
+    .map(f => {
+      const cl = classifyField(f);
+      const m  = ringMetrics(f.ring);
+      const ratio = cl.outside / cl.total;
+      const ideal = Math.abs(ratio - 0.3); // closest to 30% outside = clearest story
+      return { f, cl, m, ideal };
+    })
+    .sort((a, b) => a.ideal - b.ideal)
+    .slice(0, 50);
+
+  const actBar = document.getElementById('queueActions');
+  if (actBar) actBar.style.display = 'none';
+
+  document.getElementById('queueSummary').innerHTML =
+    `<span style="color:#a78bfa;font-weight:700;font-size:12px">${candidates.length} candidates</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:var(--muted)">Simple polygon \u00B7 moderate trees \u00B7 clearly outside \u00B7 no overlaps \u00B7 sorted by clarity</span>`;
+
+  const POLY_CORRECTOR = 'https://communityclimate.github.io/ccs-polygon-corrector/';
+  window.queueNavList  = candidates.map(c => fieldsData.indexOf(c.f));
+
+  document.getElementById('queueBody').innerHTML = candidates.map((c, i) => {
+    const { f, cl, m } = c;
+    const pct    = cl.pct || 0;
+    const pctCol = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+    const corrUrl = `${POLY_CORRECTOR}?fieldId=${encodeURIComponent(f.fieldId)}`;
+    const fidIdx  = fieldsData.indexOf(f);
+    return `<tr onclick="openLb(${fidIdx}, window.queueNavList, ${i})">
+      <td class="q-col-chk"></td>
+      <td class="q-col-rank r q-rank">${i + 1}</td>
+      <td class="q-col-fid q-fid">${f.fieldId}</td>
+      <td class="q-col-own q-owner">${f.owner || '—'}</td>
+      <td class="q-col-out r" style="color:#ef4444;font-weight:700">${cl.outside}</td>
+      <td class="q-col-tot r">${cl.total}</td>
+      <td class="q-col-pct r" style="color:${pctCol};font-weight:700">${pct}%</td>
+      <td class="q-col-max r" style="color:var(--muted)">${cl.maxDist.toFixed(0)}m</td>
+      <td class="q-col-bar">
+        <div class="q-bar-inner">
+          <div class="q-bar-fill" style="width:${Math.round(cl.outside/cl.total*100)}%;background:#a78bfa"></div>
+        </div>
+      </td>
+      <td class="q-col-ovl" style="text-align:center;font-family:var(--mono);font-size:10px;color:#a78bfa"
+        title="${m.vertices} vertices">${m.vertices}v</td>
+      <td class="q-col-act" onclick="event.stopPropagation()">
+        <a class="q-open" href="${corrUrl}" target="_blank">✎ Fix</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
 async function openOverview() {
   const modal = document.getElementById('ovModal');
   if (!fieldsData.length) {
