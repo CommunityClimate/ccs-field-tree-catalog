@@ -264,16 +264,17 @@ input[type=text]:focus { border-color:var(--green); }
   font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .queue-table tbody td.r { text-align:right; }
 /* Fixed column widths — total should fill container */
-.q-col-chk  { width:32px; }
-.q-col-rank { width:36px; }
-.q-col-fid  { width:170px; }
-.q-col-own  { width:130px; }
-.q-col-out  { width:80px; }
-.q-col-tot  { width:70px; }
-.q-col-pct  { width:78px; }
-.q-col-max  { width:72px; }
-.q-col-bar  { width:70px; }
-.q-col-act  { width:72px; }
+.q-col-chk  { width:28px; }
+.q-col-rank { width:32px; }
+.q-col-fid  { width:155px; }
+.q-col-own  { width:120px; }
+.q-col-out  { width:72px; }
+.q-col-tot  { width:58px; }
+.q-col-pct  { width:58px; }
+.q-col-max  { width:58px; }
+.q-col-bar  { width:60px; }
+.q-col-ovl  { width:40px; }
+.q-col-act  { width:54px; }
 .q-rank { color:var(--muted); font-size:10px; }
 .q-fid  { color:var(--blue); font-weight:700; }
 .q-owner { color:var(--muted); font-size:10px; }
@@ -630,7 +631,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
               <th class="q-col-pct r">Comply</th>
               <th class="q-col-max r">Max dist</th>
               <th class="q-col-bar">Outside</th>
-              <th style="width:44px;text-align:center" title="Overlapping neighbours">⧖</th>
+              <th class="q-col-ovl" style="text-align:center" title="Overlapping neighbours">⧖</th>
               <th class="q-col-act"></th>
             </tr>
           </thead>
@@ -2377,7 +2378,7 @@ async function renderQueue() {
           <div class="q-bar-fill" style="width:${barPct}%"></div>
         </div>
       </td>
-      <td style="width:44px;text-align:center;padding:6px 4px" onclick="event.stopPropagation()">${(() => {
+      <td class="q-col-ovl" style="text-align:center;padding:6px 2px" onclick="event.stopPropagation()">${(() => {
         const neighbours = (_overlapNeighbours[f.fieldId] || []);
         return neighbours.length > 0
           ? `<span style="background:rgba(167,139,250,0.15);color:#a78bfa;
