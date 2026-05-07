@@ -2028,10 +2028,18 @@ function openLb(idx, navList, navPos) {
   // Zone breakdown
   const lbZone = document.getElementById('lbZoneBreakdown');
   const neighbourIds  = _overlapNeighbours[f.fieldId] || [];
+  const sameOwnerCount = neighbourIds.filter(nid => {
+    const nf = fieldsData.find(x => x.fieldId === nid);
+    return nf?.owner && f.owner && nf.owner.trim() === f.owner.trim();
+  }).length;
   const neighbourBadge = neighbourIds.length > 0
     ? `<span style="font-size:9px;background:rgba(167,139,250,0.1);color:#a78bfa;
         border:1px solid rgba(167,139,250,0.3);border-radius:3px;padding:2px 7px;
-        font-family:var(--mono);font-weight:700">⧖ ${neighbourIds.length} overlapping neighbour${neighbourIds.length>1?'s':''}: ${neighbourIds.slice(0,3).join(', ')}${neighbourIds.length>3?'…':''}</span>`
+        font-family:var(--mono);font-weight:700"
+        title="${neighbourIds.slice(0,5).join(', ')}${neighbourIds.length>5?'…':''}">
+        ⧖ ${neighbourIds.length} overlapping${sameOwnerCount > 0
+          ? ` · <span style="color:#22c55e">${sameOwnerCount} same owner</span>` : ''}
+        </span>`
     : '';
   const dupeInfoLb    = _duplicateTrees[f.fieldId];
   const dupeCountLb   = dupeInfoLb?.indices?.size || 0;
@@ -2192,26 +2200,45 @@ function openLb(idx, navList, navPos) {
       if (nMaxLat < bBox.minLat || nMinLat > bBox.maxLat ||
           nMaxLng < bBox.minLng || nMinLng > bBox.maxLng) return;
 
-      const isOverlapping = overlapNeighbourIds.includes(nf.fieldId);
-      const nLatLngs = nf.ring.map(c => [c[1], c[0]]);
+      const isOverlapping  = overlapNeighbourIds.includes(nf.fieldId);
+      const isSameOwner   = nf.owner && f.owner && nf.owner.trim() === f.owner.trim();
+      const nTreeCount    = (treesByField[nf.fieldId] || []).length;
+      const nLatLngs      = nf.ring.map(c => [c[1], c[0]]);
+      const ownerTag      = isSameOwner
+        ? `<span style="color:#22c55e;font-weight:700">✓ Same owner — merge candidate</span>`
+        : `<span style="color:#f59e0b">✗ Different owner</span>`;
 
       if (isOverlapping) {
-        // Confirmed overlapping — purple, solid border
+        // Confirmed overlapping — purple solid, green outline if same owner
         L.polygon(nLatLngs, {
-          color:'#a78bfa', weight:2, fillColor:'#a78bfa',
-          fillOpacity:0.12, dashArray:null
+          color: isSameOwner ? '#22c55e' : '#a78bfa',
+          weight: isSameOwner ? 2.5 : 2,
+          fillColor: isSameOwner ? '#22c55e' : '#a78bfa',
+          fillOpacity: 0.12, dashArray: null
         }).addTo(lbMap).bindTooltip(
-          `<span style="font-family:monospace;font-size:10px">⧖ ${nf.fieldId}<br>${nf.owner||'—'}</span>`,
-          { sticky:true }
+          `<div style="font-family:monospace;font-size:10px;line-height:1.7">
+            <strong>⧖ ${nf.fieldId}</strong><br>
+            👤 ${nf.owner || '—'}<br>
+            🌳 ${nTreeCount.toLocaleString()} trees<br>
+            ${ownerTag}
+          </div>`,
+          { sticky: true }
         );
       } else {
-        // Adjacent / nearby — amber, dashed, lighter
+        // Adjacent / nearby — amber dashed
         L.polygon(nLatLngs, {
           color:'#f59e0b', weight:1.5, fillColor:'#f59e0b',
           fillOpacity:0.04, dashArray:'3,5'
         }).addTo(lbMap).bindTooltip(
-          `<span style="font-family:monospace;font-size:10px">◌ ${nf.fieldId}<br>${nf.owner||'—'}</span>`,
-          { sticky:true }
+          `<div style="font-family:monospace;font-size:10px;line-height:1.7">
+            <strong>◌ ${nf.fieldId}</strong><br>
+            👤 ${nf.owner || '—'}<br>
+            🌳 ${nTreeCount.toLocaleString()} trees<br>
+            ${isSameOwner
+              ? `<span style="color:#22c55e">✓ Same owner</span>`
+              : `<span style="color:var(--muted)">Different owner</span>`}
+          </div>`,
+          { sticky: true }
         );
       }
       drawnNeighbours.push(nf);
