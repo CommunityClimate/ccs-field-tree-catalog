@@ -433,6 +433,14 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Overlapping Fields</strong>
         <span>Fields detected as overlapping another field boundary</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportOverlapsWithGeoJSON()">
+        <strong>⬇ Overlapping Fields + GeoJSON</strong>
+        <span>Overlapping fields with full polygon coordinates for field verification</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportDuplicatesWithGeoJSON()">
+        <strong>⬇ Duplicate Registrations + GeoJSON</strong>
+        <span>Duplicate field IDs and tree registrations with polygon coordinates</span>
+      </div>
     </div>
     </div>
   </div><!-- end hdr-row1 -->
@@ -2759,6 +2767,170 @@ function closeExportMenu() {
 document.addEventListener('click', () => closeExportMenu());
 
 // ── EXPORTS ────────────────────────────────────────────────────────────────
+// ── OVERLAPPING FIELDS EXPORT WITH GEOJSON ────────────────────────────────
+function exportOverlapsWithGeoJSON() {
+  const ovSet = window._overlappingFieldIds;
+  if (!ovSet || ovSet.size === 0) {
+    showToast('No overlapping fields detected yet — wait for detection to complete', 'info');
+    return;
+  }
+
+  const headers = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Total Trees', 'Verra Compliant %', 'Needs Correction',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Overlapping With (Field IDs)', 'Overlap Count',
+    'GeoJSON Polygon'
+  ];
+
+  const rows = fieldsData
+    .filter(f => ovSet.has(f.fieldId))
+    .map(f => {
+      const trees     = treesByField[f.fieldId] || [];
+      const cl        = f.ring && trees.length > 0 ? classifyField(f) : null;
+      const m         = f.ring ? ringMetrics(f.ring) : null;
+      const neighbours = (_overlapNeighbours[f.fieldId] || []).join(' | ');
+      const nCount    = (_overlapNeighbours[f.fieldId] || []).length;
+      return [
+        f.fieldId,
+        f.owner || '',
+        f.createdOn || '',
+        f.createdBy || '',
+        f.modifiedBy || '',
+        trees.length,
+        cl ? cl.pct + '%' : '—',
+        cl ? cl.outside : '',
+        m ? m.area.toFixed(4) : '',
+        m ? m.vertices : '',
+        m ? m.cLat.toFixed(6) : '',
+        m ? m.cLng.toFixed(6) : '',
+        neighbours,
+        nCount,
+        f.geoJSON || ''
+      ];
+    });
+
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `CCS_Overlapping_Fields_GeoJSON_${date}.csv`);
+  showToast(`⬇ Exporting ${rows.length.toLocaleString()} overlapping fields`, 'ok');
+}
+
+// ── DUPLICATE REGISTRATIONS EXPORT WITH GEOJSON ───────────────────────────
+function exportDuplicatesWithGeoJSON() {
+  const hasFieldDupes = _duplicateFieldIds.size > 0;
+  const hasTreeDupes  = Object.keys(_duplicateTrees).length > 0;
+
+  if (!hasFieldDupes && !hasTreeDupes) {
+    showToast('No duplicates detected', 'info');
+    return;
+  }
+
+  // ── Sheet 1: Duplicate Field IDs ──────────────────────────────────────
+  const fieldHeaders = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Total Trees', 'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Issue', 'GeoJSON Polygon'
+  ];
+
+  const fieldRows = fieldsData
+    .filter(f => _duplicateFieldIds.has(f.fieldId))
+    .map(f => {
+      const trees = treesByField[f.fieldId] || [];
+      const m     = f.ring ? ringMetrics(f.ring) : null;
+      return [
+        f.fieldId,
+        f.owner || '',
+        f.createdOn || '',
+        f.createdBy || '',
+        f.modifiedBy || '',
+        trees.length,
+        m ? m.area.toFixed(4) : '',
+        m ? m.vertices : '',
+        m ? m.cLat.toFixed(6) : '',
+        m ? m.cLng.toFixed(6) : '',
+        'DUPLICATE FIELD ID — registered more than once in Fieldforce',
+        f.geoJSON || ''
+      ];
+    });
+
+  // ── Sheet 2: Duplicate Tree Registrations ─────────────────────────────
+  const treeHeaders = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By',
+    'Duplicate Tree Count', 'Total Trees in Field',
+    'Tree Codes (Duplicates)', 'Duplicate Lat', 'Duplicate Lng',
+    'Issue', 'Field GeoJSON Polygon'
+  ];
+
+  const treeRows = [];
+  Object.entries(_duplicateTrees).forEach(([fieldId, info]) => {
+    const f     = fieldsData.find(x => x.fieldId === fieldId);
+    if (!f) return;
+    const trees = treesByField[fieldId] || [];
+
+    // Group duplicate trees by coordinate
+    const coordGroups = {};
+    info.indices.forEach(i => {
+      const t   = trees[i];
+      const key = `${t.lat}|${t.lng}`;
+      if (!coordGroups[key]) coordGroups[key] = [];
+      coordGroups[key].push(t.code || `tree_${i}`);
+    });
+
+    // One row per duplicate coordinate group
+    Object.entries(coordGroups).forEach(([coordKey, codes]) => {
+      const [lat, lng] = coordKey.split('|');
+      treeRows.push([
+        fieldId,
+        f.owner || '',
+        f.createdOn || '',
+        f.createdBy || '',
+        codes.length,
+        trees.length,
+        codes.join(' | '),
+        lat,
+        lng,
+        `DUPLICATE TREE REGISTRATION — ${codes.length} records at identical coordinates`,
+        f.geoJSON || ''
+      ]);
+    });
+  });
+
+  // Combine into a single CSV with a section separator
+  const separator = ['', '', '', '', '', '', '', '', '', '', '', ''];
+  const sectionHeader = (title) => [`=== ${title} ===`, '', '', '', '', '', '', '', '', '', '', ''];
+
+  const allRows = [
+    sectionHeader(`DUPLICATE FIELD IDs — ${fieldRows.length} field${fieldRows.length!==1?'s':''} (${new Date().toISOString().slice(0,10)})`),
+    fieldHeaders,
+    ...fieldRows,
+    separator,
+    sectionHeader(`DUPLICATE TREE REGISTRATIONS — ${treeRows.length} coordinate group${treeRows.length!==1?'s':''}`),
+    treeHeaders,
+    ...treeRows
+  ];
+
+  const csv = allRows
+    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `CCS_Duplicate_Registrations_GeoJSON_${date}.csv`);
+  showToast(`⬇ Exporting ${fieldRows.length} duplicate fields · ${treeRows.length} duplicate tree groups`, 'ok');
+}
+
+function downloadCSV(csv, filename) {
+  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
 function exportCSV(type) {
   const threshold = getLargeThreshold();
 
@@ -2836,15 +3008,11 @@ function exportCSV(type) {
 
   const labels = {
     all:'Field_Compliance_Summary', outside:'Has_Trees_Outside',
-    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded', large:'Large_Polygons'
+    inside:'All_Trees_Inside', no_trees:'No_Trees_Recorded',
+    large:'Large_Polygons', overlapping:'Overlapping_Fields'
   };
-  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `CCS_${labels[type]}_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `CCS_${labels[type] || type}_${date}.csv`);
 }
 </script>
 </body>
