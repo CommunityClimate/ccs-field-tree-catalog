@@ -2378,23 +2378,36 @@ async function detectDuplicatesKPI() {
     if (trees.length < 2) { processed++; continue; }
 
     // Group trees by exact "lat|lng" key
+    // Guards: skip any tree with null, zero, NaN, or invalid coordinates
+    // — these are data errors, not duplicates
     const coordMap = {};
     trees.forEach((t, i) => {
-      const key = `${t.lat}|${t.lng}`;
+      if (!t.lat || !t.lng) return;            // null or zero
+      if (isNaN(t.lat) || isNaN(t.lng)) return; // NaN
+      if (Math.abs(t.lat) < 0.001 || Math.abs(t.lng) < 0.001) return; // implausible for Zambia
+      // Use toFixed(8) for consistent string representation regardless of float precision
+      const key = `${t.lat.toFixed(8)}|${t.lng.toFixed(8)}`;
       if (!coordMap[key]) coordMap[key] = [];
-      coordMap[key].push(i);
+      coordMap[key].push({ idx: i, code: t.code || `[no code]` });
     });
 
     const dupeIndices = new Set();
-    Object.values(coordMap).forEach(indices => {
-      if (indices.length > 1) {
-        indices.forEach(i => dupeIndices.add(i));
+    const dupePairs   = []; // { key, codes, indices } for export detail
+    Object.entries(coordMap).forEach(([key, entries]) => {
+      if (entries.length > 1) {
+        entries.forEach(e => dupeIndices.add(e.idx));
+        dupePairs.push({
+          lat:     parseFloat(key.split('|')[0]),
+          lng:     parseFloat(key.split('|')[1]),
+          codes:   entries.map(e => e.code),
+          indices: entries.map(e => e.idx)
+        });
       }
     });
 
     if (dupeIndices.size > 0) {
       _duplicateFields.add(f.fieldId);
-      _duplicateTrees[f.fieldId] = { indices: dupeIndices };
+      _duplicateTrees[f.fieldId] = { indices: dupeIndices, pairs: dupePairs };
       totalDupeTrees += dupeIndices.size;
     }
 
@@ -2866,34 +2879,25 @@ function exportDuplicatesWithGeoJSON() {
   ];
 
   const treeRows = [];
-  Object.entries(_duplicateTrees).forEach(([fieldId, info]) => {
+  Object.entries(_duplicateTrees).forEach(([fieldId, dupeData]) => {
     const f     = fieldsData.find(x => x.fieldId === fieldId);
     if (!f) return;
     const trees = treesByField[fieldId] || [];
 
-    // Group duplicate trees by coordinate
-    const coordGroups = {};
-    info.indices.forEach(i => {
-      const t   = trees[i];
-      const key = `${t.lat}|${t.lng}`;
-      if (!coordGroups[key]) coordGroups[key] = [];
-      coordGroups[key].push(t.code || `tree_${i}`);
-    });
-
-    // One row per duplicate coordinate group
-    Object.entries(coordGroups).forEach(([coordKey, codes]) => {
-      const [lat, lng] = coordKey.split('|');
+    // One row per duplicate coordinate group — shows ALL tree codes at that location
+    const exportPairs = _duplicateTrees[fieldId]?.pairs || [];
+    exportPairs.forEach(pair => {
       treeRows.push([
         fieldId,
         f.owner || '',
         f.createdOn || '',
         f.createdBy || '',
-        codes.length,
+        pair.codes.length,
         trees.length,
-        codes.join(' | '),
-        lat,
-        lng,
-        `DUPLICATE TREE REGISTRATION — ${codes.length} records at identical coordinates`,
+        pair.codes.join(' | '),
+        pair.lat.toFixed(8),
+        pair.lng.toFixed(8),
+        `DUPLICATE TREE REGISTRATION — ${pair.codes.length} active records at identical coordinates (${pair.codes.join(' and ')})`,
         f.geoJSON || ''
       ]);
     });
