@@ -2871,26 +2871,30 @@ function exportOverlapsWithGeoJSON() {
 
   const headers = [
     'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Status', 'Statecode',
     'Total Trees', 'Verra Compliant %', 'Needs Correction',
     'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
-    'Overlapping With (Field IDs)', 'Overlap Count',
-    'GeoJSON Polygon'
+    'Overlapping With (Field IDs)', 'Overlap Count', 'Same Owner Overlaps',
+    'Issue', 'GeoJSON Polygon'
   ];
 
   const rows = fieldsData
     .filter(f => ovSet.has(f.fieldId))
     .map(f => {
-      const trees     = treesByField[f.fieldId] || [];
-      const cl        = f.ring && trees.length > 0 ? classifyField(f) : null;
-      const m         = f.ring ? ringMetrics(f.ring) : null;
-      const neighbours = (_overlapNeighbours[f.fieldId] || []).join(' | ');
-      const nCount    = (_overlapNeighbours[f.fieldId] || []).length;
+      const trees      = treesByField[f.fieldId] || [];
+      const cl         = f.ring && trees.length > 0 ? classifyField(f) : null;
+      const m          = f.ring ? ringMetrics(f.ring) : null;
+      const nIds       = _overlapNeighbours[f.fieldId] || [];
+      const neighbours = nIds.join(' | ');
+      const nCount     = nIds.length;
+      const sameOwnerN = nIds.filter(nid => {
+        const nf = fieldsData.find(x => x.fieldId === nid);
+        return nf?.owner && f.owner && nf.owner.trim() === f.owner.trim();
+      }).length;
       return [
-        f.fieldId,
-        f.owner || '',
-        f.createdOn || '',
-        f.createdBy || '',
-        f.modifiedBy || '',
+        f.fieldId, f.owner || '', f.createdOn || '',
+        f.createdBy || '', f.modifiedBy || '',
+        'Active', 0,
         trees.length,
         cl ? cl.pct + '%' : '—',
         cl ? cl.outside : '',
@@ -2898,8 +2902,10 @@ function exportOverlapsWithGeoJSON() {
         m ? m.vertices : '',
         m ? m.cLat.toFixed(6) : '',
         m ? m.cLng.toFixed(6) : '',
-        neighbours,
-        nCount,
+        neighbours, nCount, sameOwnerN,
+        sameOwnerN > 0
+          ? `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''}, ${sameOwnerN} belong to same owner (merge candidate)`
+          : `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''} with different owner${nCount>1?'s':''}`,
         f.geoJSON || ''
       ];
     });
@@ -2920,6 +2926,7 @@ function exportDuplicateFields() {
   }
   const headers = [
     'Field ID','Owner','Registered Date','Created By','Modified By',
+    'Status','Statecode',
     'Total Trees','Area (ha)','Vertices','Centroid Lat','Centroid Lng',
     'Issue','GeoJSON Polygon'
   ];
@@ -2930,10 +2937,11 @@ function exportDuplicateFields() {
       const m     = f.ring ? ringMetrics(f.ring) : null;
       return [
         f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
+        'Active', 0,
         trees.length,
         m ? m.area.toFixed(4) : '', m ? m.vertices : '',
         m ? m.cLat.toFixed(6) : '', m ? m.cLng.toFixed(6) : '',
-        'DUPLICATE FIELD ID — this field ID is registered more than once in Fieldforce',
+        'DUPLICATE FIELD ID — this active record has an inactive copy in Fieldforce (statecode 1)',
         f.geoJSON||''
       ];
     });
@@ -2949,7 +2957,9 @@ function exportDuplicateTrees() {
   }
   const headers = [
     'Field ID','Owner','Registered Date','Created By',
+    'Field Status','Field Statecode',
     'Tree Code 1','Tree Code 2','All Codes at This Location',
+    'Tree Status','Tree Statecode',
     'Record Count at Location','Total Trees in Field',
     'Latitude','Longitude',
     'Issue','Field GeoJSON Polygon'
@@ -2962,10 +2972,13 @@ function exportDuplicateTrees() {
     (dupeData.pairs || []).forEach(pair => {
       rows.push([
         fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
+        'Active', 0,
         pair.codes[0]||'', pair.codes[1]||'',
-        pair.codes.join(' | '), pair.codes.length, trees.length,
+        pair.codes.join(' | '),
+        'Active', 0,
+        pair.codes.length, trees.length,
         pair.lat.toFixed(8), pair.lng.toFixed(8),
-        `DUPLICATE TREE REGISTRATION — ${pair.codes.length} active records at identical coordinates`,
+        `DUPLICATE TREE REGISTRATION — ${pair.codes.length} active records (statecode 0) at identical coordinates`,
         f.geoJSON||''
       ]);
     });
@@ -3021,7 +3034,7 @@ function exportCSV(type) {
   });
 
   const headers = [
-    'Field ID','Owner','Registered Date','Total Trees',
+    'Field ID','Owner','Registered Date','Status','Statecode','Total Trees',
     'Inside','Tolerance Zone','Review Zone','Needs Correction',
     'Verra Compliant %','Max Distance Outside (m)',
     'Area (ha)','Perimeter (m)','Vertices','Avg Side (m)','Min Side (m)','Max Side (m)',
@@ -3033,6 +3046,7 @@ function exportCSV(type) {
     const pct = cl ? cl.pct : null;
     return [
       f.fieldId, f.owner || '', f.createdOn || '',
+      'Active', 0,
       trees.length,
       cl ? cl.inside    : '',
       cl ? cl.tolerance : '',
