@@ -2369,14 +2369,14 @@ async function detectDuplicatesKPI() {
   _duplicateFieldIds = new Set();
 
   // ── 1. Duplicate field IDs ─────────────────────────────────────────────
-  // Compare active field IDs against ALL Fieldforce records including inactive.
-  // Fetch inactive field IDs separately (lightweight — ID only, no GeoJSON).
-  const fieldIdCount = {};
-  fieldsData.forEach(f => {
-    fieldIdCount[f.fieldId] = (fieldIdCount[f.fieldId] || 0) + 1;
-  });
+  // A duplicate field ID = a field ID that exists in BOTH active AND inactive
+  // records in Fieldforce. We fetch inactive IDs separately and cross-reference.
+  // We do NOT flag active-only or inactive-only IDs as duplicates.
 
-  // Also fetch inactive field IDs to catch active/inactive duplicates
+  const activeFieldIds = new Set(fieldsData.map(f => f.fieldId).filter(Boolean));
+
+  // Fetch inactive field IDs
+  const inactiveFieldIds = new Set();
   try {
     const token = await getToken();
     const res = await fetch(
@@ -2391,14 +2391,27 @@ async function detectDuplicatesKPI() {
       const data = await res.json();
       (data.value || []).forEach(r => {
         const id = String(r.ccs_cssfieldid_field || '').trim();
-        if (id) fieldIdCount[id] = (fieldIdCount[id] || 0) + 1;
+        if (id) inactiveFieldIds.add(id);
       });
     }
   } catch(e) {
     console.warn('[Dupes] Could not fetch inactive fields:', e.message);
   }
 
-  Object.entries(fieldIdCount).forEach(([id, count]) => {
+  // Only flag active fields whose ID also appears as inactive
+  activeFieldIds.forEach(id => {
+    if (inactiveFieldIds.has(id)) {
+      _duplicateFieldIds.add(id);
+      _duplicateFields.add(id);
+    }
+  });
+
+  // Also check for active-active duplicates (same ID appearing twice in active records)
+  const activeIdCount = {};
+  fieldsData.forEach(f => {
+    if (f.fieldId) activeIdCount[f.fieldId] = (activeIdCount[f.fieldId] || 0) + 1;
+  });
+  Object.entries(activeIdCount).forEach(([id, count]) => {
     if (count > 1) {
       _duplicateFieldIds.add(id);
       _duplicateFields.add(id);
