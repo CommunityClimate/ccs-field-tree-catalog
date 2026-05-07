@@ -2357,10 +2357,35 @@ async function detectDuplicatesKPI() {
   _duplicateFieldIds = new Set();
 
   // ── 1. Duplicate field IDs ─────────────────────────────────────────────
+  // Compare active field IDs against ALL Fieldforce records including inactive.
+  // Fetch inactive field IDs separately (lightweight — ID only, no GeoJSON).
   const fieldIdCount = {};
   fieldsData.forEach(f => {
     fieldIdCount[f.fieldId] = (fieldIdCount[f.fieldId] || 0) + 1;
   });
+
+  // Also fetch inactive field IDs to catch active/inactive duplicates
+  try {
+    const token = await getToken();
+    const res = await fetch(
+      `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field&$filter=statecode eq 1&$top=5000`,
+      { headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'OData-MaxVersion': '4.0', 'OData-Version': '4.0'
+      }}
+    );
+    if (res.ok) {
+      const data = await res.json();
+      (data.value || []).forEach(r => {
+        const id = String(r.ccs_cssfieldid_field || '').trim();
+        if (id) fieldIdCount[id] = (fieldIdCount[id] || 0) + 1;
+      });
+    }
+  } catch(e) {
+    console.warn('[Dupes] Could not fetch inactive fields:', e.message);
+  }
+
   Object.entries(fieldIdCount).forEach(([id, count]) => {
     if (count > 1) {
       _duplicateFieldIds.add(id);
