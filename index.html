@@ -486,6 +486,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: overlapping fields" onclick="setKpiFilter('overlapping')">
       <span class="v" id="kpiOverlap" style="color:#a78bfa">…</span>
       <span class="l">⧖ Overlap</span></div>
+    <div class="kpi" style="border-color:rgba(56,189,248,0.3);background:rgba(56,189,248,0.06);cursor:pointer"
+      title="Click to filter: fields within 10m of another boundary — at risk if boundary is expanded" onclick="setKpiFilter('near')">
+      <span class="v" id="kpiNear" style="color:#38bdf8">…</span>
+      <span class="l">◻ Near</span></div>
     <div class="kpi a" style="cursor:pointer"
       title="Click to filter: large polygons" onclick="setKpiFilter('large')">
       <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
@@ -525,6 +529,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
         <option value="overlapping">⧖ Overlapping fields</option>
+        <option value="near">◻ Neighbouring fields (within 10m)</option>
         <option value="duplicate_fields">⊕ Duplicate field registrations</option>
         <option value="duplicate_trees">⊕ Duplicate tree registrations</option>
       </select>
@@ -1280,11 +1285,107 @@ function updateKPIs() {
 
   // Run lightweight overlap detection asynchronously after KPIs display
   setTimeout(() => detectOverlapsKPI(), 200);
+  // Run near-field detection after overlap
+  setTimeout(() => detectNearKPI(), 1200);
   // Run duplicate detection after overlap (slightly delayed)
   setTimeout(() => detectDuplicatesKPI(), 800);
 }
 
-// ── Lightweight overlap detection for KPI header ───────────────────────────
+// ── NEAR-FIELD DETECTION ──────────────────────────────────────────────────
+// Fields whose boundary comes within NEAR_THRESHOLD metres of another field
+// boundary without actually overlapping. These are at risk of creating a
+// new overlap if their boundary is expanded during correction.
+const NEAR_THRESHOLD_M = 10;
+let _nearFieldIds = new Set(); // fieldIds within NEAR_THRESHOLD_M of another boundary
+
+async function detectNearKPI() {
+  const el     = document.getElementById('kpiNear');
+  const ovSet  = window._overlappingFieldIds || new Set();
+  const fields = fieldsData.filter(f => f.ring && f.ring.length >= 3);
+  if (el) el.textContent = '…';
+
+  _nearFieldIds = new Set();
+
+  // Use same grid as overlap detection
+  const CELL = 0.05;
+  const grid  = {};
+  const boxes = [];
+
+  fields.forEach((f, idx) => {
+    const lats = f.ring.map(c => c[1]), lngs = f.ring.map(c => c[0]);
+    const box  = {
+      minLat: Math.min(...lats), maxLat: Math.max(...lats),
+      minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
+    };
+    boxes.push(box);
+    const r0 = Math.floor(box.minLat / CELL), r1 = Math.floor(box.maxLat / CELL);
+    const c0 = Math.floor(box.minLng / CELL), c1 = Math.floor(box.maxLng / CELL);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const key = `${r}:${c}`;
+        if (!grid[key]) grid[key] = [];
+        grid[key].push(idx);
+      }
+    }
+  });
+
+  const testedPairs = new Set();
+  const candidates  = [];
+  for (const key of Object.keys(grid)) {
+    const cell = grid[key];
+    if (cell.length < 2) continue;
+    for (let a = 0; a < cell.length; a++) {
+      for (let b = a + 1; b < cell.length; b++) {
+        const pairKey = cell[a] < cell[b]
+          ? `${cell[a]}_${cell[b]}` : `${cell[b]}_${cell[a]}`;
+        if (!testedPairs.has(pairKey)) {
+          testedPairs.add(pairKey);
+          candidates.push([cell[a], cell[b]]);
+        }
+      }
+    }
+  }
+
+  const CHUNK = 500;
+  for (let i = 0; i < candidates.length; i++) {
+    if (i % CHUNK === 0) await new Promise(r => setTimeout(r, 0));
+
+    const [ai, bi] = candidates[i];
+    const fA = fields[ai], fB = fields[bi];
+    const bA = boxes[ai],  bB = boxes[bi];
+
+    // Skip if already confirmed overlapping
+    if (ovSet.has(fA.fieldId) && ovSet.has(fB.fieldId)) continue;
+
+    // Expanded bounding box pre-filter (~10m ≈ 0.0001°)
+    const PAD = 0.0002;
+    if (bA.minLat - PAD > bB.maxLat || bA.maxLat + PAD < bB.minLat ||
+        bA.minLng - PAD > bB.maxLng || bA.maxLng + PAD < bB.minLng) continue;
+
+    // Check vertex-to-vertex distances — find any pair within threshold
+    let found = false;
+    for (let p = 0; p < fA.ring.length && !found; p++) {
+      for (let q = 0; q < fB.ring.length && !found; q++) {
+        const d = haversineM(fA.ring[p][1], fA.ring[p][0], fB.ring[q][1], fB.ring[q][0]);
+        if (d <= NEAR_THRESHOLD_M) found = true;
+      }
+    }
+    if (found) {
+      _nearFieldIds.add(fA.fieldId);
+      _nearFieldIds.add(fB.fieldId);
+    }
+  }
+
+  const count = _nearFieldIds.size;
+  if (el) {
+    el.textContent = count.toLocaleString();
+    el.style.color = count > 0 ? '#38bdf8' : '#22c55e';
+  }
+  const opt = document.querySelector('#fltStatus option[value="near"]');
+  if (opt) opt.textContent = `◻ Neighbouring fields within ${NEAR_THRESHOLD_M}m (${count.toLocaleString()})`;
+}
+
+// ── END NEAR-FIELD DETECTION ──────────────────────────────────────────────
 // Exact polygon overlap detection using edge intersection + vertex containment
 async function detectOverlapsKPI() {
   const el     = document.getElementById('kpiOverlap');
@@ -1518,6 +1619,7 @@ function render() {
     }
     if (filter === 'duplicate_fields') return _duplicateFieldIds.has(f.fieldId);
     if (filter === 'duplicate_trees')  return !!_duplicateTrees[f.fieldId];
+    if (filter === 'near')             return _nearFieldIds.has(f.fieldId) && !((window._overlappingFieldIds||new Set()).has(f.fieldId));
 
     // Zone-aware filters
     if (filter === 'inside' || filter === 'tolerance' ||
@@ -2204,6 +2306,27 @@ function openLb(idx, navList, navPos) {
       const isSameOwner   = nf.owner && f.owner && nf.owner.trim() === f.owner.trim();
       const nTreeCount    = (treesByField[nf.fieldId] || []).length;
       const nLatLngs      = nf.ring.map(c => [c[1], c[0]]);
+
+      // Calculate nearest distance between the two polygon boundaries
+      let nearestDist = Infinity;
+      if (!isOverlapping) {
+        // Only calculate for non-overlapping (overlapping = 0m by definition)
+        for (let pi = 0; pi < ring.length - 1; pi++) {
+          for (let qi = 0; qi < nf.ring.length - 1; qi++) {
+            const d = haversineM(
+              ring[pi][1], ring[pi][0],
+              nf.ring[qi][1], nf.ring[qi][0]
+            );
+            if (d < nearestDist) nearestDist = d;
+          }
+        }
+      } else {
+        nearestDist = 0;
+      }
+      const distLabel = isOverlapping
+        ? `<span style="color:#ef4444;font-weight:700">⧖ Boundaries intersect</span>`
+        : `<span style="color:#38bdf8">↔ ${nearestDist < 1000 ? nearestDist.toFixed(0) + 'm' : (nearestDist/1000).toFixed(2) + 'km'} to nearest boundary</span>`;
+
       const ownerTag      = isSameOwner
         ? `<span style="color:#22c55e;font-weight:700">✓ Same owner </span>`
         : `<span style="color:#f59e0b">✗ Different owner</span>`;
@@ -2220,6 +2343,7 @@ function openLb(idx, navList, navPos) {
             <strong>⧖ ${nf.fieldId}</strong><br>
             👤 ${nf.owner || '—'}<br>
             🌳 ${nTreeCount.toLocaleString()} trees<br>
+            ${distLabel}<br>
             ${ownerTag}
           </div>`,
           { sticky: true }
@@ -2234,6 +2358,7 @@ function openLb(idx, navList, navPos) {
             <strong>◌ ${nf.fieldId}</strong><br>
             👤 ${nf.owner || '—'}<br>
             🌳 ${nTreeCount.toLocaleString()} trees<br>
+            ${distLabel}<br>
             ${isSameOwner
               ? `<span style="color:#22c55e">✓ Same owner</span>`
               : `<span style="color:var(--muted)">Different owner</span>`}
