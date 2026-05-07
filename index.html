@@ -1891,6 +1891,8 @@ let   _lbCurrentIdx   = -1;
 
 async function patchFieldState(guid, fieldId, activate) {
   const token = await getToken();
+
+  // PATCH the record
   const res = await fetch(`${DV_API}/ccs_fields(${guid})`, {
     method: 'PATCH',
     headers: {
@@ -1905,6 +1907,28 @@ async function patchFieldState(guid, fieldId, activate) {
       : { statecode: 1, statuscode: 2 })
   });
   if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+
+  // Confirmation GET — verify the statecode actually changed in Fieldforce
+  await new Promise(r => setTimeout(r, 500)); // brief delay for Fieldforce to commit
+  const check = await fetch(
+    `${DV_API}/ccs_fields(${guid})?$select=statecode`,
+    { headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+      'OData-MaxVersion': '4.0', 'OData-Version': '4.0'
+    }}
+  );
+  if (check.ok) {
+    const data = await check.json();
+    const actual = data.statecode;
+    const expected = activate ? 0 : 1;
+    if (actual !== expected) {
+      throw new Error(
+        `Fieldforce did not update — statecode is still ${actual}. ` +
+        `Check write permissions for ${fieldId}.`
+      );
+    }
+  }
 }
 
 async function lbDeactivate() {
@@ -3016,10 +3040,12 @@ function exportOverlapsWithGeoJSON() {
         const nf = fieldsData.find(x => x.fieldId === nid);
         return nf?.owner && f.owner && nf.owner.trim() === f.owner.trim();
       }).length;
+      const isDisabled = _deactivatedIds.has(f.fieldId);
       return [
         f.fieldId, f.owner || '', f.createdOn || '',
         f.createdBy || '', f.modifiedBy || '',
-        'Active', 0,
+        isDisabled ? 'Disabled (pending sync)' : 'Active',
+        isDisabled ? 1 : 0,
         trees.length,
         cl ? cl.pct + '%' : '—',
         cl ? cl.outside : '',
@@ -3060,9 +3086,11 @@ function exportDuplicateFields() {
     .map(f => {
       const trees = treesByField[f.fieldId] || [];
       const m     = f.ring ? ringMetrics(f.ring) : null;
+      const isDisabledF = _deactivatedIds.has(f.fieldId);
       return [
         f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
-        'Active', 0,
+        isDisabledF ? 'Disabled (pending sync)' : 'Active',
+        isDisabledF ? 1 : 0,
         trees.length,
         m ? m.area.toFixed(4) : '', m ? m.vertices : '',
         m ? m.cLat.toFixed(6) : '', m ? m.cLng.toFixed(6) : '',
@@ -3094,10 +3122,12 @@ function exportDuplicateTrees() {
     const f     = fieldsData.find(x => x.fieldId === fieldId);
     if (!f) return;
     const trees = treesByField[fieldId] || [];
+    const isDisabledT = _deactivatedIds.has(fieldId);
     (dupeData.pairs || []).forEach(pair => {
       rows.push([
         fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
-        'Active', 0,
+        isDisabledT ? 'Disabled (pending sync)' : 'Active',
+        isDisabledT ? 1 : 0,
         pair.codes[0]||'', pair.codes[1]||'',
         pair.codes.join(' | '),
         'Active', 0,
@@ -3169,9 +3199,11 @@ function exportCSV(type) {
   const csvRows = [headers, ...filtered.map(r => {
     const { f, trees, cl, m, isLarge, flag } = r;
     const pct = cl ? cl.pct : null;
+    const isDisabledC = _deactivatedIds.has(f.fieldId);
     return [
       f.fieldId, f.owner || '', f.createdOn || '',
-      'Active', 0,
+      isDisabledC ? 'Disabled (pending sync)' : 'Active',
+      isDisabledC ? 1 : 0,
       trees.length,
       cl ? cl.inside    : '',
       cl ? cl.tolerance : '',
