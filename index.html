@@ -580,18 +580,6 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       </div>
     </div>
     <div class="sec">
-      <span class="sec-lbl">Duplicate tree distance threshold</span>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <input type="range" id="dupeThreshold" min="1" max="10" value="2"
-          oninput="updateDupeLabel();detectDuplicatesKPI()"/>
-        <span style="font-family:var(--mono);font-size:12px;font-weight:700;
-          color:#fbbf24;min-width:28px" id="dupeLabel">2 m</span>
-      </div>
-      <div style="font-size:9px;color:var(--muted);line-height:1.5">
-        Trees within this distance of each other in the same field are flagged as potential duplicates.
-      </div>
-    </div>
-    <div class="sec">
       <span class="sec-lbl" id="fieldCount">Fields</span>
     </div>
   </div>
@@ -2020,7 +2008,14 @@ function openLb(idx, navList, navPos) {
   const dupeBadgeLb   = dupeCountLb > 0
     ? `<span style="font-size:9px;background:rgba(251,191,36,0.1);color:#fbbf24;
         border:1px solid rgba(251,191,36,0.3);border-radius:3px;padding:2px 7px;
-        font-family:var(--mono);font-weight:700">⊕ ${dupeCountLb} possible duplicate tree${dupeCountLb>1?'s':''}</span>`
+        font-family:var(--mono);font-weight:700">⊕ ${dupeCountLb} duplicate tree registration${dupeCountLb>1?'s':''}</span>`
+    : '';
+
+  const isDupeFieldId = _duplicateFieldIds.has(f.fieldId);
+  const dupeFieldBadge = isDupeFieldId
+    ? `<span style="font-size:9px;background:rgba(251,191,36,0.1);color:#fbbf24;
+        border:1px solid rgba(251,191,36,0.3);border-radius:3px;padding:2px 7px;
+        font-family:var(--mono);font-weight:700">⊕ DUPLICATE FIELD ID — registered more than once</span>`
     : '';
 
   if (lbZone && cl) {
@@ -2028,6 +2023,7 @@ function openLb(idx, navList, navPos) {
     lbZone.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap">
       ${neighbourBadge}
       ${dupeBadgeLb}
+      ${dupeFieldBadge}
       <span style="font-size:9px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">✓ ${cl.inside} inside</span>
       ${cl.tolerance > 0 ? `<span style="font-size:9px;background:rgba(74,222,128,0.08);color:#4ade80;border:1px solid rgba(74,222,128,0.2);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">± ${cl.tolerance} within ${tM}m</span>` : ''}
       ${cl.review > 0 ? `<span style="font-size:9px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);border-radius:3px;padding:2px 7px;font-family:var(--mono);font-weight:700">⚠ ${cl.review} review (${tM}–${rM}m)</span>` : ''}
@@ -2090,7 +2086,7 @@ function openLb(idx, navList, navPos) {
   const dupeInfo   = _duplicateTrees[f.fieldId];
   const dupeCount  = dupeInfo?.indices?.size || 0;
   const dupeLabel  = dupeCount > 0
-    ? ` · <span style="color:#fbbf24">⊕ ${dupeCount} possible duplicate${dupeCount>1?'s':''}</span>` : '';
+    ? ` · <span style="color:#fbbf24">⊕ ${dupeCount} duplicate registration${dupeCount>1?'s':''}</span>` : '';
   document.getElementById('lbTreeListHdr').innerHTML =
     `🌳 ${treesForList.length.toLocaleString()} trees — click to expand · click a tree to locate it on the map${dupeLabel}`;
   document.getElementById('lbTreeGrid').innerHTML = treesForList
@@ -2103,16 +2099,13 @@ function openLb(idx, navList, navPos) {
                  :                          'var(--muted)';
       const dist = c.dist > 0 ? `${c.dist.toFixed(1)}m` : '';
 
-      // Duplicate badge
+      // Duplicate badge — exact coordinate match only
       const dupeInfo = _duplicateTrees[f.fieldId];
       const isDupe   = dupeInfo?.indices?.has(i);
-      const dupeDist = isDupe && dupeInfo.distances[i] !== undefined
-        ? `${dupeInfo.distances[i].toFixed(1)}m apart`  : '';
       const dupeBadge = isDupe
         ? `<span style="background:rgba(251,191,36,0.15);color:#fbbf24;
             border:1px solid rgba(251,191,36,0.4);border-radius:3px;
-            padding:0 4px;font-size:8px;font-weight:700;margin-left:4px"
-            title="Possible duplicate — ${dupeDist}">⊕ DUPE ${dupeDist}</span>`
+            padding:0 4px;font-size:8px;font-weight:700;margin-left:4px">⊕ DUPLICATE</span>`
         : '';
 
       return `<div class="lb-tree-row${isDupe ? ' dupe-row' : ''}"
@@ -2325,100 +2318,86 @@ function closeLb() {
   if (lbMap) { try { lbMap.remove(); } catch(e){} lbMap = null; }
 }
 
-// ── DUPLICATE TREE DETECTION ───────────────────────────────────────────────
-let _duplicateFields = new Set();   // fieldIds with at least one duplicate pair
-let _duplicateTrees  = {};          // fieldId → Set of tree indices that are duplicates
+// ── DUPLICATE DETECTION ────────────────────────────────────────────────────
+// Duplicate trees:  two or more tree records with identical lat AND lng in the same field
+// Duplicate fields: two or more field records with identical field ID in the dataset
+let _duplicateFields    = new Set(); // fieldIds that have duplicate trees or are duplicate fields
+let _duplicateTrees     = {};        // fieldId → Set of tree indices that are exact duplicates
+let _duplicateFieldIds  = new Set(); // fieldIds that appear more than once in fieldsData
 
-function getDupeThresholdM() {
-  return parseInt(document.getElementById('dupeThreshold')?.value || 2);
-}
-
-function updateDupeLabel() {
-  const v = getDupeThresholdM();
-  const el = document.getElementById('dupeLabel');
-  if (el) el.textContent = `${v} m`;
-}
-
-// Haversine distance in metres between two lat/lng points
-function haversineM(lat1, lng1, lat2, lng2) {
-  const R  = 6371000;
-  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lng2 - lng1) * Math.PI / 180;
-  const a  = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
+function getDupeThresholdM() { return 0; } // kept for compatibility, not used
+function updateDupeLabel() {}               // kept for compatibility, not used
 
 async function detectDuplicatesKPI() {
-  const el        = document.getElementById('kpiDupes');
-  const threshold = getDupeThresholdM();
+  const el = document.getElementById('kpiDupes');
   if (el) el.textContent = '…';
 
-  _duplicateFields = new Set();
-  _duplicateTrees  = {};
+  _duplicateFields   = new Set();
+  _duplicateTrees    = {};
+  _duplicateFieldIds = new Set();
 
+  // ── 1. Duplicate field IDs ─────────────────────────────────────────────
+  const fieldIdCount = {};
+  fieldsData.forEach(f => {
+    fieldIdCount[f.fieldId] = (fieldIdCount[f.fieldId] || 0) + 1;
+  });
+  Object.entries(fieldIdCount).forEach(([id, count]) => {
+    if (count > 1) {
+      _duplicateFieldIds.add(id);
+      _duplicateFields.add(id);
+    }
+  });
+
+  // ── 2. Duplicate tree coordinates ──────────────────────────────────────
   let totalDupeTrees = 0;
-  const CHUNK = 100;
+  const CHUNK = 200;
   let processed = 0;
 
   for (const f of fieldsData) {
     const trees = treesByField[f.fieldId] || [];
     if (trees.length < 2) { processed++; continue; }
 
-    const dupeIndices = new Set();
-    const distances   = {}; // index → closest duplicate distance
-
-    // Grid-based spatial index for O(n) instead of O(n²)
-    const cellSize = threshold / 111320; // degrees per metre
-    const grid = {};
+    // Group trees by exact "lat|lng" key
+    const coordMap = {};
     trees.forEach((t, i) => {
-      const cx = Math.floor(t.lat / cellSize);
-      const cy = Math.floor(t.lng / cellSize);
-      const key = `${cx},${cy}`;
-      if (!grid[key]) grid[key] = [];
-      grid[key].push(i);
+      const key = `${t.lat}|${t.lng}`;
+      if (!coordMap[key]) coordMap[key] = [];
+      coordMap[key].push(i);
     });
 
-    // Check each tree against its grid cell and 8 neighbours
-    trees.forEach((t, i) => {
-      const cx = Math.floor(t.lat / cellSize);
-      const cy = Math.floor(t.lng / cellSize);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const neighbours = grid[`${cx+dx},${cy+dy}`] || [];
-          for (const j of neighbours) {
-            if (j <= i) continue; // avoid double-checking
-            const dist = haversineM(t.lat, t.lng, trees[j].lat, trees[j].lng);
-            if (dist <= threshold) {
-              dupeIndices.add(i);
-              dupeIndices.add(j);
-              distances[i] = Math.min(distances[i] ?? dist, dist);
-              distances[j] = Math.min(distances[j] ?? dist, dist);
-            }
-          }
-        }
+    const dupeIndices = new Set();
+    Object.values(coordMap).forEach(indices => {
+      if (indices.length > 1) {
+        indices.forEach(i => dupeIndices.add(i));
       }
     });
 
     if (dupeIndices.size > 0) {
       _duplicateFields.add(f.fieldId);
-      _duplicateTrees[f.fieldId] = { indices: dupeIndices, distances };
+      _duplicateTrees[f.fieldId] = { indices: dupeIndices };
       totalDupeTrees += dupeIndices.size;
     }
 
     processed++;
-    // Yield every CHUNK fields to keep UI responsive
     if (processed % CHUNK === 0) {
       if (el) el.textContent = `${_duplicateFields.size.toLocaleString()}…`;
       await new Promise(r => setTimeout(r, 0));
     }
   }
 
-  if (el) el.textContent = _duplicateFields.size.toLocaleString();
-  // Update the duplicate option in the dropdown with count
+  const total = _duplicateFields.size;
+  if (el) el.textContent = total > 0 ? total.toLocaleString() : '0';
+
+  // Update sidebar dropdown option with counts
   const opt = document.querySelector('#fltStatus option[value="duplicates"]');
-  if (opt) opt.textContent =
-    `⊕ Duplicate tree registrations (${_duplicateFields.size.toLocaleString()} fields · ${totalDupeTrees.toLocaleString()} trees)`;
+  if (opt) {
+    const parts = [];
+    if (_duplicateFieldIds.size > 0)
+      parts.push(`${_duplicateFieldIds.size} duplicate field ID${_duplicateFieldIds.size>1?'s':''}`);
+    if (totalDupeTrees > 0)
+      parts.push(`${totalDupeTrees} duplicate tree registration${totalDupeTrees>1?'s':''}`);
+    opt.textContent = `⊕ Duplicates${parts.length ? ' — ' + parts.join(' · ') : ''}`;
+  }
 }
 
 // ── END DUPLICATE DETECTION ────────────────────────────────────────────────
