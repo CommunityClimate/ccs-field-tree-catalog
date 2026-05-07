@@ -437,9 +437,13 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Overlapping Fields + GeoJSON</strong>
         <span>Overlapping fields with full polygon coordinates for field verification</span>
       </div>
-      <div class="export-item" onclick="closeExportMenu();exportDuplicatesWithGeoJSON()">
-        <strong>⬇ Duplicate Registrations + GeoJSON</strong>
-        <span>Duplicate field IDs and tree registrations with polygon coordinates</span>
+      <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
+        <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
+        <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportDuplicateTrees()">
+        <strong>⬇ Duplicate Tree Registrations + GeoJSON</strong>
+        <span>Active tree records with identical coordinates in the same field</span>
       </div>
     </div>
     </div>
@@ -486,9 +490,13 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: large polygons" onclick="setKpiFilter('large')">
       <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
     <div class="kpi" style="border-color:rgba(251,191,36,0.3);background:rgba(251,191,36,0.06);cursor:pointer"
-      title="Click to filter: fields with duplicate tree registrations" onclick="setKpiFilter('duplicates')">
-      <span class="v" id="kpiDupes" style="color:#fbbf24">…</span>
-      <span class="l">⊕ Dupes</span></div>
+      title="Click to filter: fields with duplicate field ID registrations" onclick="setKpiFilter('duplicate_fields')">
+      <span class="v" id="kpiDupeFields" style="color:#fbbf24">…</span>
+      <span class="l">⊕ Dupe Fields</span></div>
+    <div class="kpi" style="border-color:rgba(251,191,36,0.3);background:rgba(251,191,36,0.06);cursor:pointer"
+      title="Click to filter: fields with duplicate tree registrations" onclick="setKpiFilter('duplicate_trees')">
+      <span class="v" id="kpiDupeTrees" style="color:#fbbf24">…</span>
+      <span class="l">⊕ Dupe Trees</span></div>
 
   </div>
 </header>
@@ -517,7 +525,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
         <option value="overlapping">⧖ Overlapping fields</option>
-        <option value="duplicates">⊕ Duplicate tree registrations</option>
+        <option value="duplicate_fields">⊕ Duplicate field registrations</option>
+        <option value="duplicate_trees">⊕ Duplicate tree registrations</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
     </div>
@@ -1507,7 +1516,8 @@ function render() {
       const ovSet = window._overlappingFieldIds;
       return ovSet ? ovSet.has(f.fieldId) : false;
     }
-    if (filter === 'duplicates') return _duplicateFields.has(f.fieldId);
+    if (filter === 'duplicate_fields') return _duplicateFieldIds.has(f.fieldId);
+    if (filter === 'duplicate_trees')  return !!_duplicateTrees[f.fieldId];
 
     // Zone-aware filters
     if (filter === 'inside' || filter === 'tolerance' ||
@@ -2349,8 +2359,10 @@ function getDupeThresholdM() { return 0; } // kept for compatibility, not used
 function updateDupeLabel() {}               // kept for compatibility, not used
 
 async function detectDuplicatesKPI() {
-  const el = document.getElementById('kpiDupes');
-  if (el) el.textContent = '…';
+  const elFields = document.getElementById('kpiDupeFields');
+  const elTrees  = document.getElementById('kpiDupeTrees');
+  if (elFields) elFields.textContent = '…';
+  if (elTrees)  elTrees.textContent  = '…';
 
   _duplicateFields   = new Set();
   _duplicateTrees    = {};
@@ -2438,24 +2450,28 @@ async function detectDuplicatesKPI() {
 
     processed++;
     if (processed % CHUNK === 0) {
-      if (el) el.textContent = `${_duplicateFields.size.toLocaleString()}…`;
+      if (elTrees) elTrees.textContent = `${Object.keys(_duplicateTrees).length.toLocaleString()}…`;
       await new Promise(r => setTimeout(r, 0));
     }
   }
 
-  const total = _duplicateFields.size;
-  if (el) el.textContent = total > 0 ? total.toLocaleString() : '0';
-
-  // Update sidebar dropdown option with counts
-  const opt = document.querySelector('#fltStatus option[value="duplicates"]');
-  if (opt) {
-    const parts = [];
-    if (_duplicateFieldIds.size > 0)
-      parts.push(`${_duplicateFieldIds.size} duplicate field ID${_duplicateFieldIds.size>1?'s':''}`);
-    if (totalDupeTrees > 0)
-      parts.push(`${totalDupeTrees} duplicate tree registration${totalDupeTrees>1?'s':''}`);
-    opt.textContent = `⊕ Duplicates${parts.length ? ' — ' + parts.join(' · ') : ''}`;
+  // Update both KPI chips
+  const dupeFieldCount = _duplicateFieldIds.size;
+  const dupeTreeCount  = Object.keys(_duplicateTrees).length;
+  if (elFields) {
+    elFields.textContent = dupeFieldCount.toLocaleString();
+    elFields.style.color = dupeFieldCount > 0 ? '#fbbf24' : '#22c55e';
   }
+  if (elTrees) {
+    elTrees.textContent = dupeTreeCount.toLocaleString();
+    elTrees.style.color = dupeTreeCount > 0 ? '#fbbf24' : '#22c55e';
+  }
+
+  // Update sidebar dropdown options
+  const optF = document.querySelector('#fltStatus option[value="duplicate_fields"]');
+  const optT = document.querySelector('#fltStatus option[value="duplicate_trees"]');
+  if (optF) optF.textContent = `⊕ Duplicate field registrations (${dupeFieldCount.toLocaleString()})`;
+  if (optT) optT.textContent = `⊕ Duplicate tree registrations (${dupeTreeCount.toLocaleString()} fields affected)`;
 }
 
 // ── END DUPLICATE DETECTION ────────────────────────────────────────────────
@@ -2857,98 +2873,66 @@ function exportOverlapsWithGeoJSON() {
   showToast(`⬇ Exporting ${rows.length.toLocaleString()} overlapping fields`, 'ok');
 }
 
-// ── DUPLICATE REGISTRATIONS EXPORT WITH GEOJSON ───────────────────────────
-function exportDuplicatesWithGeoJSON() {
-  const hasFieldDupes = _duplicateFieldIds.size > 0;
-  const hasTreeDupes  = Object.keys(_duplicateTrees).length > 0;
-
-  if (!hasFieldDupes && !hasTreeDupes) {
-    showToast('No duplicates detected', 'info');
-    return;
+// ── DUPLICATE FIELD REGISTRATIONS EXPORT ─────────────────────────────────
+function exportDuplicateFields() {
+  if (_duplicateFieldIds.size === 0) {
+    showToast('No duplicate field registrations detected', 'info'); return;
   }
-
-  // ── Sheet 1: Duplicate Field IDs ──────────────────────────────────────
-  const fieldHeaders = [
-    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
-    'Total Trees', 'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
-    'Issue', 'GeoJSON Polygon'
+  const headers = [
+    'Field ID','Owner','Registered Date','Created By','Modified By',
+    'Total Trees','Area (ha)','Vertices','Centroid Lat','Centroid Lng',
+    'Issue','GeoJSON Polygon'
   ];
-
-  const fieldRows = fieldsData
+  const rows = fieldsData
     .filter(f => _duplicateFieldIds.has(f.fieldId))
     .map(f => {
       const trees = treesByField[f.fieldId] || [];
       const m     = f.ring ? ringMetrics(f.ring) : null;
       return [
-        f.fieldId,
-        f.owner || '',
-        f.createdOn || '',
-        f.createdBy || '',
-        f.modifiedBy || '',
+        f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
         trees.length,
-        m ? m.area.toFixed(4) : '',
-        m ? m.vertices : '',
-        m ? m.cLat.toFixed(6) : '',
-        m ? m.cLng.toFixed(6) : '',
-        'DUPLICATE FIELD ID — registered more than once in Fieldforce',
-        f.geoJSON || ''
+        m ? m.area.toFixed(4) : '', m ? m.vertices : '',
+        m ? m.cLat.toFixed(6) : '', m ? m.cLng.toFixed(6) : '',
+        'DUPLICATE FIELD ID — this field ID is registered more than once in Fieldforce',
+        f.geoJSON||''
       ];
     });
+  const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  downloadCSV(csv, `CCS_Duplicate_Field_Registrations_${new Date().toISOString().slice(0,10)}.csv`);
+  showToast(`⬇ Exporting ${rows.length.toLocaleString()} duplicate field records`, 'ok');
+}
 
-  // ── Sheet 2: Duplicate Tree Registrations ─────────────────────────────
-  const treeHeaders = [
-    'Field ID', 'Owner', 'Registered Date', 'Created By',
-    'Duplicate Tree Count', 'Total Trees in Field',
-    'Tree Codes (Duplicates)', 'Duplicate Lat', 'Duplicate Lng',
-    'Issue', 'Field GeoJSON Polygon'
+// ── DUPLICATE TREE REGISTRATIONS EXPORT ──────────────────────────────────
+function exportDuplicateTrees() {
+  if (Object.keys(_duplicateTrees).length === 0) {
+    showToast('No duplicate tree registrations detected', 'info'); return;
+  }
+  const headers = [
+    'Field ID','Owner','Registered Date','Created By',
+    'Tree Code 1','Tree Code 2','All Codes at This Location',
+    'Record Count at Location','Total Trees in Field',
+    'Latitude','Longitude',
+    'Issue','Field GeoJSON Polygon'
   ];
-
-  const treeRows = [];
+  const rows = [];
   Object.entries(_duplicateTrees).forEach(([fieldId, dupeData]) => {
     const f     = fieldsData.find(x => x.fieldId === fieldId);
     if (!f) return;
     const trees = treesByField[fieldId] || [];
-
-    // One row per duplicate coordinate group — shows ALL tree codes at that location
-    const exportPairs = _duplicateTrees[fieldId]?.pairs || [];
-    exportPairs.forEach(pair => {
-      treeRows.push([
-        fieldId,
-        f.owner || '',
-        f.createdOn || '',
-        f.createdBy || '',
-        pair.codes.length,
-        trees.length,
-        pair.codes.join(' | '),
-        pair.lat.toFixed(8),
-        pair.lng.toFixed(8),
-        `DUPLICATE TREE REGISTRATION — ${pair.codes.length} active records at identical coordinates (${pair.codes.join(' and ')})`,
-        f.geoJSON || ''
+    (dupeData.pairs || []).forEach(pair => {
+      rows.push([
+        fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
+        pair.codes[0]||'', pair.codes[1]||'',
+        pair.codes.join(' | '), pair.codes.length, trees.length,
+        pair.lat.toFixed(8), pair.lng.toFixed(8),
+        `DUPLICATE TREE REGISTRATION — ${pair.codes.length} active records at identical coordinates`,
+        f.geoJSON||''
       ]);
     });
   });
-
-  // Combine into a single CSV with a section separator
-  const separator = ['', '', '', '', '', '', '', '', '', '', '', ''];
-  const sectionHeader = (title) => [`=== ${title} ===`, '', '', '', '', '', '', '', '', '', '', ''];
-
-  const allRows = [
-    sectionHeader(`DUPLICATE FIELD IDs — ${fieldRows.length} field${fieldRows.length!==1?'s':''} (${new Date().toISOString().slice(0,10)})`),
-    fieldHeaders,
-    ...fieldRows,
-    separator,
-    sectionHeader(`DUPLICATE TREE REGISTRATIONS — ${treeRows.length} coordinate group${treeRows.length!==1?'s':''}`),
-    treeHeaders,
-    ...treeRows
-  ];
-
-  const csv = allRows
-    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-    .join('\n');
-
-  const date = new Date().toISOString().slice(0,10);
-  downloadCSV(csv, `CCS_Duplicate_Registrations_GeoJSON_${date}.csv`);
-  showToast(`⬇ Exporting ${fieldRows.length} duplicate fields · ${treeRows.length} duplicate tree groups`, 'ok');
+  const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  downloadCSV(csv, `CCS_Duplicate_Tree_Registrations_${new Date().toISOString().slice(0,10)}.csv`);
+  showToast(`⬇ Exporting ${rows.length.toLocaleString()} duplicate tree groups`, 'ok');
 }
 
 function downloadCSV(csv, filename) {
