@@ -528,7 +528,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large">⚠ Large polygons</option>
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
-        <option value="overlapping">⧖ Overlapping fields</option>
+        <option value="overlapping">⧖ All overlapping fields</option>
+        <option value="true_overlap">✗ True overlap — must correct</option>
+        <option value="tip_over">⚠ Corner/tip over boundary — review</option>
+        <option value="line_on">~ Line on boundary — document</option>
+        <option value="touching">◌ Touching boundary — document</option>
         <option value="near">◻ Neighbouring fields (within 10m)</option>
         <option value="duplicate_fields">⊕ Duplicate field registrations</option>
         <option value="duplicate_trees">⊕ Duplicate tree registrations</option>
@@ -1469,20 +1473,81 @@ async function detectOverlapsKPI() {
         )) return true;
       }
     }
-    // Check if any vertex of A is inside B (covers containment)
     if (pip(rA[0][1], rA[0][0], rB)) return true;
-    // Check if any vertex of B is inside A (covers B inside A)
     if (pip(rB[0][1], rB[0][0], rA)) return true;
     return false;
   }
 
-  const overlapping = new Set();
-  const CHUNK       = 200;
-  _overlapNeighbours = {};
+  // ── Shared area estimate using sampling grid ─────────────────────────────
+  // Estimates overlap area in m² by sampling points across the smaller polygon
+  // and counting how many fall inside the other. Fast approximation.
+  // Returns area in m².
+  function estimateSharedAreaM2(rA, rB) {
+    // Sample the bounding box of the intersection
+    const latsA = rA.map(c=>c[1]), lngsA = rA.map(c=>c[0]);
+    const latsB = rB.map(c=>c[1]), lngsB = rB.map(c=>c[0]);
+    const minLat = Math.max(Math.min(...latsA), Math.min(...latsB));
+    const maxLat = Math.min(Math.max(...latsA), Math.max(...latsB));
+    const minLng = Math.max(Math.min(...lngsA), Math.min(...lngsB));
+    const maxLng = Math.min(Math.max(...lngsA), Math.max(...lngsB));
+    if (minLat >= maxLat || minLng >= maxLng) return 0;
+
+    const N = 8; // 8×8 grid = 64 sample points
+    let inside = 0;
+    const dLat = (maxLat - minLat) / N;
+    const dLng = (maxLng - minLng) / N;
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const lat = minLat + (r + 0.5) * dLat;
+        const lng = minLng + (c + 0.5) * dLng;
+        if (pip(lat, lng, rA) && pip(lat, lng, rB)) inside++;
+      }
+    }
+    // Scale to actual area
+    const totalSampleAreaM2 = haversineM(minLat, minLng, maxLat, minLng) *
+                              haversineM(minLat, minLng, minLat, maxLng);
+    return (inside / (N * N)) * totalSampleAreaM2;
+  }
+
+  // ── Classify overlap severity ─────────────────────────────────────────────
+  // Returns: 'true_overlap' | 'tip_over' | 'line_on' | 'touching'
+  function classifyOverlap(rA, rB) {
+    const sharedM2 = estimateSharedAreaM2(rA, rB);
+    if (sharedM2 > 5)    return 'true_overlap'; // >5m² — genuine shared area
+    if (sharedM2 > 0.1)  return 'tip_over';     // 0.1–5m² — corner/tip over boundary
+    // Near-zero area — check if it's edge-on-edge or just touching
+    // Count vertices of A that lie exactly on B's boundary
+    let onBoundary = 0;
+    rA.forEach(v => {
+      for (let i = 0; i < rB.length - 1; i++) {
+        const d = haversineM(v[1], v[0],
+          (rB[i][1] + rB[i+1][1])/2, (rB[i][0] + rB[i+1][0])/2);
+        if (d < 2) { onBoundary++; break; }
+      }
+    });
+    return onBoundary >= 2 ? 'line_on' : 'touching';
+  }
+
+  // Severity metadata
+  const SEVERITY = {
+    true_overlap: { label: 'True overlap',          color: '#ef4444', kpi: 'true_overlap',  action: 'CORRECT — genuine shared area, must be resolved' },
+    tip_over:     { label: 'Corner/tip over',        color: '#f59e0b', kpi: 'tip_over',      action: 'REVIEW — minor encroachment, check GPS accuracy' },
+    line_on:      { label: 'Line on boundary',       color: '#38bdf8', kpi: 'line_on',       action: 'DOCUMENT — shared edge, zero shared area, Verra acceptable' },
+    touching:     { label: 'Touching boundary',      color: '#4ade80', kpi: 'touching',      action: 'DOCUMENT — boundary touch only, zero shared area, Verra acceptable' },
+  };
+
+  const overlapping       = new Set(); // all flagged
+  const trueOverlapSet    = new Set();
+  const tipOverSet        = new Set();
+  const lineOnSet         = new Set();
+  const touchingSet       = new Set();
+  const CHUNK             = 200;
+  _overlapNeighbours      = {};
+  _overlapSeverity        = {}; // fieldId → { neighbourId → severity }
 
   for (let i = 0; i < candidates.length; i++) {
     if (i % CHUNK === 0) {
-      el.textContent = `${overlapping.size} (${Math.round(i/candidates.length*100)}%…)`;
+      el.textContent = `${trueOverlapSet.size}+${tipOverSet.size} (${Math.round(i/candidates.length*100)}%…)`;
       await new Promise(r => setTimeout(r, 0));
     }
 
@@ -1490,32 +1555,65 @@ async function detectOverlapsKPI() {
     const fA = fields[ai], fB = fields[bi];
     const bA = boxes[ai],  bB = boxes[bi];
 
-    // Bounding box pre-filter
     if (bA.minLat > bB.maxLat || bA.maxLat < bB.minLat ||
         bA.minLng > bB.maxLng || bA.maxLng < bB.minLng) continue;
 
-    // Exact test
-    if (ringsIntersect(fA.ring, fB.ring)) {
-      overlapping.add(fA.fieldId);
-      overlapping.add(fB.fieldId);
-      if (!_overlapNeighbours[fA.fieldId]) _overlapNeighbours[fA.fieldId] = [];
-      if (!_overlapNeighbours[fB.fieldId]) _overlapNeighbours[fB.fieldId] = [];
-      _overlapNeighbours[fA.fieldId].push(fB.fieldId);
-      _overlapNeighbours[fB.fieldId].push(fA.fieldId);
-    }
+    if (!ringsIntersect(fA.ring, fB.ring)) continue;
+
+    const severity = classifyOverlap(fA.ring, fB.ring);
+    const sev = SEVERITY[severity];
+
+    overlapping.add(fA.fieldId);
+    overlapping.add(fB.fieldId);
+
+    if (severity === 'true_overlap') { trueOverlapSet.add(fA.fieldId); trueOverlapSet.add(fB.fieldId); }
+    if (severity === 'tip_over')     { tipOverSet.add(fA.fieldId);     tipOverSet.add(fB.fieldId); }
+    if (severity === 'line_on')      { lineOnSet.add(fA.fieldId);      lineOnSet.add(fB.fieldId); }
+    if (severity === 'touching')     { touchingSet.add(fA.fieldId);    touchingSet.add(fB.fieldId); }
+
+    if (!_overlapNeighbours[fA.fieldId]) _overlapNeighbours[fA.fieldId] = [];
+    if (!_overlapNeighbours[fB.fieldId]) _overlapNeighbours[fB.fieldId] = [];
+    _overlapNeighbours[fA.fieldId].push(fB.fieldId);
+    _overlapNeighbours[fB.fieldId].push(fA.fieldId);
+
+    if (!_overlapSeverity[fA.fieldId]) _overlapSeverity[fA.fieldId] = {};
+    if (!_overlapSeverity[fB.fieldId]) _overlapSeverity[fB.fieldId] = {};
+    _overlapSeverity[fA.fieldId][fB.fieldId] = severity;
+    _overlapSeverity[fB.fieldId][fA.fieldId] = severity;
   }
 
   // ── Step 4: Update KPI ───────────────────────────────────────────────────
   const count = overlapping.size;
-  el.textContent = count.toLocaleString();
-  el.style.color = count > 0 ? '#a78bfa' : '#22c55e';
+  const trueCount    = trueOverlapSet.size;
+  const tipCount     = tipOverSet.size;
+  const lineCount    = lineOnSet.size;
+  const touchCount   = touchingSet.size;
+
+  // KPI chip shows true overlaps + tip-overs (the ones needing action)
+  const actionCount = new Set([...trueOverlapSet, ...tipOverSet]).size;
+  el.textContent = actionCount.toLocaleString();
+  el.style.color = actionCount > 0 ? '#ef4444' : '#22c55e';
 
   window._overlappingFieldIds = overlapping;
   window._overlapNeighbours   = _overlapNeighbours;
+  window._overlapSeverity     = _overlapSeverity;
+  window._trueOverlapSet      = trueOverlapSet;
+  window._tipOverSet          = tipOverSet;
+  window._lineOnSet           = lineOnSet;
+  window._touchingSet         = touchingSet;
 
-  // Update the filter option label with real count
+  // Update filter option with full breakdown
   const opt = document.querySelector('#fltStatus option[value="overlapping"]');
-  if (opt) opt.textContent = `⧖ Overlapping fields (${count.toLocaleString()})`;
+  if (opt) opt.textContent =
+    `⧖ All overlapping fields (${count.toLocaleString()}) — ` +
+    `${trueCount} true · ${tipCount} tip · ${lineCount} line · ${touchCount} touching`;
+
+  // Update KPI tooltip
+  el.title =
+    `✗ True overlap: ${trueCount.toLocaleString()} fields — must correct\n` +
+    `⚠ Corner/tip: ${tipCount.toLocaleString()} fields — review\n` +
+    `~ Line on boundary: ${lineCount.toLocaleString()} fields — document\n` +
+    `◌ Touching: ${touchCount.toLocaleString()} fields — document`;
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
@@ -1525,6 +1623,7 @@ let visibleCache = [];
 
 // Classify all trees for a field — returns { inside, tolerance, review, outside, maxDist }
 let _overlapNeighbours = {}; // fieldId → [neighbouring fieldIds that overlap]
+let _overlapSeverity   = {}; // fieldId → { neighbourId → severity }
 // Building on every call was causing browser hang — distToRing × all trees
 // × all fields = millions of haversine calls on the main thread.
 // Cache is built once after data loads, invalidated when tolerance changes.
@@ -1617,6 +1716,10 @@ function render() {
       const ovSet = window._overlappingFieldIds;
       return ovSet ? ovSet.has(f.fieldId) : false;
     }
+    if (filter === 'true_overlap') return (window._trueOverlapSet||new Set()).has(f.fieldId);
+    if (filter === 'tip_over')     return (window._tipOverSet||new Set()).has(f.fieldId);
+    if (filter === 'line_on')      return (window._lineOnSet||new Set()).has(f.fieldId);
+    if (filter === 'touching')     return (window._touchingSet||new Set()).has(f.fieldId);
     if (filter === 'duplicate_fields') return _duplicateFieldIds.has(f.fieldId);
     if (filter === 'duplicate_trees')  return !!_duplicateTrees[f.fieldId];
     if (filter === 'near')             return _nearFieldIds.has(f.fieldId) && !((window._overlappingFieldIds||new Set()).has(f.fieldId));
@@ -2330,6 +2433,9 @@ function openLb(idx, navList, navPos) {
       const isSameOwner   = nf.owner && f.owner && nf.owner.trim() === f.owner.trim();
       const nTreeCount    = (treesByField[nf.fieldId] || []).length;
       const nLatLngs      = nf.ring.map(c => [c[1], c[0]]);
+      const severity      = (_overlapSeverity[f.fieldId] || {})[nf.fieldId] || 'touching';
+      const sevMeta       = { true_overlap:{label:'✗ True overlap',col:'#ef4444'}, tip_over:{label:'⚠ Corner/tip',col:'#f59e0b'}, line_on:{label:'~ Line on boundary',col:'#38bdf8'}, touching:{label:'◌ Touching',col:'#4ade80'} };
+      const sm            = sevMeta[severity] || sevMeta.touching;
 
       // Calculate nearest distance between the two polygon boundaries
       let nearestDist = Infinity;
@@ -2356,17 +2462,17 @@ function openLb(idx, navList, navPos) {
         : `<span style="color:#f59e0b">✗ Different owner</span>`;
 
       if (isOverlapping) {
-        // Confirmed overlapping — purple solid, green outline if same owner
+        // Colour by severity — red=true overlap, amber=tip, blue=line, green=touching
+        const polyCol = isSameOwner ? '#22c55e' : sm.col;
         L.polygon(nLatLngs, {
-          color: isSameOwner ? '#22c55e' : '#a78bfa',
-          weight: isSameOwner ? 2.5 : 2,
-          fillColor: isSameOwner ? '#22c55e' : '#a78bfa',
-          fillOpacity: 0.12, dashArray: null
+          color: polyCol, weight: 2,
+          fillColor: polyCol, fillOpacity: 0.12, dashArray: null
         }).addTo(lbMap).bindTooltip(
           `<div style="font-family:monospace;font-size:10px;line-height:1.7">
             <strong>⧖ ${nf.fieldId}</strong><br>
             👤 ${nf.owner || '—'}<br>
             🌳 ${nTreeCount.toLocaleString()} trees<br>
+            <span style="color:${sm.col};font-weight:700">${sm.label}</span><br>
             ${distLabel}<br>
             ${ownerTag}
           </div>`,
@@ -3040,6 +3146,11 @@ function exportOverlapsWithGeoJSON() {
         const nf = fieldsData.find(x => x.fieldId === nid);
         return nf?.owner && f.owner && nf.owner.trim() === f.owner.trim();
       }).length;
+      // Worst severity across all neighbours
+      const sevMap = _overlapSeverity[f.fieldId] || {};
+      const sevOrder = ['true_overlap','tip_over','line_on','touching'];
+      const worstSev = sevOrder.find(s => Object.values(sevMap).includes(s)) || 'touching';
+      const sevLabels = { true_overlap:'TRUE OVERLAP — must correct', tip_over:'CORNER/TIP OVER — review', line_on:'LINE ON BOUNDARY — document', touching:'TOUCHING BOUNDARY — document' };
       const isDisabled = _deactivatedIds.has(f.fieldId);
       return [
         f.fieldId, f.owner || '', f.createdOn || '',
@@ -3055,8 +3166,8 @@ function exportOverlapsWithGeoJSON() {
         m ? m.cLng.toFixed(6) : '',
         neighbours, nCount, sameOwnerN,
         sameOwnerN > 0
-          ? `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''}, ${sameOwnerN} registered to the same owner`
-          : `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''}, all registered to different owners`,
+          ? `${sevLabels[worstSev]} — ${nCount} overlapping field${nCount>1?'s':''}, ${sameOwnerN} registered to the same owner`
+          : `${sevLabels[worstSev]} — ${nCount} overlapping field${nCount>1?'s':''}, all registered to different owners`,
         f.geoJSON || ''
       ];
     });
