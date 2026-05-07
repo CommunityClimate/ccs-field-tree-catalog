@@ -2205,7 +2205,7 @@ function openLb(idx, navList, navPos) {
       const nTreeCount    = (treesByField[nf.fieldId] || []).length;
       const nLatLngs      = nf.ring.map(c => [c[1], c[0]]);
       const ownerTag      = isSameOwner
-        ? `<span style="color:#22c55e;font-weight:700">✓ Same owner — merge candidate</span>`
+        ? `<span style="color:#22c55e;font-weight:700">✓ Same owner </span>`
         : `<span style="color:#f59e0b">✗ Different owner</span>`;
 
       if (isOverlapping) {
@@ -2904,8 +2904,8 @@ function exportOverlapsWithGeoJSON() {
         m ? m.cLng.toFixed(6) : '',
         neighbours, nCount, sameOwnerN,
         sameOwnerN > 0
-          ? `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''}, ${sameOwnerN} belong to same owner (merge candidate)`
-          : `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''} with different owner${nCount>1?'s':''}`,
+          ? `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''}, ${sameOwnerN} registered to the same owner`
+          : `OVERLAP — ${nCount} overlapping field${nCount>1?'s':''}, all registered to different owners`,
         f.geoJSON || ''
       ];
     });
