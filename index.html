@@ -430,8 +430,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <span>Fields above the large polygon threshold</span>
       </div>
       <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
-        <strong>⬇ Overlapping Fields (approx)</strong>
-        <span>Fields detected as overlapping another — approximate</span>
+        <strong>⬇ Overlapping Fields</strong>
+        <span>Fields detected as overlapping another field boundary</span>
       </div>
     </div>
     </div>
@@ -508,7 +508,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="large">⚠ Large polygons</option>
         <option value="large_with">⚠ Large polygons with trees</option>
         <option value="large_without">⚠ Large polygons without trees</option>
-        <option value="overlapping">⧖ Overlapping fields (approx)</option>
+        <option value="overlapping">⧖ Overlapping fields</option>
         <option value="duplicates">⊕ Duplicate tree registrations</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
@@ -724,7 +724,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
           <div class="ov-alert" style="background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.25)">
             <div class="a-l" style="color:#f59e0b">⬡ Large polygons</div>
             <div class="a-n" style="color:#f59e0b" id="ovNLarge">—</div>
-            <div class="a-d" style="color:#f59e0b">Boundaries suspiciously large. Worth checking before submission.</div>
+            <div class="a-d" style="color:#f59e0b">Boundaries exceed the large polygon threshold. Review one by one.</div>
           </div>
         </div>
         <div class="ov-note">
@@ -803,8 +803,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <div class="ov-note" style="margin-top:12px">
           <strong>Note on overlaps:</strong> Fixing overlapping boundaries doesn't directly change
           the compliance % — it changes which trees are legitimately countable.
-          Until overlaps are resolved, the compliance % may be overstated because some trees
-          are being claimed by two fields simultaneously.
+          While overlaps exist, trees in the shared area are claimed by two fields simultaneously.
+          Verra will not count these.
         </div>
       </div>
 
