@@ -2111,7 +2111,8 @@ function showToast(msg, type = 'info') {
 }
 
 // ── DISABLE / ACTIVATE ─────────────────────────────────────────────────────
-const _deactivatedIds = new Set();
+const _deactivatedIds = new Set(); // legacy
+const _deactivatedGuids = new Set(); // tracks by GUID — handles duplicate field IDs correctly
 let   _lbCurrentIdx   = -1;
 
 async function patchFieldState(guid, fieldId, activate) {
@@ -2166,7 +2167,7 @@ async function lbDeactivate() {
   if (!confirm(msg)) return;
   try {
     await patchFieldState(f.guid, f.fieldId, false);
-    _deactivatedIds.add(f.fieldId);
+    _deactivatedGuids.add(f.guid); _deactivatedIds.add(f.fieldId);
     updateLbButtons(f);
     showToast(`⊘ ${f.fieldId} disabled`, 'warn');
   } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
@@ -2178,7 +2179,7 @@ async function lbActivate() {
   if (!confirm(`Reactivate "${f.fieldId}" in Fieldforce?`)) return;
   try {
     await patchFieldState(f.guid, f.fieldId, true);
-    _deactivatedIds.delete(f.fieldId);
+    _deactivatedGuids.delete(f.guid); _deactivatedIds.delete(f.fieldId);
     updateLbButtons(f);
     showToast(`✓ ${f.fieldId} reactivated`, 'ok');
   } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
@@ -2192,7 +2193,7 @@ function lbOpenFix() {
 }
 
 function updateLbButtons(f) {
-  const inactive = _deactivatedIds.has(f.fieldId);
+  const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
   const btnD = document.getElementById('lbBtnDeactivate');
   const btnA = document.getElementById('lbBtnActivate');
   if (btnD) btnD.style.display = inactive ? 'none' : 'inline-block';
@@ -2305,7 +2306,7 @@ async function bulkDeactivate() {
   for (const f of fields) {
     try {
       await patchFieldState(f.guid, f.fieldId, false);
-      _deactivatedIds.add(f.fieldId);
+      _deactivatedGuids.add(f.guid); _deactivatedIds.add(f.fieldId);
       ok++;
     } catch(e) { fail++; }
     // Live counter on the button
@@ -2993,7 +2994,7 @@ async function renderQueue() {
     const barPct    = Math.round(cl.outside / maxOut * 100);
     const corrUrl   = `${POLY_CORRECTOR}?fieldId=${encodeURIComponent(f.fieldId)}`;
     const fidIdx    = fieldsData.indexOf(f);
-    const inactive  = _deactivatedIds.has(f.fieldId);
+    const inactive  = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
     return `<tr onclick="openLb(${fidIdx}, window.queueNavList, ${i})"
       style="${inactive?'opacity:0.4;':''}">
       <td class="q-col-chk" onclick="event.stopPropagation()">
@@ -3465,7 +3466,7 @@ function exportOverlapsWithGeoJSON() {
       const sevOrder = ['true_overlap','tip_over','line_on','touching'];
       const worstSev = sevOrder.find(s => Object.values(sevMap).includes(s)) || 'touching';
       const sevLabels = { true_overlap:'TRUE OVERLAP — must correct', tip_over:'CORNER/TIP OVER — review', line_on:'LINE ON BOUNDARY — document', touching:'TOUCHING BOUNDARY — document' };
-      const isDisabled = _deactivatedIds.has(f.fieldId);
+      const isDisabled = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
       return [
         f.fieldId, f.owner || '', f.createdOn || '',
         f.createdBy || '', f.modifiedBy || '',
@@ -3511,7 +3512,7 @@ function exportDuplicateFields() {
     .map(f => {
       const trees = treesByField[f.fieldId] || [];
       const m     = f.ring ? ringMetrics(f.ring) : null;
-      const isDisabledF = _deactivatedIds.has(f.fieldId);
+      const isDisabledF = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
       return [
         f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
         isDisabledF ? 'Disabled (pending sync)' : 'Active',
@@ -3624,7 +3625,7 @@ function exportCSV(type) {
   const csvRows = [headers, ...filtered.map(r => {
     const { f, trees, cl, m, isLarge, flag } = r;
     const pct = cl ? cl.pct : null;
-    const isDisabledC = _deactivatedIds.has(f.fieldId);
+    const isDisabledC = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
     return [
       f.fieldId, f.owner || '', f.createdOn || '',
       isDisabledC ? 'Disabled (pending sync)' : 'Active',
