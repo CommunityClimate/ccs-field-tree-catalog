@@ -1174,9 +1174,10 @@ function autoLatLng(a, b) {
 }
 
 // ── FIELDFORCE FETCH ───────────────────────────────────────────────────────
-function setStatus(msg, cls = '') {
+function setStatus(msg, cls = '', isHtml = false) {
   const el = document.getElementById('ffStatus');
-  el.textContent = msg;
+  if (isHtml) el.innerHTML = msg;
+  else el.textContent = msg;
   el.className = 'ff-status ' + cls;
 }
 
@@ -1250,20 +1251,24 @@ async function clearCache() {
   return new Promise((res) => { tx.oncomplete = res; });
 }
 
-function applyDataset(fieldsArr, treesObj, treeCount, fromCache, cacheTs) {
+function applyDataset(fieldsArr, treesObj, treeCount, unallocatedCount, fromCache, cacheTs) {
   fieldsData   = fieldsArr;
   treesByField = treesObj;
 
-  const btn = document.querySelector('.btn-ff');
+  const btn  = document.querySelector('.btn-ff');
   const name = dvAccount?.name || 'Connected';
-  btn.textContent = `✓ ${name}`;
+  btn.textContent     = `✓ ${name}`;
   btn.style.background = 'linear-gradient(135deg,#16a34a,#22c55e)';
 
-  // Show cache date or live indicator
   const src = fromCache
     ? `📦 Cache: ${new Date(cacheTs).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(cacheTs).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`
     : `✓ Live: ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
-  setStatus(`${src} · ${fieldsArr.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees`, 'ok');
+
+  const unallocMsg = unallocatedCount > 0
+    ? ` · <span style="color:#f59e0b;font-weight:700">⚠ ${unallocatedCount.toLocaleString()} unallocated trees</span>`
+    : ` · <span style="color:#22c55e">✓ All trees allocated</span>`;
+
+  setStatus(`${src} · ${fieldsArr.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees${unallocMsg}`, 'ok', true);
   document.getElementById('fieldCount').textContent = `Fields (${fieldsArr.length.toLocaleString()})`;
 
   // Show/hide refresh button
@@ -1297,13 +1302,12 @@ async function connect(forceRefresh = false) {
       const cached = await loadCache();
       if (cached && cached.data) {
         setStatus('📦 Loading from cache…', 'ok');
-        const { fieldsArr, treesObj, treeCount } = cached.data;
-        // Rebuild rings from geoJSON (not stored in cache to save space)
+        const { fieldsArr, treesObj, treeCount, unallocatedCount } = cached.data;
         const rebuilt = fieldsArr.map(f => {
           f.ring = parseGeoJSON(f.geoJSON);
           return f;
         });
-        applyDataset(rebuilt, treesObj, treeCount, true, cached.ts);
+        applyDataset(rebuilt, treesObj, treeCount, unallocatedCount || 0, true, cached.ts);
         btn.disabled = false;
         return;
       }
@@ -1341,8 +1345,9 @@ async function connect(forceRefresh = false) {
     const guidToId = {};
     fieldsArr.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
 
-    const treesObj = {};
-    let treeCount  = 0;
+    const treesObj      = {};
+    let treeCount       = 0;
+    let unallocatedCount = 0;
     tRows.forEach(r => {
       const lat = parseFloat(r.ccs_treelatitude_tree);
       const lng = parseFloat(r.ccs_treelongitude_tree);
@@ -1350,7 +1355,7 @@ async function connect(forceRefresh = false) {
       const coords = autoLatLng(lat, lng);
       const guid   = (r['_ccs_field_tree_value'] || '').toLowerCase();
       const fid    = guidToId[guid];
-      if (!fid) return;
+      if (!fid) { unallocatedCount++; return; }
       if (!treesObj[fid]) treesObj[fid] = [];
       treesObj[fid].push({ lat: coords.lat, lng: coords.lng, code: r.ccs_treecode || '' });
       treeCount++;
@@ -1361,11 +1366,12 @@ async function connect(forceRefresh = false) {
     const cacheData = {
       fieldsArr: fieldsArr.map(f => ({ ...f, ring: null })),
       treesObj,
-      treeCount
+      treeCount,
+      unallocatedCount
     };
     try { await saveCache(cacheData); } catch(e) { console.warn('Cache save failed:', e); }
 
-    applyDataset(fieldsArr, treesObj, treeCount, false, null);
+    applyDataset(fieldsArr, treesObj, treeCount, unallocatedCount, false, null);
 
   } catch(e) {
     btn.disabled    = false;
