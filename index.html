@@ -1202,26 +1202,125 @@ async function dvFetchAll(token, url, label) {
   return rows;
 }
 
-async function connect() {
+// ── INDEXEDDB CACHE ────────────────────────────────────────────────────────
+const DB_NAME    = 'ccs_ftc_cache';
+const DB_VERSION = 1;
+const STORE_NAME = 'dataset';
+const CACHE_KEY  = 'main';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore(STORE_NAME, { keyPath: 'key' });
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function saveCache(data) {
+  const db    = await openDB();
+  const tx    = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  store.put({ key: CACHE_KEY, ts: new Date().toISOString(), data });
+  return new Promise((res, rej) => {
+    tx.oncomplete = res;
+    tx.onerror    = rej;
+  });
+}
+
+async function loadCache() {
+  try {
+    const db    = await openDB();
+    const tx    = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    return new Promise((res, rej) => {
+      const req    = store.get(CACHE_KEY);
+      req.onsuccess = e => res(e.target.result || null);
+      req.onerror   = e => rej(e.target.error);
+    });
+  } catch(e) { return null; }
+}
+
+async function clearCache() {
+  const db    = await openDB();
+  const tx    = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(CACHE_KEY);
+  return new Promise((res) => { tx.oncomplete = res; });
+}
+
+function applyDataset(fieldsArr, treesObj, treeCount, fromCache, cacheTs) {
+  fieldsData   = fieldsArr;
+  treesByField = treesObj;
+
   const btn = document.querySelector('.btn-ff');
-  btn.disabled = true;
+  const name = dvAccount?.name || 'Connected';
+  btn.textContent = `✓ ${name}`;
+  btn.style.background = 'linear-gradient(135deg,#16a34a,#22c55e)';
+
+  // Show cache date or live indicator
+  const src = fromCache
+    ? `📦 Cache: ${new Date(cacheTs).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(cacheTs).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`
+    : `✓ Live: ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
+  setStatus(`${src} · ${fieldsArr.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees`, 'ok');
+  document.getElementById('fieldCount').textContent = `Fields (${fieldsArr.length.toLocaleString()})`;
+
+  // Show/hide refresh button
+  let refBtn = document.getElementById('btnRefresh');
+  if (!refBtn) {
+    refBtn = document.createElement('button');
+    refBtn.id        = 'btnRefresh';
+    refBtn.className = 'btn-ff';
+    refBtn.style.cssText = 'margin-top:6px;background:linear-gradient(135deg,#0078d4,#005a9e)';
+    refBtn.textContent   = '🔄 Refresh from Fieldforce';
+    refBtn.onclick       = () => connect(true);
+    document.getElementById('ffStatus').after(refBtn);
+  }
+
+  updateKPIs();
+  render();
+  setTimeout(() => buildClassCache(), 800);
+}
+
+async function connect(forceRefresh = false) {
+  const btn = document.querySelector('.btn-ff');
+  btn.disabled    = true;
   btn.textContent = '⏳ Connecting…';
   setStatus('Authenticating…', 'ok');
 
   try {
     const token = await getToken();
-    const name = dvAccount?.name || 'Connected';
-    btn.textContent = `✓ ${name}`;
-    btn.style.background = 'linear-gradient(135deg,#16a34a,#22c55e)';
 
-    // Load fields
+    // ── Try cache first (unless forced refresh) ────────────────────────
+    if (!forceRefresh) {
+      const cached = await loadCache();
+      if (cached && cached.data) {
+        setStatus('📦 Loading from cache…', 'ok');
+        const { fieldsArr, treesObj, treeCount } = cached.data;
+        // Rebuild rings from geoJSON (not stored in cache to save space)
+        const rebuilt = fieldsArr.map(f => {
+          f.ring = parseGeoJSON(f.geoJSON);
+          return f;
+        });
+        applyDataset(rebuilt, treesObj, treeCount, true, cached.ts);
+        btn.disabled = false;
+        return;
+      }
+    }
+
+    // ── Full Fieldforce load ───────────────────────────────────────────
+    btn.textContent = `✓ ${dvAccount?.name || 'Connected'}`;
+    btn.style.background = 'linear-gradient(135deg,#16a34a,#22c55e)';
+    btn.disabled = false;
+
     setStatus('Loading fields…', 'ok');
     const fRows = await dvFetchAll(token,
       `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field,ccs_fieldgeojson_field,_ccs_fieldowner_field_value,ccs_fieldsizem2_field,createdon,_createdby_value,_modifiedby_value&$filter=statecode eq 0`,
       'Fields'
     );
 
-    fieldsData = fRows.map(r => ({
+    const fieldsArr = fRows.map(r => ({
       guid:       String(r.ccs_fieldid || '').toLowerCase(),
       fieldId:    String(r.ccs_cssfieldid_field || '').trim(),
       owner:      String(r['_ccs_fieldowner_field_value@OData.Community.Display.V1.FormattedValue'] || ''),
@@ -1233,19 +1332,17 @@ async function connect() {
     })).map(f => { f.ring = parseGeoJSON(f.geoJSON); return f; })
       .filter(f => f.fieldId);
 
-    // Load trees
     setStatus('Loading trees…', 'ok');
     const tRows = await dvFetchAll(token,
       `${DV_API}/ccs_trees?$select=ccs_treecode,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
       'Trees'
     );
 
-    // Build fieldId lookup from guid
     const guidToId = {};
-    fieldsData.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
+    fieldsArr.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
 
-    treesByField = {};
-    let treeCount = 0;
+    const treesObj = {};
+    let treeCount  = 0;
     tRows.forEach(r => {
       const lat = parseFloat(r.ccs_treelatitude_tree);
       const lng = parseFloat(r.ccs_treelongitude_tree);
@@ -1254,25 +1351,24 @@ async function connect() {
       const guid   = (r['_ccs_field_tree_value'] || '').toLowerCase();
       const fid    = guidToId[guid];
       if (!fid) return;
-      if (!treesByField[fid]) treesByField[fid] = [];
-      treesByField[fid].push({
-        lat:  coords.lat,
-        lng:  coords.lng,
-        code: r.ccs_treecode || ''
-      });
+      if (!treesObj[fid]) treesObj[fid] = [];
+      treesObj[fid].push({ lat: coords.lat, lng: coords.lng, code: r.ccs_treecode || '' });
       treeCount++;
     });
 
-    // KPIs
-    updateKPIs();
-    setStatus(`✓ ${fieldsData.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees loaded`, 'ok');
-    document.getElementById('fieldCount').textContent =
-      `Fields (${fieldsData.length.toLocaleString()})`;
-    render();
-    // Build classification cache in background after UI renders
-    setTimeout(() => buildClassCache(), 800);
+    // Save to cache (without ring — rebuilt on load)
+    setStatus('💾 Saving to cache…', 'ok');
+    const cacheData = {
+      fieldsArr: fieldsArr.map(f => ({ ...f, ring: null })),
+      treesObj,
+      treeCount
+    };
+    try { await saveCache(cacheData); } catch(e) { console.warn('Cache save failed:', e); }
+
+    applyDataset(fieldsArr, treesObj, treeCount, false, null);
+
   } catch(e) {
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = 'Connect to Fieldforce';
     btn.style.background = '';
     setStatus('Error: ' + e.message, 'err');
