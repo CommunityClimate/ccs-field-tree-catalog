@@ -520,6 +520,13 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span class="sec-lbl">☁ Fieldforce</span>
       <button class="btn-ff" onclick="connect()">Connect to Fieldforce</button>
       <div class="ff-status" id="ffStatus">Connect to load fields and trees</div>
+      <!-- Bulk-import alert chip — shown when live data exceeds last snapshot by a meaningful amount -->
+      <div id="importAlert" style="display:none;margin-top:6px;padding:5px 10px;
+        background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);
+        border-radius:4px;font-family:var(--mono);font-size:10px;line-height:1.6;
+        cursor:pointer" onclick="openTrend()"
+        title="Bulk import detected since last snapshot — click to view full trend">
+      </div>
     </div>
     <div class="sec">
       <span class="sec-lbl">Filter</span>
@@ -1286,6 +1293,7 @@ function applyDataset(fieldsArr, treesObj, treeCount, unallocatedCount, fromCach
   updateKPIs();
   render();
   setTimeout(() => buildClassCache(), 800);
+  setTimeout(() => checkImportAlert(), 1400); // after KPI chips are populated
 }
 
 async function connect(forceRefresh = false) {
@@ -3177,6 +3185,9 @@ function takeSnapshot() {
   snaps.push(snap);
   saveSnapshots(snaps);
   showToast(`📸 Snapshot saved — ${snaps.length} total`, 'ok');
+  // New baseline established — dismiss the import alert
+  const alertEl = document.getElementById('importAlert');
+  if (alertEl) alertEl.style.display = 'none';
 }
 
 function clearSnapshots() {
@@ -3328,6 +3339,63 @@ function renderTrend() {
       </thead>
       <tbody>${statsRows}</tbody>
     </table>`;
+}
+
+// ── BULK IMPORT ALERT ─────────────────────────────────────────────────────
+// Compares live KPI chips against the most recent snapshot.
+// Shows a dismissable warning chip in the sidebar when a bulk import is detected.
+function checkImportAlert() {
+  const alertEl = document.getElementById('importAlert');
+  if (!alertEl) return;
+
+  const snaps = getSnapshots();
+  if (!snaps.length) { alertEl.style.display = 'none'; return; }
+
+  const last = snaps[snaps.length - 1];
+
+  // Read current values from the live KPI chips (already populated by updateKPIs)
+  const cur = {
+    fields:     fieldsData.length,
+    trees:      parseInt(document.getElementById('kpiTrees')?.textContent?.replace(/\D/g,''))      || 0,
+    overlap:    parseInt(document.getElementById('kpiOverlap')?.textContent?.replace(/[^\d]/g,'')) || 0,
+    near:       parseInt(document.getElementById('kpiNear')?.textContent?.replace(/[^\d]/g,''))    || 0,
+    dupeFields: parseInt(document.getElementById('kpiDupeFields')?.textContent?.replace(/\D/g,'')) || 0,
+    dupeTrees:  parseInt(document.getElementById('kpiDupeTrees')?.textContent?.replace(/\D/g,''))  || 0,
+  };
+
+  const d = {
+    fields:     cur.fields     - (last.fields     || 0),
+    trees:      cur.trees      - (last.trees      || 0),
+    overlap:    cur.overlap    - (last.overlap    || 0),
+    near:       cur.near       - (last.near       || 0),
+    dupeFields: cur.dupeFields - (last.dupeFields || 0),
+    dupeTrees:  cur.dupeTrees  - (last.dupeTrees  || 0),
+  };
+
+  // Thresholds — only alert on meaningful bulk changes
+  const FIELD_THRESHOLD = 5;
+  const TREE_THRESHOLD  = 500;
+  const triggered = d.fields > FIELD_THRESHOLD || d.trees > TREE_THRESHOLD;
+
+  if (!triggered) { alertEl.style.display = 'none'; return; }
+
+  // Build delta line
+  const parts = [];
+  if (d.fields     > 0) parts.push(`<span style="color:#fbbf24;font-weight:700">+${d.fields.toLocaleString()} fields</span>`);
+  if (d.trees      > 0) parts.push(`<span style="color:#fbbf24;font-weight:700">+${d.trees.toLocaleString()} trees</span>`);
+  if (d.overlap    > 0) parts.push(`<span style="color:#a78bfa">+${d.overlap.toLocaleString()} overlaps</span>`);
+  if (d.near       > 0) parts.push(`<span style="color:#38bdf8">+${d.near.toLocaleString()} near</span>`);
+  if (d.dupeFields > 0) parts.push(`<span style="color:#fb923c">+${d.dupeFields} dupe fields</span>`);
+  if (d.dupeTrees  > 0) parts.push(`<span style="color:#fb923c">+${d.dupeTrees} dupe trees</span>`);
+
+  const snapDate = new Date(last.ts).toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+
+  alertEl.innerHTML =
+    `<span style="color:#fbbf24;font-weight:700">⚡ Bulk import detected</span><br>` +
+    `<span style="color:var(--muted)">Since snapshot ${snapDate}:</span><br>` +
+    parts.join('<br>') +
+    `<br><span style="color:var(--muted);font-size:9px">Click to open Trend · 📸 Snapshot to dismiss</span>`;
+  alertEl.style.display = 'block';
 }
 
 // ── END SNAPSHOT & TREND ───────────────────────────────────────────────────
