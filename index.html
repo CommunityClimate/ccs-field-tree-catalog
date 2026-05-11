@@ -444,6 +444,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Overlapping Fields + GeoJSON</strong>
         <span>Overlapping fields with full polygon coordinates for field verification</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportEmptyOverlapsGeoJSON()">
+        <strong>⬇ Empty Overlapping Fields + GeoJSON</strong>
+        <span>Overlapping fields with zero trees — safe to disable, with polygon coordinates</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
@@ -3065,6 +3069,7 @@ async function renderQueue() {
 // ── EMPTY OVERLAPS VIEW ───────────────────────────────────────────────────
 // Shows all overlapping fields with zero trees — safe to bulk-disable.
 let emptyOverlapsActive = false;
+let _eoSort = { col: 'neighbours', dir: -1 }; // default: most overlaps first
 
 function toggleEmptyOverlaps() {
   emptyOverlapsActive = !emptyOverlapsActive;
@@ -3109,57 +3114,92 @@ async function renderEmptyOverlaps() {
   }
 
   const ovSet = window._overlappingFieldIds || new Set();
+  const SEV_ORDER = { true_overlap: 0, tip_over: 1, line_on: 2, touching: 3 };
 
-  // All overlapping fields with zero trees, sorted by number of overlap neighbours (desc)
-  const rows = fieldsData
+  // Build row data
+  let rows = fieldsData
     .filter(f => ovSet.has(f.fieldId) && (treesByField[f.fieldId] || []).length === 0)
-    .map(f => ({
-      f,
-      neighbours: (_overlapNeighbours[f.fieldId] || []),
-      severity:   Object.values((_overlapSeverity[f.fieldId] || {}))
-    }))
-    .sort((a, b) => b.neighbours.length - a.neighbours.length);
+    .map(f => {
+      const neighbours = _overlapNeighbours[f.fieldId] || [];
+      const sevMap     = _overlapSeverity[f.fieldId] || {};
+      const sevVals    = Object.values(sevMap);
+      const worstSev   = ['true_overlap','tip_over','line_on','touching']
+                           .find(s => sevVals.includes(s)) || 'touching';
+      const area       = f.ring ? ringAreaHa(f.ring) : 0;
+      return { f, neighbours, worstSev, area, sevRank: SEV_ORDER[worstSev] ?? 3 };
+    });
 
-  // Summary
+  // Apply sort
+  const { col, dir } = _eoSort;
+  rows.sort((a, b) => {
+    let va, vb;
+    if      (col === 'neighbours') { va = a.neighbours.length; vb = b.neighbours.length; }
+    else if (col === 'area')       { va = a.area;              vb = b.area; }
+    else if (col === 'severity')   { va = a.sevRank;           vb = b.sevRank; }
+    else if (col === 'created')    { va = a.f.createdOn || ''; vb = b.f.createdOn || ''; }
+    else if (col === 'owner')      { va = a.f.owner || '';     vb = b.f.owner || ''; }
+    else                           { va = a.neighbours.length; vb = b.neighbours.length; }
+    return va < vb ? dir : va > vb ? -dir : 0;
+  });
+
+  // Summary bar
   const actBar = document.getElementById('queueActions');
   if (actBar) actBar.style.display = rows.length > 0 ? 'flex' : 'none';
+
+  function sortArrow(c) {
+    if (_eoSort.col !== c) return `<span style="color:var(--border);font-size:8px"> ⇅</span>`;
+    return _eoSort.dir === -1
+      ? `<span style="color:#a78bfa;font-size:8px"> ▼</span>`
+      : `<span style="color:#a78bfa;font-size:8px"> ▲</span>`;
+  }
+  function thClick(c) {
+    return `onclick="eoSortBy('${c}')" style="cursor:pointer;user-select:none" title="Sort by ${c}"`;
+  }
 
   if (!rows.length) {
     document.getElementById('queueSummary').innerHTML =
       `<span style="color:#22c55e;font-weight:700">✓ No overlapping zero-tree fields found</span>`;
     document.getElementById('queueBody').innerHTML =
-      `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);
+      `<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--muted);
         font-family:var(--mono);font-size:11px">
         All overlapping fields have at least one tree — manual review required.
       </td></tr>`;
+    // Also update thead
+    document.querySelector('#queueWrap table thead tr').innerHTML = _eoTheadHTML(sortArrow, thClick);
     return;
   }
-
-  // Worst-severity label per field
-  const sevLabel = sevs => {
-    if (sevs.includes('true_overlap')) return { t: '✗ True',  c: '#ef4444' };
-    if (sevs.includes('tip_over'))     return { t: '⚠ Tip',   c: '#f59e0b' };
-    if (sevs.includes('line_on'))      return { t: '~ Line',  c: '#38bdf8' };
-    return                                    { t: '◌ Touch', c: '#22c55e' };
-  };
 
   document.getElementById('queueSummary').innerHTML =
     `<span style="color:#ef4444;font-weight:700;font-size:12px">${rows.length.toLocaleString()} fields</span>
      <span style="color:var(--border)">|</span>
-     <span style="color:var(--muted)">Zero trees · overlapping boundary · sorted by overlap count</span>
+     <span style="color:var(--muted)">Zero trees · overlapping boundary</span>
      <span style="color:var(--border)">|</span>
-     <span style="color:#22c55e;font-size:9px">All are safe to disable — no trees will become unallocated</span>`;
+     <span style="color:#22c55e;font-size:9px">All safe to disable — no trees become unallocated</span>
+     <span style="flex:1"></span>
+     <button class="btn-export" onclick="exportEmptyOverlapsGeoJSON()"
+       style="font-size:9px;padding:3px 10px;margin-left:8px"
+       title="Export all ${rows.length} fields with GeoJSON coordinates">
+       ⬇ Export all (GeoJSON)</button>`;
 
-  // Build nav list for lightbox prev/next
+  // Sortable thead
+  document.querySelector('#queueWrap table thead tr').innerHTML = _eoTheadHTML(sortArrow, thClick);
+
+  // Build nav list for lightbox
   window.queueNavList = rows.map(r => fieldsData.indexOf(r.f));
 
+  const SEV_LABELS = {
+    true_overlap: { t: '✗ True',  c: '#ef4444' },
+    tip_over:     { t: '⚠ Tip',   c: '#f59e0b' },
+    line_on:      { t: '~ Line',  c: '#38bdf8' },
+    touching:     { t: '◌ Touch', c: '#22c55e' }
+  };
+
   document.getElementById('queueBody').innerHTML = rows.map((r, i) => {
-    const { f, neighbours, severity } = r;
-    const fidIdx  = fieldsData.indexOf(f);
+    const { f, neighbours, worstSev, area } = r;
+    const fidIdx   = fieldsData.indexOf(f);
     const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
-    const sev     = sevLabel(severity);
-    const area    = f.ring ? ringAreaHa(f.ring) : null;
-    const areaStr = area !== null ? area.toFixed(1) + ' ha' : '—';
+    const sev      = SEV_LABELS[worstSev] || SEV_LABELS.touching;
+    const areaStr  = area > 0 ? area.toFixed(2) + ' ha' : '—';
     return `<tr onclick="openLb(${fidIdx}, window.queueNavList, ${i})"
       style="${inactive ? 'opacity:0.35;' : ''}">
       <td class="q-col-chk" onclick="event.stopPropagation()">
@@ -3170,19 +3210,19 @@ async function renderEmptyOverlaps() {
       <td class="q-col-fid q-fid">${f.fieldId}</td>
       <td class="q-col-own q-owner">${f.owner || '—'}</td>
       <td style="padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--muted);
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:88px">
         ${f.createdOn || '—'}</td>
-      <td style="padding:6px 4px;text-align:center">
+      <td style="padding:6px 4px;text-align:center;width:46px">
         <span style="background:rgba(167,139,250,0.15);color:#a78bfa;
           border:1px solid rgba(167,139,250,0.35);border-radius:3px;
           padding:1px 6px;font-family:var(--mono);font-size:9px;font-weight:700"
           title="Overlaps: ${neighbours.slice(0,8).join(', ')}${neighbours.length>8?'…':''}">
           ⧖${neighbours.length}</span></td>
       <td style="padding:6px 8px;font-family:var(--mono);font-size:9px;font-weight:700;
-        color:${sev.c}">${sev.t}</td>
-      <td style="padding:6px 8px;font-family:var(--mono);font-size:10px;color:var(--muted)">
-        ${areaStr}</td>
-      <td style="padding:6px 4px;text-align:center" onclick="event.stopPropagation()">
+        color:${sev.c};width:68px">${sev.t}</td>
+      <td style="padding:6px 8px;font-family:var(--mono);font-size:10px;
+        color:var(--muted);text-align:right;width:64px">${areaStr}</td>
+      <td style="padding:6px 4px;text-align:center;width:52px" onclick="event.stopPropagation()">
         ${inactive
           ? `<span style="color:var(--muted);font-size:9px;font-family:var(--mono)">Disabled</span>`
           : `<button class="btn-deactivate" style="font-size:9px;padding:2px 7px"
@@ -3192,6 +3232,25 @@ async function renderEmptyOverlaps() {
   }).join('');
 
   updateQueueSelectionCount();
+}
+
+function _eoTheadHTML(sortArrow, thClick) {
+  return `
+    <th class="q-col-chk"></th>
+    <th class="q-col-rank r">#</th>
+    <th class="q-col-fid" ${thClick('fid')}>Field ID</th>
+    <th class="q-col-own" ${thClick('owner')}>Owner${sortArrow('owner')}</th>
+    <th style="width:88px" ${thClick('created')}>Registered${sortArrow('created')}</th>
+    <th style="width:46px;text-align:center" ${thClick('neighbours')}>⧖${sortArrow('neighbours')}</th>
+    <th style="width:68px" ${thClick('severity')}>Severity${sortArrow('severity')}</th>
+    <th style="width:64px;text-align:right" ${thClick('area')}>Area${sortArrow('area')}</th>
+    <th style="width:52px"></th>`;
+}
+
+function eoSortBy(col) {
+  if (_eoSort.col === col) _eoSort.dir *= -1; // toggle direction
+  else { _eoSort.col = col; _eoSort.dir = -1; } // new col, default descending
+  renderEmptyOverlaps();
 }
 
 // Quick single-row disable button (inline in Empty Overlaps table)
@@ -3214,6 +3273,96 @@ async function quickDisable(fidIdx, btnEl) {
     btnEl.textContent = '⊘';
     showToast('Disable failed: ' + e.message, 'warn');
   }
+}
+
+function exportEmptyOverlapsGeoJSON() {
+  const ovSet = window._overlappingFieldIds;
+  if (!ovSet || ovSet.size === 0) {
+    showToast('Overlap detection not complete — please wait', 'info'); return;
+  }
+
+  const SEV_LABELS = {
+    true_overlap: 'TRUE OVERLAP — must correct',
+    tip_over:     'CORNER/TIP OVER — review',
+    line_on:      'LINE ON BOUNDARY — document',
+    touching:     'TOUCHING BOUNDARY — document'
+  };
+  const SEV_ORDER = ['true_overlap','tip_over','line_on','touching'];
+
+  // Build rows in current sort order
+  const { col, dir } = _eoSort;
+  let rows = fieldsData
+    .filter(f => ovSet.has(f.fieldId) && (treesByField[f.fieldId] || []).length === 0)
+    .map(f => {
+      const neighbours = _overlapNeighbours[f.fieldId] || [];
+      const sevMap     = _overlapSeverity[f.fieldId]   || {};
+      const sevVals    = Object.values(sevMap);
+      const worstSev   = SEV_ORDER.find(s => sevVals.includes(s)) || 'touching';
+      const m          = f.ring ? ringMetrics(f.ring) : null;
+      const area       = m ? m.area : 0;
+      const isDisabled = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+      const sameOwnerN = neighbours.filter(nid => {
+        const nf = fieldsData.find(x => x.fieldId === nid);
+        return nf?.owner && f.owner && nf.owner.trim() === f.owner.trim();
+      }).length;
+      return { f, neighbours, worstSev, area, m, isDisabled, sameOwnerN };
+    });
+
+  // Apply current sort
+  rows.sort((a, b) => {
+    let va, vb;
+    if      (col === 'neighbours') { va = a.neighbours.length; vb = b.neighbours.length; }
+    else if (col === 'area')       { va = a.area;              vb = b.area; }
+    else if (col === 'severity')   { va = SEV_ORDER.indexOf(a.worstSev); vb = SEV_ORDER.indexOf(b.worstSev); }
+    else if (col === 'created')    { va = a.f.createdOn || ''; vb = b.f.createdOn || ''; }
+    else if (col === 'owner')      { va = a.f.owner || '';     vb = b.f.owner || ''; }
+    else                           { va = a.neighbours.length; vb = b.neighbours.length; }
+    return va < vb ? dir : va > vb ? -dir : 0;
+  });
+
+  const headers = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Status', 'Statecode',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Overlap Count', 'Overlapping With (Field IDs)',
+    'Same Owner Overlaps', 'Worst Severity', 'Issue',
+    'GeoJSON Polygon'
+  ];
+
+  const csvRows = rows.map(({ f, neighbours, worstSev, m, isDisabled, sameOwnerN }) => [
+    f.fieldId,
+    f.owner     || '',
+    f.createdOn || '',
+    f.createdBy || '',
+    f.modifiedBy || '',
+    isDisabled ? 'Disabled (pending sync)' : 'Active',
+    isDisabled ? 1 : 0,
+    m ? m.area.toFixed(4) : '',
+    m ? m.vertices : '',
+    m ? m.cLat.toFixed(6) : '',
+    m ? m.cLng.toFixed(6) : '',
+    neighbours.length,
+    neighbours.join(' | '),
+    sameOwnerN,
+    SEV_LABELS[worstSev] || worstSev,
+    sameOwnerN > 0
+      ? `ZERO TREES · ${SEV_LABELS[worstSev]} · ${neighbours.length} overlapping field${neighbours.length>1?'s':''} · ${sameOwnerN} same owner — likely duplicate registration`
+      : `ZERO TREES · ${SEV_LABELS[worstSev]} · ${neighbours.length} overlapping field${neighbours.length>1?'s':''} · different owners`,
+    f.geoJSON || ''
+  ]);
+
+  const csv = [headers, ...csvRows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+
+  const sortLabel = col === 'area' ? 'by_area'
+    : col === 'neighbours' ? 'by_overlaps'
+    : col === 'severity'   ? 'by_severity'
+    : col === 'created'    ? 'by_date'
+    : 'sorted';
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `CCS_Empty_Overlapping_Fields_GeoJSON_${sortLabel}_${date}.csv`);
+  showToast(`⬇ Exported ${rows.length.toLocaleString()} zero-tree overlapping fields`, 'ok');
 }
 
 // ── GOOD EXAMPLE FINDER ───────────────────────────────────────────────────
