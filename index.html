@@ -2147,8 +2147,29 @@ function showToast(msg, type = 'info') {
 }
 
 // ── DISABLE / ACTIVATE ─────────────────────────────────────────────────────
-const _deactivatedIds = new Set(); // legacy
+const _deactivatedIds = new Set(); // legacy — field ID text (only used when field ID is unique)
 const _deactivatedGuids = new Set(); // tracks by GUID — handles duplicate field IDs correctly
+
+/**
+ * Record a field as locally disabled.
+ * Always adds the GUID. Only adds the field ID text if no other active field
+ * shares the same field ID — prevents the sibling duplicate being shown as inactive.
+ */
+function _trackDisabled(f) {
+  _deactivatedGuids.add(f.guid);
+  const hasSibling = fieldsData.some(
+    x => x.fieldId === f.fieldId && x.guid !== f.guid && !_deactivatedGuids.has(x.guid)
+  );
+  if (!hasSibling) _deactivatedIds.add(f.fieldId);
+}
+
+/**
+ * Remove a field from the local disabled tracking (re-enable path).
+ */
+function _trackEnabled(f) {
+  _deactivatedGuids.delete(f.guid);
+  _deactivatedIds.delete(f.fieldId);
+}
 let   _lbCurrentIdx   = -1;
 
 async function patchFieldState(guid, fieldId, activate) {
@@ -2203,7 +2224,7 @@ async function lbDeactivate() {
   if (!confirm(msg)) return;
   try {
     await patchFieldState(f.guid, f.fieldId, false);
-    _deactivatedGuids.add(f.guid); _deactivatedIds.add(f.fieldId);
+    _trackDisabled(f);
     updateLbButtons(f);
     showToast(`⊘ ${f.fieldId} disabled`, 'warn');
   } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
@@ -2215,7 +2236,7 @@ async function lbActivate() {
   if (!confirm(`Reactivate "${f.fieldId}" in Fieldforce?`)) return;
   try {
     await patchFieldState(f.guid, f.fieldId, true);
-    _deactivatedGuids.delete(f.guid); _deactivatedIds.delete(f.fieldId);
+    _trackEnabled(f);
     updateLbButtons(f);
     showToast(`✓ ${f.fieldId} reactivated`, 'ok');
   } catch(e) { showToast(`Failed: ${e.message}`, 'warn'); }
@@ -2342,7 +2363,7 @@ async function bulkDeactivate() {
   for (const f of fields) {
     try {
       await patchFieldState(f.guid, f.fieldId, false);
-      _deactivatedGuids.add(f.guid); _deactivatedIds.add(f.fieldId);
+      _trackDisabled(f);
       ok++;
     } catch(e) { fail++; }
     // Live counter on the button
@@ -3277,8 +3298,7 @@ async function quickDisable(fidIdx, btnEl) {
   btnEl.textContent = '…';
   try {
     await patchFieldState(f.guid, f.fieldId, false);
-    _deactivatedGuids.add(f.guid);
-    _deactivatedIds.add(f.fieldId);
+    _trackDisabled(f);
     btnEl.textContent = '✓';
     btnEl.style.color = '#22c55e';
     btnEl.style.borderColor = 'rgba(34,197,94,0.3)';
