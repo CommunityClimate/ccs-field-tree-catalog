@@ -546,6 +546,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="touching">◌ Touching boundary — document</option>
         <option value="near">◻ Neighbouring fields (within 10m)</option>
         <option value="duplicate_fields">⊕ Duplicate field registrations</option>
+        <option value="dupe_fields_no_trees">⊕ Duplicate fields — no trees (safe to disable)</option>
         <option value="duplicate_trees">⊕ Duplicate tree registrations</option>
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
       </select>
@@ -1871,6 +1872,9 @@ function render() {
     if (filter === 'line_on')      return (window._lineOnSet||new Set()).has(f.fieldId);
     if (filter === 'touching')     return (window._touchingSet||new Set()).has(f.fieldId);
     if (filter === 'duplicate_fields') return _duplicateFieldIds.has(f.fieldId);
+    if (filter === 'dupe_fields_no_trees') {
+      return _duplicateFieldIds.has(f.fieldId) && (treesByField[f.fieldId] || []).length === 0;
+    }
     if (filter === 'duplicate_trees')  return !!_duplicateTrees[f.fieldId];
     if (filter === 'near')             return _nearFieldIds.has(f.fieldId) && !((window._overlappingFieldIds||new Set()).has(f.fieldId));
     if (filter === 'overlap_no_trees') {
@@ -2908,6 +2912,17 @@ async function detectDuplicatesKPI() {
 
   // Update both KPI chips
   const dupeFieldCount = _duplicateFieldIds.size;
+
+  // Update dupe_fields_no_trees filter option with live count
+  const dupeNoTreesCount = [..._duplicateFieldIds].filter(
+    id => (treesByField[id] || []).length === 0
+  ).length;
+  const optDNT = document.querySelector('#fltStatus option[value="dupe_fields_no_trees"]');
+  if (optDNT) {
+    optDNT.textContent = dupeNoTreesCount > 0
+      ? `⊕ Duplicate fields — no trees (${dupeNoTreesCount.toLocaleString()}) safe to disable`
+      : '⊕ Duplicate fields — no trees (safe to disable)';
+  }
   const dupeTreeCount  = Object.keys(_duplicateTrees).length;
   if (elFields) {
     elFields.textContent = dupeFieldCount.toLocaleString();
