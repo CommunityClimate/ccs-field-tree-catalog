@@ -2906,14 +2906,14 @@ async function detectDuplicatesKPI() {
           distM = haversineM(ma.cLat, ma.cLng, mb.cLat, mb.cLng);
           const aCentreInB = b.ring ? pip(ma.cLat, ma.cLng, b.ring) : false;
           const bCentreInA = a.ring ? pip(mb.cLat, mb.cLng, a.ring) : false;
-          if (distM < 100) {
-            relationship = 'true_dupe';      // same spot, likely exact copy
+          if (distM < 10) {
+            relationship = 'true_dupe';      // < 10m — near-identical coordinates, submission error
           } else if (aCentreInB || bCentreInA) {
             relationship = 'contains';       // one polygon sits inside the other
-          } else if (distM < 1000) {
-            relationship = 'conflict';       // close but not contained — redrawn boundary
+          } else if (distM < 2000) {
+            relationship = 'conflict';       // 10m–2km — redrawn boundary, needs correction
           } else {
-            relationship = 'id_collision';   // far apart — completely different locations
+            relationship = 'id_collision';   // > 2km — completely different locations
           }
         }
         window._dupeIdPairs.push({ fieldId: id, a, b, ma, mb, distM, relationship });
@@ -3461,11 +3461,11 @@ let idConflictsActive = false;
 let _idcFilter = { type: null, noTrees: false }; // active filter state
 
 const ID_CONFLICT_META = {
-  true_dupe:    { label: '🔴 True Duplicate',   color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   action: 'Disable the newer record — same location, no value in keeping both.' },
-  contains:     { label: '🟡 One Contains Other', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', action: 'Disable the smaller/older record — likely a redrawn boundary.' },
-  conflict:     { label: '🟠 Version Conflict',  color: '#fb923c', bg: 'rgba(251,146,60,0.08)', action: 'Check satellite image — one boundary was redrawn. Disable the older record.' },
-  id_collision: { label: '🔵 ID Collision',      color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', action: 'Different locations entirely. Verify with field officer before any action.' },
-  unknown:      { label: '⬜ Unknown',            color: '#6b7280', bg: 'rgba(107,114,128,0.08)', action: 'No geometry available — cannot classify.' }
+  true_dupe:    { label: '🔴 True Duplicate',      color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   action: 'Centroids under 10m apart — submission error. Disable the newer record.' },
+  contains:     { label: '🟡 One Contains Other',   color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', action: 'One boundary sits inside the other. Disable the smaller record, then verify the larger covers all trees.' },
+  conflict:     { label: '🟠 Version Conflict',     color: '#fb923c', bg: 'rgba(251,146,60,0.08)', action: 'Two different boundaries drawn for the same field. Neither may be correct — use Fix in Corrector to draw a single accurate boundary, then disable both originals.' },
+  id_collision: { label: '🔵 ID Collision',         color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', action: 'Polygons are over 2km apart. Same field ID assigned to two different locations — verify with field officer before any action.' },
+  unknown:      { label: '⬜ No Geometry',           color: '#6b7280', bg: 'rgba(107,114,128,0.08)', action: 'No polygon coordinates available — cannot classify.' }
 };
 
 function toggleIdConflicts() {
@@ -3591,11 +3591,14 @@ function renderIdConflicts() {
     const inactA = _deactivatedGuids.has(a.guid);
     const inactB = _deactivatedGuids.has(b.guid);
     let recA = false, recB = false;
-    if (relationship === 'true_dupe' || relationship === 'conflict') {
+    if (relationship === 'true_dupe') {
+      // Submission error — disable the newer record
       if (a.createdOn && b.createdOn) { recA = a.createdOn > b.createdOn; recB = !recA; }
     } else if (relationship === 'contains') {
+      // Disable the smaller polygon
       if (ma && mb) { recA = ma.area < mb.area; recB = !recA; }
     }
+    // Version conflict and ID collision: no recommendation — manual review required
     const distStr = distM !== null
       ? distM < 1000 ? `${Math.round(distM)} m` : `${(distM/1000).toFixed(2)} km` : '—';
     const disableBtn = (fidIdx, inactive, recommended) =>
