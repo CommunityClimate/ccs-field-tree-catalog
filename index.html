@@ -448,6 +448,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Empty Overlapping Fields + GeoJSON</strong>
         <span>Overlapping fields with zero trees — safe to disable, with polygon coordinates</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportIdConflictsCSV()">
+        <strong>⬇ Field ID Conflicts + GeoJSON</strong>
+        <span>Pairs of active fields sharing the same ID but with different polygon coordinates</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
@@ -646,6 +650,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnEmptyOverlaps" onclick="toggleEmptyOverlaps()"
         style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
         title="Show overlapping fields with zero trees — safe to bulk-disable">⊘ Empty Overlaps</button>
+      <button class="view-btn" id="btnIdConflicts" onclick="toggleIdConflicts()"
+        style="color:#fb923c;border-color:rgba(251,146,60,0.3)"
+        title="Show fields sharing the same ID but with different polygon coordinates">⊗ ID Conflicts</button>
       <button class="view-btn" id="btnGoodExample" onclick="toggleGoodExample()"
         style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
         title="Find clean simple fields — good for screenshots and demonstrations">⭐ Example</button>
@@ -2881,6 +2888,51 @@ async function detectDuplicatesKPI() {
     }
   });
 
+  // ── Classify active-active pairs by geometry ───────────────────────────
+  // For each field ID with 2+ active records, compare polygon centroids and
+  // containment to classify as: true_dupe / contains / conflict / id_collision
+  window._dupeIdPairs = [];
+  Object.entries(activeIdCount).forEach(([id, count]) => {
+    if (count < 2) return;
+    const records = fieldsData.filter(f => f.fieldId === id);
+    // Compare every pair
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const a = records[i], b = records[j];
+        const ma = a.ring ? ringMetrics(a.ring) : null;
+        const mb = b.ring ? ringMetrics(b.ring) : null;
+        let distM = null, relationship = 'unknown';
+        if (ma && mb) {
+          distM = haversineM(ma.cLat, ma.cLng, mb.cLat, mb.cLng);
+          const aCentreInB = b.ring ? pip(ma.cLat, ma.cLng, b.ring) : false;
+          const bCentreInA = a.ring ? pip(mb.cLat, mb.cLng, a.ring) : false;
+          if (distM < 100) {
+            relationship = 'true_dupe';      // same spot, likely exact copy
+          } else if (aCentreInB || bCentreInA) {
+            relationship = 'contains';       // one polygon sits inside the other
+          } else if (distM < 1000) {
+            relationship = 'conflict';       // close but not contained — redrawn boundary
+          } else {
+            relationship = 'id_collision';   // far apart — completely different locations
+          }
+        }
+        window._dupeIdPairs.push({ fieldId: id, a, b, ma, mb, distM, relationship });
+      }
+    }
+  });
+
+  // Update ID Conflicts button label
+  const conflictCount = (window._dupeIdPairs || []).length;
+  const idConflictBtn = document.getElementById('btnIdConflicts');
+  if (idConflictBtn) {
+    idConflictBtn.textContent = conflictCount > 0
+      ? `⊗ ID Conflicts (${conflictCount.toLocaleString()})`
+      : '⊗ ID Conflicts';
+    idConflictBtn.style.color = conflictCount > 0 ? '#ef4444' : '#fb923c';
+    idConflictBtn.style.borderColor = conflictCount > 0
+      ? 'rgba(239,68,68,0.4)' : 'rgba(251,146,60,0.3)';
+  }
+
   // ── 2. Duplicate tree coordinates ──────────────────────────────────────
   let totalDupeTrees = 0;
   const CHUNK = 200;
@@ -2977,6 +3029,7 @@ function toggleQueue() {
     btn.textContent = '✗ Queue ✓';
     if (emptyOverlapsActive) toggleEmptyOverlaps();
     if (goodExampleActive)   toggleGoodExample();
+    if (idConflictsActive)   toggleIdConflicts();
     queue.classList.add('active');
     grid.classList.add('hidden');
     if (pager) pager.style.display = 'none';
@@ -3118,8 +3171,9 @@ function toggleEmptyOverlaps() {
 
   if (emptyOverlapsActive) {
     // Deactivate other exclusive views
-    if (queueActive)       toggleQueue();
-    if (goodExampleActive) toggleGoodExample();
+    if (queueActive)         toggleQueue();
+    if (goodExampleActive)   toggleGoodExample();
+    if (idConflictsActive)   toggleIdConflicts();
 
     btn.style.background = 'rgba(239,68,68,0.12)';
     queue.classList.add('active');
@@ -3400,6 +3454,274 @@ function exportEmptyOverlapsGeoJSON() {
   showToast(`⬇ Exported ${rows.length.toLocaleString()} zero-tree overlapping fields`, 'ok');
 }
 
+// ── ID CONFLICTS VIEW ─────────────────────────────────────────────────────
+// Shows pairs of active fields that share the same field ID but have
+// different polygon coordinates. Classified into four relationship types.
+let idConflictsActive = false;
+
+const ID_CONFLICT_META = {
+  true_dupe:    { label: '🔴 True Duplicate',   color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   action: 'Disable the newer record — same location, no value in keeping both.' },
+  contains:     { label: '🟡 One Contains Other', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', action: 'Disable the smaller/older record — likely a redrawn boundary.' },
+  conflict:     { label: '🟠 Version Conflict',  color: '#fb923c', bg: 'rgba(251,146,60,0.08)', action: 'Check satellite image — one boundary was redrawn. Disable the older record.' },
+  id_collision: { label: '🔵 ID Collision',      color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', action: 'Different locations entirely. Verify with field officer before any action.' },
+  unknown:      { label: '⬜ Unknown',            color: '#6b7280', bg: 'rgba(107,114,128,0.08)', action: 'No geometry available — cannot classify.' }
+};
+
+function toggleIdConflicts() {
+  idConflictsActive = !idConflictsActive;
+  const btn   = document.getElementById('btnIdConflicts');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+
+  btn.classList.toggle('active', idConflictsActive);
+
+  if (idConflictsActive) {
+    if (queueActive)       toggleQueue();
+    if (emptyOverlapsActive) toggleEmptyOverlaps();
+    if (goodExampleActive) toggleGoodExample();
+
+    btn.style.background = 'rgba(251,146,60,0.12)';
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    document.getElementById('catCount').textContent =
+      '⊗ Fields sharing the same ID with different polygon coordinates';
+    renderIdConflicts();
+  } else {
+    btn.style.background = '';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+    renderPage();
+  }
+}
+
+function renderIdConflicts() {
+  const pairs = window._dupeIdPairs || [];
+  const actBar = document.getElementById('queueActions');
+  if (actBar) actBar.style.display = 'none'; // no bulk-disable here — per-pair decisions
+
+  if (!pairs.length) {
+    document.getElementById('queueSummary').innerHTML =
+      `<span style="color:#22c55e;font-weight:700">✓ No active-active field ID conflicts found</span>`;
+    document.getElementById('queueBody').innerHTML =
+      `<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--muted);
+        font-family:var(--mono);font-size:11px">
+        All field IDs are unique across active records.
+      </td></tr>`;
+    // Replace thead
+    document.querySelector('#queueWrap table thead tr').innerHTML = _idcTheadHTML();
+    return;
+  }
+
+  // Count by type for summary
+  const counts = {};
+  pairs.forEach(p => { counts[p.relationship] = (counts[p.relationship] || 0) + 1; });
+  const summaryParts = Object.entries(ID_CONFLICT_META)
+    .filter(([k]) => counts[k])
+    .map(([k, m]) => `<span style="color:${m.color};font-weight:700">${counts[k]} ${m.label}</span>`)
+    .join('<span style="color:var(--border);margin:0 6px">|</span>');
+
+  document.getElementById('queueSummary').innerHTML =
+    `<span style="color:#fb923c;font-weight:700;font-size:12px">${pairs.length} pair${pairs.length>1?'s':''}</span>
+     <span style="color:var(--border)">|</span>
+     ${summaryParts}
+     <span style="flex:1"></span>
+     <button class="btn-export" onclick="exportIdConflictsCSV()"
+       style="font-size:9px;padding:3px 10px;margin-left:8px"
+       title="Export all conflict pairs with GeoJSON coordinates">⬇ Export all (CSV + GeoJSON)</button>`;
+
+  document.querySelector('#queueWrap table thead tr').innerHTML = _idcTheadHTML();
+
+  document.getElementById('queueBody').innerHTML = pairs.map((pair, i) => {
+    const { fieldId, a, b, ma, mb, distM, relationship } = pair;
+    const meta    = ID_CONFLICT_META[relationship] || ID_CONFLICT_META.unknown;
+    const fidA    = fieldsData.indexOf(a);
+    const fidB    = fieldsData.indexOf(b);
+    const treesA  = (treesByField[a.fieldId] || []).length;
+    const treesB  = (treesByField[b.fieldId] || []).length;
+    const inactA  = _deactivatedGuids.has(a.guid);
+    const inactB  = _deactivatedGuids.has(b.guid);
+
+    // Determine recommended disable target
+    let recA = false, recB = false;
+    if (relationship === 'true_dupe' || relationship === 'conflict') {
+      // Disable whichever was created later (higher createdon = more recent)
+      if (a.createdOn && b.createdOn) {
+        recA = a.createdOn > b.createdOn;
+        recB = !recA;
+      }
+    } else if (relationship === 'contains') {
+      // Disable the smaller polygon
+      if (ma && mb) { recA = ma.area < mb.area; recB = !recA; }
+    }
+
+    const distStr = distM !== null
+      ? distM < 1000 ? `${Math.round(distM)} m` : `${(distM/1000).toFixed(2)} km`
+      : '—';
+
+    const disableBtn = (f, fidIdx, inactive, recommended) =>
+      inactive
+        ? `<span style="color:var(--muted);font-size:9px;font-family:var(--mono)">Disabled</span>`
+        : `<button class="btn-deactivate" style="font-size:9px;padding:2px 7px;
+            ${recommended ? 'border-color:#ef4444;color:#ef4444' : ''}"
+            onclick="idcDisable(${fidIdx}, this)"
+            title="${recommended ? '★ Recommended action' : 'Disable this record'}">
+            ${recommended ? '★ ⊘' : '⊘'}</button>`;
+
+    return `
+      <tr style="border-top:2px solid ${meta.color}33;background:${meta.bg}">
+        <td style="padding:8px 6px 4px 8px;vertical-align:top" rowspan="2">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${i+1}</span>
+        </td>
+        <td style="padding:8px 6px 4px;vertical-align:top;font-family:var(--mono);
+          font-size:10px;font-weight:700;color:var(--fg)" rowspan="2">
+          ${fieldId}
+        </td>
+        <td style="padding:8px 6px 4px;vertical-align:top" rowspan="2">
+          <span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:9px;
+            font-family:var(--mono);font-weight:700;color:${meta.color};
+            background:${meta.bg};border:1px solid ${meta.color}44">
+            ${meta.label}</span>
+          <div style="font-size:9px;color:var(--muted);font-family:var(--mono);
+            margin-top:4px;max-width:140px;line-height:1.4">${meta.action}</div>
+        </td>
+        <td style="padding:8px 6px 4px;vertical-align:top;text-align:center" rowspan="2">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${distStr}</span>
+        </td>
+        <td style="padding:8px 6px 4px;vertical-align:top">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Record A</div>
+          <div style="font-family:var(--mono);font-size:10px">${ma ? ma.area.toFixed(2)+' ha' : '—'} · ${ma ? ma.vertices+' verts' : '—'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${a.createdOn || '—'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${a.createdBy || '—'}</div>
+        </td>
+        <td style="padding:8px 6px 4px;text-align:right;vertical-align:top">
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;
+            color:${treesA > 0 ? '#22c55e' : '#6b7280'}">${treesA}</span>
+          <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">trees</div>
+        </td>
+        <td style="padding:8px 6px 4px;text-align:center;vertical-align:top">
+          <button class="btn-export" style="font-size:9px;padding:2px 6px"
+            onclick="openLb(${fidA})">🔍</button>
+        </td>
+        <td style="padding:8px 6px 4px;text-align:center;vertical-align:top">
+          ${disableBtn(a, fidA, inactA, recA)}
+        </td>
+      </tr>
+      <tr style="background:${meta.bg}">
+        <td style="padding:2px 6px 8px;vertical-align:top">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Record B</div>
+          <div style="font-family:var(--mono);font-size:10px">${mb ? mb.area.toFixed(2)+' ha' : '—'} · ${mb ? mb.vertices+' verts' : '—'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${b.createdOn || '—'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${b.createdBy || '—'}</div>
+        </td>
+        <td style="padding:2px 6px 8px;text-align:right;vertical-align:top">
+          <span style="font-family:var(--mono);font-size:11px;font-weight:700;
+            color:${treesB > 0 ? '#22c55e' : '#6b7280'}">${treesB}</span>
+          <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">trees</div>
+        </td>
+        <td style="padding:2px 6px 8px;text-align:center;vertical-align:top">
+          <button class="btn-export" style="font-size:9px;padding:2px 6px"
+            onclick="openLb(${fidB})">🔍</button>
+        </td>
+        <td style="padding:2px 6px 8px;text-align:center;vertical-align:top">
+          ${disableBtn(b, fidB, inactB, recB)}
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function _idcTheadHTML() {
+  return `
+    <th style="width:32px"></th>
+    <th class="q-col-fid">Field ID</th>
+    <th style="min-width:160px">Classification</th>
+    <th style="width:72px;text-align:center">Distance</th>
+    <th style="min-width:160px">Polygon</th>
+    <th style="width:52px;text-align:right">Trees</th>
+    <th style="width:36px"></th>
+    <th style="width:52px"></th>`;
+}
+
+async function idcDisable(fidIdx, btnEl) {
+  const f = fieldsData[fidIdx];
+  if (!f) return;
+  const trees = (treesByField[f.fieldId] || []).length;
+  const msg = trees > 0
+    ? `⚠ Record "${f.fieldId}" has ${trees} trees.\n\nDisabling will not delete them but they will appear unallocated.\n\nContinue?`
+    : `Disable record "${f.fieldId}" (GUID: ${f.guid})?\n\nThis is one of two active records sharing this field ID.`;
+  if (!confirm(msg)) return;
+  btnEl.disabled = true; btnEl.textContent = '…';
+  try {
+    await patchFieldState(f.guid, f.fieldId, false);
+    _trackDisabled(f);
+    btnEl.textContent = '✓';
+    btnEl.style.color = '#22c55e';
+    btnEl.style.borderColor = 'rgba(34,197,94,0.3)';
+    showToast(`⊘ ${f.fieldId} (${f.guid.slice(0,8)}…) disabled`, 'ok');
+  } catch(e) {
+    btnEl.disabled = false; btnEl.textContent = '⊘';
+    showToast('Disable failed: ' + e.message, 'warn');
+  }
+}
+
+function exportIdConflictsCSV() {
+  const pairs = window._dupeIdPairs || [];
+  if (!pairs.length) { showToast('No ID conflicts to export', 'info'); return; }
+
+  const headers = [
+    'Pair #', 'Field ID', 'Classification', 'Centroid Distance',
+    'Record', 'GUID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Trees', 'Status', 'Recommended Action', 'GeoJSON Polygon'
+  ];
+
+  const rows = [];
+  pairs.forEach((pair, i) => {
+    const { fieldId, a, b, ma, mb, distM, relationship } = pair;
+    const meta    = ID_CONFLICT_META[relationship] || ID_CONFLICT_META.unknown;
+    const distStr = distM !== null
+      ? distM < 1000 ? `${Math.round(distM)} m` : `${(distM/1000).toFixed(2)} km`
+      : '';
+    const treesA = (treesByField[a.fieldId] || []).length;
+    const treesB = (treesByField[b.fieldId] || []).length;
+    const inactA = _deactivatedGuids.has(a.guid);
+    const inactB = _deactivatedGuids.has(b.guid);
+
+    [[a, ma, treesA, inactA, 'A'], [b, mb, treesB, inactB, 'B']].forEach(([f, m, trees, inact, rec]) => {
+      rows.push([
+        i + 1,
+        fieldId,
+        meta.label,
+        distStr,
+        rec,
+        f.guid || '',
+        f.owner || '',
+        f.createdOn || '',
+        f.createdBy || '',
+        f.modifiedBy || '',
+        m ? m.area.toFixed(4) : '',
+        m ? m.vertices : '',
+        m ? m.cLat.toFixed(6) : '',
+        m ? m.cLng.toFixed(6) : '',
+        trees,
+        inact ? 'Disabled (pending sync)' : 'Active',
+        meta.action,
+        f.geoJSON || ''
+      ]);
+    });
+  });
+
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `CCS_Field_ID_Conflicts_GeoJSON_${date}.csv`);
+  showToast(`⬇ Exported ${pairs.length} conflict pairs`, 'ok');
+}
+
 // ── GOOD EXAMPLE FINDER ───────────────────────────────────────────────────
 let goodExampleActive = false;
 
@@ -3415,6 +3737,7 @@ function toggleGoodExample() {
     btn.textContent = '⭐ Example ✓';
     if (queueActive) toggleQueue();
     if (emptyOverlapsActive) toggleEmptyOverlaps();
+    if (idConflictsActive)   toggleIdConflicts();
     queue.classList.add('active');
     grid.classList.add('hidden');
     if (pager) pager.style.display = 'none';
