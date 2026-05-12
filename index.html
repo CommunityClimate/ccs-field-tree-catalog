@@ -3458,6 +3458,7 @@ function exportEmptyOverlapsGeoJSON() {
 // Shows pairs of active fields that share the same field ID but have
 // different polygon coordinates. Classified into four relationship types.
 let idConflictsActive = false;
+let _idcFilter = { type: null, noTrees: false }; // active filter state
 
 const ID_CONFLICT_META = {
   true_dupe:    { label: '🔴 True Duplicate',   color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   action: 'Disable the newer record — same location, no value in keeping both.' },
@@ -3490,6 +3491,7 @@ function toggleIdConflicts() {
     renderIdConflicts();
   } else {
     btn.style.background = '';
+    _idcFilter = { type: null, noTrees: false }; // reset filter on close
     queue.classList.remove('active');
     grid.classList.remove('hidden');
     if (pager) pager.style.display = 'flex';
@@ -3498,136 +3500,154 @@ function toggleIdConflicts() {
 }
 
 function renderIdConflicts() {
-  const pairs = window._dupeIdPairs || [];
-  const actBar = document.getElementById('queueActions');
-  if (actBar) actBar.style.display = 'none'; // no bulk-disable here — per-pair decisions
+  const allPairs = window._dupeIdPairs || [];
+  const actBar   = document.getElementById('queueActions');
+  if (actBar) actBar.style.display = 'none';
 
-  if (!pairs.length) {
+  if (!allPairs.length) {
     document.getElementById('queueSummary').innerHTML =
       `<span style="color:#22c55e;font-weight:700">✓ No active-active field ID conflicts found</span>`;
     document.getElementById('queueBody').innerHTML =
-      `<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--muted);
-        font-family:var(--mono);font-size:11px">
-        All field IDs are unique across active records.
-      </td></tr>`;
-    // Replace thead
+      `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--muted);
+        font-family:var(--mono);font-size:11px">All field IDs are unique across active records.</td></tr>`;
     document.querySelector('#queueWrap table thead tr').innerHTML = _idcTheadHTML();
     return;
   }
 
-  // Count by type for summary
+  // Count by type
   const counts = {};
-  pairs.forEach(p => { counts[p.relationship] = (counts[p.relationship] || 0) + 1; });
-  const summaryParts = Object.entries(ID_CONFLICT_META)
-    .filter(([k]) => counts[k])
-    .map(([k, m]) => `<span style="color:${m.color};font-weight:700">${counts[k]} ${m.label}</span>`)
-    .join('<span style="color:var(--border);margin:0 6px">|</span>');
+  allPairs.forEach(p => { counts[p.relationship] = (counts[p.relationship] || 0) + 1; });
+  const noTreesTotal = allPairs.filter(p =>
+    (treesByField[p.a.fieldId] || []).length === 0 &&
+    (treesByField[p.b.fieldId] || []).length === 0
+  ).length;
+
+  // Apply filter
+  let pairs = allPairs;
+  if (_idcFilter.type)    pairs = pairs.filter(p => p.relationship === _idcFilter.type);
+  if (_idcFilter.noTrees) pairs = pairs.filter(p =>
+    (treesByField[p.a.fieldId] || []).length === 0 &&
+    (treesByField[p.b.fieldId] || []).length === 0
+  );
+
+  // Chip builder
+  const chip = (key, label, count, color) => {
+    const active = _idcFilter.type === key;
+    return `<button onclick="setIdcTypeFilter('${key}')" style="
+      font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;cursor:pointer;
+      border:1px solid ${active ? color : color+'55'};
+      background:${active ? color+'22' : 'transparent'};
+      color:${active ? color : color+'cc'};font-weight:${active ? '700' : '400'}">${label} (${count})</button>`;
+  };
+  const noTreesActive = _idcFilter.noTrees;
+  const noTreesChip = noTreesTotal > 0 ? `<button onclick="setIdcNoTreesFilter()" style="
+    font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;cursor:pointer;
+    border:1px solid ${noTreesActive ? '#22c55e' : '#22c55e55'};
+    background:${noTreesActive ? 'rgba(34,197,94,0.12)' : 'transparent'};
+    color:${noTreesActive ? '#22c55e' : '#22c55e99'};font-weight:${noTreesActive ? '700' : '400'}">
+    🌿 No trees (${noTreesTotal})</button>` : '';
+  const clearChip = (_idcFilter.type || _idcFilter.noTrees)
+    ? `<button onclick="clearIdcFilter()" style="font-family:var(--mono);font-size:9px;
+        padding:2px 8px;border-radius:3px;cursor:pointer;border:1px solid var(--border);
+        background:transparent;color:var(--muted)">✕ Clear</button>` : '';
+  const showingLabel = (_idcFilter.type || _idcFilter.noTrees)
+    ? `<span style="font-family:var(--mono);font-size:9px;color:var(--muted)">Showing ${pairs.length} of ${allPairs.length}</span>` : '';
+
+  const filterRow = `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;
+    margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+    ${Object.entries(ID_CONFLICT_META).filter(([k]) => counts[k])
+        .map(([k,m]) => chip(k, m.label, counts[k], m.color)).join('')}
+    ${noTreesChip}${clearChip}${showingLabel}
+  </div>`;
 
   document.getElementById('queueSummary').innerHTML =
-    `<span style="color:#fb923c;font-weight:700;font-size:12px">${pairs.length} pair${pairs.length>1?'s':''}</span>
-     <span style="color:var(--border)">|</span>
-     ${summaryParts}
-     <span style="flex:1"></span>
-     <button class="btn-export" onclick="exportIdConflictsCSV()"
-       style="font-size:9px;padding:3px 10px;margin-left:8px"
-       title="Export all conflict pairs with GeoJSON coordinates">⬇ Export all (CSV + GeoJSON)</button>`;
+    `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span style="color:#fb923c;font-weight:700;font-size:12px">${allPairs.length} pair${allPairs.length>1?'s':''}</span>
+      <span style="color:var(--border)">|</span>
+      ${Object.entries(ID_CONFLICT_META).filter(([k]) => counts[k])
+          .map(([k,m]) => `<span style="color:${m.color};font-weight:700;font-size:10px">${counts[k]} ${m.label}</span>`)
+          .join('<span style="color:var(--border)"> | </span>')}
+      <span style="flex:1"></span>
+      <button class="btn-export" onclick="exportIdConflictsCSV()"
+        style="font-size:9px;padding:3px 10px">⬇ Export all (CSV + GeoJSON)</button>
+    </div>${filterRow}`;
 
   document.querySelector('#queueWrap table thead tr').innerHTML = _idcTheadHTML();
 
+  if (!pairs.length) {
+    document.getElementById('queueBody').innerHTML =
+      `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--muted);
+        font-family:var(--mono);font-size:11px">No pairs match the active filter.</td></tr>`;
+    return;
+  }
+
   document.getElementById('queueBody').innerHTML = pairs.map((pair, i) => {
     const { fieldId, a, b, ma, mb, distM, relationship } = pair;
-    const meta    = ID_CONFLICT_META[relationship] || ID_CONFLICT_META.unknown;
-    const fidA    = fieldsData.indexOf(a);
-    const fidB    = fieldsData.indexOf(b);
-    const treesA  = (treesByField[a.fieldId] || []).length;
-    const treesB  = (treesByField[b.fieldId] || []).length;
-    const inactA  = _deactivatedGuids.has(a.guid);
-    const inactB  = _deactivatedGuids.has(b.guid);
-
-    // Determine recommended disable target
+    const meta   = ID_CONFLICT_META[relationship] || ID_CONFLICT_META.unknown;
+    const fidA   = fieldsData.indexOf(a);
+    const fidB   = fieldsData.indexOf(b);
+    const treesA = (treesByField[a.fieldId] || []).length;
+    const treesB = (treesByField[b.fieldId] || []).length;
+    const inactA = _deactivatedGuids.has(a.guid);
+    const inactB = _deactivatedGuids.has(b.guid);
     let recA = false, recB = false;
     if (relationship === 'true_dupe' || relationship === 'conflict') {
-      // Disable whichever was created later (higher createdon = more recent)
-      if (a.createdOn && b.createdOn) {
-        recA = a.createdOn > b.createdOn;
-        recB = !recA;
-      }
+      if (a.createdOn && b.createdOn) { recA = a.createdOn > b.createdOn; recB = !recA; }
     } else if (relationship === 'contains') {
-      // Disable the smaller polygon
       if (ma && mb) { recA = ma.area < mb.area; recB = !recA; }
     }
-
     const distStr = distM !== null
-      ? distM < 1000 ? `${Math.round(distM)} m` : `${(distM/1000).toFixed(2)} km`
-      : '—';
-
-    const disableBtn = (f, fidIdx, inactive, recommended) =>
+      ? distM < 1000 ? `${Math.round(distM)} m` : `${(distM/1000).toFixed(2)} km` : '—';
+    const disableBtn = (fidIdx, inactive, recommended) =>
       inactive
         ? `<span style="color:var(--muted);font-size:9px;font-family:var(--mono)">Disabled</span>`
         : `<button class="btn-deactivate" style="font-size:9px;padding:2px 7px;
             ${recommended ? 'border-color:#ef4444;color:#ef4444' : ''}"
-            onclick="idcDisable(${fidIdx}, this)"
-            title="${recommended ? '★ Recommended action' : 'Disable this record'}">
+            onclick="idcDisable(${fidIdx},this)"
+            title="${recommended ? '★ Recommended' : 'Disable this record'}">
             ${recommended ? '★ ⊘' : '⊘'}</button>`;
-
     return `
       <tr style="border-top:2px solid ${meta.color}33;background:${meta.bg}">
         <td style="padding:8px 6px 4px 8px;vertical-align:top" rowspan="2">
-          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${i+1}</span>
-        </td>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${i+1}</span></td>
         <td style="padding:8px 6px 4px;vertical-align:top;font-family:var(--mono);
-          font-size:10px;font-weight:700;color:var(--fg)" rowspan="2">
-          ${fieldId}
-        </td>
+          font-size:10px;font-weight:700;color:var(--fg)" rowspan="2">${fieldId}</td>
         <td style="padding:8px 6px 4px;vertical-align:top" rowspan="2">
           <span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:9px;
             font-family:var(--mono);font-weight:700;color:${meta.color};
-            background:${meta.bg};border:1px solid ${meta.color}44">
-            ${meta.label}</span>
+            background:${meta.bg};border:1px solid ${meta.color}44">${meta.label}</span>
           <div style="font-size:9px;color:var(--muted);font-family:var(--mono);
-            margin-top:4px;max-width:140px;line-height:1.4">${meta.action}</div>
-        </td>
-        <td style="padding:8px 6px 4px;vertical-align:top;text-align:center" rowspan="2">
-          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${distStr}</span>
-        </td>
+            margin-top:4px;max-width:140px;line-height:1.4">${meta.action}</div></td>
+        <td style="padding:8px 6px 4px;vertical-align:middle;text-align:center" rowspan="2">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${distStr}</span></td>
         <td style="padding:8px 6px 4px;vertical-align:top">
           <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Record A</div>
-          <div style="font-family:var(--mono);font-size:10px">${ma ? ma.area.toFixed(2)+' ha' : '—'} · ${ma ? ma.vertices+' verts' : '—'}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${a.createdOn || '—'}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${a.createdBy || '—'}</div>
-        </td>
+          <div style="font-family:var(--mono);font-size:10px">${ma?ma.area.toFixed(2)+' ha':'—'} · ${ma?ma.vertices+' verts':'—'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${a.createdOn||'—'} · ${a.createdBy||'—'}</div></td>
         <td style="padding:8px 6px 4px;text-align:right;vertical-align:top">
           <span style="font-family:var(--mono);font-size:11px;font-weight:700;
-            color:${treesA > 0 ? '#22c55e' : '#6b7280'}">${treesA}</span>
-          <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">trees</div>
-        </td>
+            color:${treesA>0?'#22c55e':'#6b7280'}">${treesA}</span>
+          <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">trees</div></td>
         <td style="padding:8px 6px 4px;text-align:center;vertical-align:top">
           <button class="btn-export" style="font-size:9px;padding:2px 6px"
-            onclick="openLb(${fidA})">🔍</button>
-        </td>
+            onclick="openLb(${fidA})">🔍</button></td>
         <td style="padding:8px 6px 4px;text-align:center;vertical-align:top">
-          ${disableBtn(a, fidA, inactA, recA)}
-        </td>
+          ${disableBtn(fidA,inactA,recA)}</td>
       </tr>
       <tr style="background:${meta.bg}">
         <td style="padding:2px 6px 8px;vertical-align:top">
           <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">Record B</div>
-          <div style="font-family:var(--mono);font-size:10px">${mb ? mb.area.toFixed(2)+' ha' : '—'} · ${mb ? mb.vertices+' verts' : '—'}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${b.createdOn || '—'}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${b.createdBy || '—'}</div>
-        </td>
+          <div style="font-family:var(--mono);font-size:10px">${mb?mb.area.toFixed(2)+' ha':'—'} · ${mb?mb.vertices+' verts':'—'}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${b.createdOn||'—'} · ${b.createdBy||'—'}</div></td>
         <td style="padding:2px 6px 8px;text-align:right;vertical-align:top">
           <span style="font-family:var(--mono);font-size:11px;font-weight:700;
-            color:${treesB > 0 ? '#22c55e' : '#6b7280'}">${treesB}</span>
-          <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">trees</div>
-        </td>
+            color:${treesB>0?'#22c55e':'#6b7280'}">${treesB}</span>
+          <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">trees</div></td>
         <td style="padding:2px 6px 8px;text-align:center;vertical-align:top">
           <button class="btn-export" style="font-size:9px;padding:2px 6px"
-            onclick="openLb(${fidB})">🔍</button>
-        </td>
+            onclick="openLb(${fidB})">🔍</button></td>
         <td style="padding:2px 6px 8px;text-align:center;vertical-align:top">
-          ${disableBtn(b, fidB, inactB, recB)}
-        </td>
+          ${disableBtn(fidB,inactB,recB)}</td>
       </tr>`;
   }).join('');
 }
@@ -3642,6 +3662,19 @@ function _idcTheadHTML() {
     <th style="width:52px;text-align:right">Trees</th>
     <th style="width:36px"></th>
     <th style="width:52px"></th>`;
+}
+
+function setIdcTypeFilter(type) {
+  _idcFilter.type = _idcFilter.type === type ? null : type; // toggle
+  renderIdConflicts();
+}
+function setIdcNoTreesFilter() {
+  _idcFilter.noTrees = !_idcFilter.noTrees;
+  renderIdConflicts();
+}
+function clearIdcFilter() {
+  _idcFilter = { type: null, noTrees: false };
+  renderIdConflicts();
 }
 
 async function idcDisable(fidIdx, btnEl) {
