@@ -452,6 +452,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Field ID Conflicts + GeoJSON</strong>
         <span>Pairs of active fields sharing the same ID but with different polygon coordinates</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportCollectorReport()">
+        <strong>📊 Collector Report (CSV)</strong>
+        <span>All fields for the current "Filter by intern" value — with full compliance metrics</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
@@ -559,6 +563,13 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         style="margin-top:5px;background:var(--bg);border:1px solid var(--border);
         border-radius:4px;color:var(--text);font-family:var(--mono);font-size:10px;
         padding:4px 6px;outline:none;width:100%"/>
+      <button id="btnCollectorExport" onclick="exportCollectorReport()"
+        style="display:none;margin-top:5px;width:100%;font-family:var(--mono);font-size:9px;
+        padding:4px 8px;background:rgba(26,107,60,0.12);border:1px solid rgba(26,107,60,0.4);
+        border-radius:4px;color:#22c55e;cursor:pointer;text-align:left"
+        title="Export all fields for this collector with compliance metrics">
+        📊 Export collector report (CSV)
+      </button>
     </div>
     <div class="sec">
       <span class="sec-lbl">Date registered</span>
@@ -1912,6 +1923,13 @@ function render() {
 
   currentPage = 1;
   renderPage();
+
+  // Show collector export button only when createdBy filter is active
+  const exportBtn = document.getElementById('btnCollectorExport');
+  if (exportBtn) {
+    exportBtn.style.display = qCreated ? 'block' : 'none';
+    if (qCreated) exportBtn.textContent = `📊 Export "${qCreated}" report (CSV)`;
+  }
 }
 
 function renderPage() {
@@ -4547,6 +4565,108 @@ function exportDuplicateTrees() {
   const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   downloadCSV(csv, `CCS_Duplicate_Tree_Registrations_${new Date().toISOString().slice(0,10)}.csv`);
   showToast(`⬇ Exporting ${rows.length.toLocaleString()} duplicate tree groups`, 'ok');
+}
+
+function exportCollectorReport() {
+  const qCreated = (document.getElementById('fltCreatedBy')?.value || '').toLowerCase().trim();
+
+  // Use visibleCache if filter is active, otherwise all fields
+  const fields = qCreated ? visibleCache : fieldsData;
+  if (!fields.length) { showToast('No fields to export — type a collector name first', 'info'); return; }
+
+  const collectorLabel = qCreated || 'all collectors';
+  const date = new Date().toISOString().slice(0, 10);
+
+  // ── Summary block (first rows) ────────────────────────────────────────
+  const totalTrees  = fields.reduce((s, f) => s + (treesByField[f.fieldId]||[]).length, 0);
+  let compliant = 0, tolerance = 0, review = 0, outside = 0;
+  fields.forEach(f => {
+    const cl = _classCache[f.fieldId];
+    if (cl) { compliant += cl.compliant||0; tolerance += cl.tolerance||0; review += cl.review||0; outside += cl.outside||0; }
+  });
+  const ovSet    = window._overlappingFieldIds || new Set();
+  const nearSet  = window._nearFieldIds        || new Set();
+  const totalPct = totalTrees > 0 ? ((compliant / totalTrees) * 100).toFixed(1) : '—';
+
+  const summaryRows = [
+    ['CCS Field Collector Report'],
+    [`Collector filter: ${collectorLabel}`],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [],
+    ['SUMMARY', ''],
+    ['Total fields',             fields.length],
+    ['Total trees',              totalTrees],
+    ['Compliant trees',          compliant],
+    ['Tolerance trees',          tolerance],
+    ['Review trees',             review],
+    ['Needs correction',         outside],
+    ['Verra compliance %',       totalPct + '%'],
+    ['Overlapping fields',       fields.filter(f => ovSet.has(f.fieldId)).length],
+    ['Near boundary fields',     fields.filter(f => nearSet.has(f.fieldId)).length],
+    ['Duplicate field IDs',      fields.filter(f => _duplicateFieldIds.has(f.fieldId)).length],
+    ['Zero-tree fields',         fields.filter(f => (treesByField[f.fieldId]||[]).length === 0).length],
+    [],
+    ['FIELD DETAIL'],
+  ];
+
+  // ── Field detail headers ───────────────────────────────────────────────
+  const headers = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Total Trees', 'Compliant', 'Tolerance', 'Review', 'Needs Correction',
+    'Verra %', 'Overlapping', 'Overlap Severity', 'Near Boundary',
+    'Duplicate Field ID', 'Zero Trees', 'Status'
+  ];
+
+  const detailRows = fields.map(f => {
+    const trees  = treesByField[f.fieldId] || [];
+    const cl     = _classCache[f.fieldId]  || {};
+    const m      = f.ring ? ringMetrics(f.ring) : null;
+    const pct    = trees.length > 0 ? (((cl.compliant||0) / trees.length) * 100).toFixed(1) + '%' : '—';
+    const sevMap = _overlapSeverity?.[f.fieldId] || {};
+    const sevVals = Object.values(sevMap);
+    const sev    = sevVals.includes('true_overlap') ? 'True overlap'
+                 : sevVals.includes('tip_over')     ? 'Corner/tip'
+                 : sevVals.includes('line_on')      ? 'Line on boundary'
+                 : sevVals.includes('touching')     ? 'Touching'
+                 : ovSet.has(f.fieldId)             ? 'Overlapping'
+                 : '';
+    const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+    return [
+      f.fieldId,
+      f.owner        || '',
+      f.createdOn    || '',
+      f.createdBy    || '',
+      f.modifiedBy   || '',
+      m ? m.area.toFixed(4)       : '',
+      m ? m.vertices              : '',
+      m ? m.cLat.toFixed(6)       : '',
+      m ? m.cLng.toFixed(6)       : '',
+      trees.length,
+      cl.compliant  || 0,
+      cl.tolerance  || 0,
+      cl.review     || 0,
+      cl.outside    || 0,
+      pct,
+      ovSet.has(f.fieldId)               ? 'Yes' : 'No',
+      sev,
+      nearSet.has(f.fieldId)             ? 'Yes' : 'No',
+      _duplicateFieldIds.has(f.fieldId)  ? 'Yes' : 'No',
+      trees.length === 0                 ? 'Yes' : 'No',
+      inactive                           ? 'Disabled (pending sync)' : 'Active'
+    ];
+  });
+
+  const allRows = [...summaryRows, headers, ...detailRows];
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+      : `"${String(r).replace(/"/g, '""')}"`
+  ).join('\n');
+
+  const slug = collectorLabel.replace(/\s+/g, '_').replace(/[^a-z0-9_]/gi, '').slice(0, 40);
+  downloadCSV(csv, `CCS_Collector_Report_${slug}_${date}.csv`);
+  showToast(`📊 Exported ${fields.length} fields for "${collectorLabel}"`, 'ok');
 }
 
 function downloadCSV(csv, filename) {
