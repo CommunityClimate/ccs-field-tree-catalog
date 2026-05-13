@@ -2902,11 +2902,16 @@ async function detectDuplicatesKPI() {
         const ma = a.ring ? ringMetrics(a.ring) : null;
         const mb = b.ring ? ringMetrics(b.ring) : null;
         let distM = null, relationship = 'unknown';
+        // Fingerprint: centroid + area + vertex count — identical = technical duplicate
+        const fpA = ma ? `${ma.cLat.toFixed(6)}|${ma.cLng.toFixed(6)}|${ma.area.toFixed(4)}|${ma.vertices}` : null;
+        const fpB = mb ? `${mb.cLat.toFixed(6)}|${mb.cLng.toFixed(6)}|${mb.area.toFixed(4)}|${mb.vertices}` : null;
         if (ma && mb) {
           distM = haversineM(ma.cLat, ma.cLng, mb.cLat, mb.cLng);
           const aCentreInB = b.ring ? pip(ma.cLat, ma.cLng, b.ring) : false;
           const bCentreInA = a.ring ? pip(mb.cLat, mb.cLng, a.ring) : false;
-          if (distM < 10) {
+          if (fpA && fpB && fpA === fpB) {
+            relationship = 'technical_dupe'; // identical fingerprint — mathematically certain copy
+          } else if (distM < 10) {
             relationship = 'true_dupe';      // < 10m — near-identical coordinates, submission error
           } else if (aCentreInB || bCentreInA) {
             relationship = 'contains';       // one polygon sits inside the other
@@ -2916,7 +2921,7 @@ async function detectDuplicatesKPI() {
             relationship = 'id_collision';   // > 2km — completely different locations
           }
         }
-        window._dupeIdPairs.push({ fieldId: id, a, b, ma, mb, distM, relationship });
+        window._dupeIdPairs.push({ fieldId: id, a, b, ma, mb, distM, relationship, fpA, fpB });
       }
     }
   });
@@ -3461,11 +3466,12 @@ let idConflictsActive = false;
 let _idcFilter = { type: null, noTrees: false }; // active filter state
 
 const ID_CONFLICT_META = {
-  true_dupe:    { label: '🔴 True Duplicate',      color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   action: 'Centroids under 10m apart — submission error. Disable the newer record.' },
-  contains:     { label: '🟡 One Contains Other',   color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', action: 'One boundary sits inside the other. Disable the smaller record, then verify the larger covers all trees.' },
-  conflict:     { label: '🟠 Version Conflict',     color: '#fb923c', bg: 'rgba(251,146,60,0.08)', action: 'Two different boundaries drawn for the same field. Neither may be correct — use Fix in Corrector to draw a single accurate boundary, then disable both originals.' },
-  id_collision: { label: '🔵 ID Collision',         color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', action: 'Polygons are over 2km apart. Same field ID assigned to two different locations — verify with field officer before any action.' },
-  unknown:      { label: '⬜ No Geometry',           color: '#6b7280', bg: 'rgba(107,114,128,0.08)', action: 'No polygon coordinates available — cannot classify.' }
+  technical_dupe: { label: '⚫ Technical Duplicate', color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', action: 'Identical field ID and polygon coordinates — pipeline copy error. Safe to bulk-disable the newer record. No field verification required.' },
+  true_dupe:      { label: '🔴 True Duplicate',      color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   action: 'Centroids under 10m apart — submission error. Disable the newer record.' },
+  contains:       { label: '🟡 One Contains Other',  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  action: 'One boundary sits inside the other. Disable the smaller record, then verify the larger covers all trees.' },
+  conflict:       { label: '🟠 Version Conflict',    color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  action: 'Two different boundaries drawn for the same field. Neither may be correct — use Fix in Corrector to draw a single accurate boundary, then disable both originals.' },
+  id_collision:   { label: '🔵 ID Collision',        color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  action: 'Polygons are over 2km apart. Same field ID assigned to two different locations — verify with field officer before any action.' },
+  unknown:        { label: '⬜ No Geometry',          color: '#6b7280', bg: 'rgba(107,114,128,0.08)', action: 'No polygon coordinates available — cannot classify.' }
 };
 
 function toggleIdConflicts() {
@@ -3568,6 +3574,11 @@ function renderIdConflicts() {
           .map(([k,m]) => `<span style="color:${m.color};font-weight:700;font-size:10px">${counts[k]} ${m.label}</span>`)
           .join('<span style="color:var(--border)"> | </span>')}
       <span style="flex:1"></span>
+      ${counts['technical_dupe'] > 0
+        ? `<button class="btn-deactivate" onclick="bulkDisableTechnicalDupes()"
+            style="font-size:9px;padding:3px 10px;margin-left:8px"
+            title="Disable all ${counts['technical_dupe']} technical duplicate records — no review required">
+            ⚫ Bulk disable Technical Duplicates (${counts['technical_dupe']})</button>` : ''}
       <button class="btn-export" onclick="exportIdConflictsCSV()"
         style="font-size:9px;padding:3px 10px">⬇ Export all (CSV + GeoJSON)</button>
     </div>${filterRow}`;
@@ -3591,9 +3602,10 @@ function renderIdConflicts() {
     const inactA = _deactivatedGuids.has(a.guid);
     const inactB = _deactivatedGuids.has(b.guid);
     let recA = false, recB = false;
-    if (relationship === 'true_dupe') {
-      // Submission error — disable the newer record
+    if (relationship === 'technical_dupe' || relationship === 'true_dupe') {
+      // Certain copy — disable the newer record
       if (a.createdOn && b.createdOn) { recA = a.createdOn > b.createdOn; recB = !recA; }
+      else { recB = true; } // default to B if no dates
     } else if (relationship === 'contains') {
       // Disable the smaller polygon
       if (ma && mb) { recA = ma.area < mb.area; recB = !recA; }
@@ -3702,6 +3714,51 @@ async function idcDisable(fidIdx, btnEl) {
   }
 }
 
+async function bulkDisableTechnicalDupes() {
+  const pairs = (window._dupeIdPairs || []).filter(p => p.relationship === 'technical_dupe');
+  if (!pairs.length) { showToast('No technical duplicates found', 'info'); return; }
+
+  // For each pair, pick the newer record (or B if dates unavailable)
+  const toDisable = pairs.map(({ a, b }) => {
+    if (a.createdOn && b.createdOn) return a.createdOn > b.createdOn ? a : b;
+    return b;
+  }).filter(f => !_deactivatedGuids.has(f.guid)); // skip already disabled
+
+  if (!toDisable.length) {
+    showToast('All technical duplicates already disabled', 'ok'); return;
+  }
+
+  if (!confirm(
+    `⚫ Bulk disable ${toDisable.length} Technical Duplicate record${toDisable.length>1?'s':''}?\n\n` +
+    `These records have identical field IDs and polygon coordinates.\n` +
+    `The older record will be kept active in each case.\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const progressToast = (n, total) =>
+    showToast(`⚫ Disabling technical duplicates… ${n}/${total}`, 'info');
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < toDisable.length; i++) {
+    const f = toDisable[i];
+    if (i % 5 === 0) progressToast(i, toDisable.length);
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Technical dupe disable failed for ${f.fieldId} (${f.guid}):`, e.message);
+      fail++;
+    }
+  }
+
+  const msg = fail > 0
+    ? `⚫ ${ok} disabled · ${fail} failed — check console`
+    : `⚫ ${ok} technical duplicate${ok>1?'s':''} disabled`;
+  showToast(msg, fail > 0 ? 'warn' : 'ok');
+  renderIdConflicts(); // refresh to show updated state
+}
+
 function exportIdConflictsCSV() {
   const pairs = window._dupeIdPairs || [];
   if (!pairs.length) { showToast('No ID conflicts to export', 'info'); return; }
@@ -3716,7 +3773,7 @@ function exportIdConflictsCSV() {
   const rows = [];
   pairs.forEach((pair, i) => {
     const { fieldId, a, b, ma, mb, distM, relationship } = pair;
-    const meta    = ID_CONFLICT_META[relationship] || ID_CONFLICT_META.unknown;
+    const meta = ID_CONFLICT_META[relationship] || ID_CONFLICT_META.unknown;
     const distStr = distM !== null
       ? distM < 1000 ? `${Math.round(distM)} m` : `${(distM/1000).toFixed(2)} km`
       : '';
