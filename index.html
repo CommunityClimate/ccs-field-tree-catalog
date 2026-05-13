@@ -570,6 +570,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         title="Export all fields for this collector with compliance metrics">
         📊 Export collector report (CSV)
       </button>
+      <div id="collectorFilterWarn" style="display:none;margin-top:4px;padding:4px 8px;
+        background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);
+        border-radius:4px;font-family:var(--mono);font-size:9px;color:#f59e0b;
+        line-height:1.5"></div>
     </div>
     <div class="sec">
       <span class="sec-lbl">Date registered</span>
@@ -1926,9 +1930,44 @@ function render() {
 
   // Show collector export button only when createdBy filter is active
   const exportBtn = document.getElementById('btnCollectorExport');
+  const warnEl    = document.getElementById('collectorFilterWarn');
   if (exportBtn) {
     exportBtn.style.display = qCreated ? 'block' : 'none';
-    if (qCreated) exportBtn.textContent = `📊 Export "${qCreated}" report (CSV)`;
+    if (qCreated) {
+      // Cache status indicator
+      const fieldsWithTrees = fieldsData.filter(f => f.ring && (treesByField[f.fieldId]||[]).length > 0).length;
+      const cacheReady      = !_cacheBuilding && Object.keys(_classCache).length >= fieldsWithTrees * 0.95;
+      const cacheLabel      = cacheReady ? '' : ' ⏳';
+      exportBtn.textContent = `📊 Export "${qCreated}" report${cacheLabel} (CSV)`;
+      exportBtn.style.borderColor = cacheReady ? 'rgba(26,107,60,0.4)' : 'rgba(245,158,11,0.5)';
+      exportBtn.style.color       = cacheReady ? '#22c55e' : '#f59e0b';
+      exportBtn.title = cacheReady
+        ? `Export all fields for "${qCreated}" with full compliance metrics`
+        : 'Compliance cache still building — export now may show incomplete figures. Wait for ⏳ to clear.';
+    }
+  }
+
+  // Partial match warning — fires when typed term matches a subset of a longer intern code
+  if (warnEl) {
+    if (qCreated && qCreated.length >= 2) {
+      // Find all distinct createdBy values that CONTAIN the query
+      const matchingCodes = new Set();
+      fieldsData.forEach(f => {
+        const cb = (f.createdBy  || '').toLowerCase();
+        const mb = (f.modifiedBy || '').toLowerCase();
+        if (cb.includes(qCreated) && cb !== qCreated) matchingCodes.add(f.createdBy);
+        if (mb.includes(qCreated) && mb !== qCreated) matchingCodes.add(f.modifiedBy);
+      });
+      if (matchingCodes.size > 0) {
+        const examples = [...matchingCodes].slice(0, 3).join(', ');
+        warnEl.style.display = 'block';
+        warnEl.textContent   = `⚠ "${qCreated}" also partially matches: ${examples}${matchingCodes.size > 3 ? ` +${matchingCodes.size - 3} more` : ''} — use the full code for exact results`;
+      } else {
+        warnEl.style.display = 'none';
+      }
+    } else {
+      warnEl.style.display = 'none';
+    }
   }
 }
 
@@ -2419,11 +2458,13 @@ function setKpiFilter(value) {
 }
 
 function clearFilters() {
-  document.getElementById('fltStatus').value = '';
-  document.getElementById('fltSearch').value = '';
+  document.getElementById('fltStatus').value    = '';
+  document.getElementById('fltSearch').value    = '';
   document.getElementById('fltCreatedBy').value = '';
-  document.getElementById('fltDateFrom').value = '';
-  document.getElementById('fltDateTo').value   = '';
+  document.getElementById('fltDateFrom').value  = '';
+  document.getElementById('fltDateTo').value    = '';
+  const warnEl = document.getElementById('collectorFilterWarn');
+  if (warnEl) warnEl.style.display = 'none';
   render();
 }
 
@@ -4569,6 +4610,17 @@ function exportDuplicateTrees() {
 
 function exportCollectorReport() {
   const qCreated = (document.getElementById('fltCreatedBy')?.value || '').toLowerCase().trim();
+
+  // Cache readiness check
+  const fieldsWithTrees = fieldsData.filter(f => f.ring && (treesByField[f.fieldId]||[]).length > 0).length;
+  const cacheReady      = !_cacheBuilding && Object.keys(_classCache).length >= fieldsWithTrees * 0.95;
+  if (!cacheReady) {
+    if (!confirm(
+      '⏳ Compliance figures are still being calculated.\n\n' +
+      'Exporting now will show incomplete Compliant / Tolerance / Review / Correction counts.\n\n' +
+      'Click OK to export anyway, or Cancel and wait a few seconds for the cache to finish.'
+    )) return;
+  }
 
   // Use visibleCache if filter is active, otherwise all fields
   const fields = qCreated ? visibleCache : fieldsData;
