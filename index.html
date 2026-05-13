@@ -555,6 +555,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
+      <input type="text" id="fltCreatedBy" placeholder="Filter by intern / created by…" oninput="render()"
+        style="margin-top:5px;background:var(--bg);border:1px solid var(--border);
+        border-radius:4px;color:var(--text);font-family:var(--mono);font-size:10px;
+        padding:4px 6px;outline:none;width:100%"/>
     </div>
     <div class="sec">
       <span class="sec-lbl">Date registered</span>
@@ -1847,8 +1851,9 @@ function invalidateCache() {
 }
 
 function render() {
-  const filter = document.getElementById('fltStatus').value;
-  const q      = document.getElementById('fltSearch').value.toLowerCase().trim();
+  const filter    = document.getElementById('fltStatus').value;
+  const q         = document.getElementById('fltSearch').value.toLowerCase().trim();
+  const qCreated  = (document.getElementById('fltCreatedBy')?.value || '').toLowerCase().trim();
 
   if (!fieldsData.length) return;
 
@@ -1858,6 +1863,8 @@ function render() {
   visibleCache = fieldsData.filter(f => {
     if (q && !f.fieldId.toLowerCase().includes(q) &&
               !f.owner.toLowerCase().includes(q)) return false;
+    if (qCreated && !(f.createdBy || '').toLowerCase().includes(qCreated) &&
+                   !(f.modifiedBy || '').toLowerCase().includes(qCreated)) return false;
     if (dateFrom && f.createdOn && f.createdOn < dateFrom) return false;
     if (dateTo   && f.createdOn && f.createdOn > dateTo)   return false;
 
@@ -2396,6 +2403,7 @@ function setKpiFilter(value) {
 function clearFilters() {
   document.getElementById('fltStatus').value = '';
   document.getElementById('fltSearch').value = '';
+  document.getElementById('fltCreatedBy').value = '';
   document.getElementById('fltDateFrom').value = '';
   document.getElementById('fltDateTo').value   = '';
   render();
