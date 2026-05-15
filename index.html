@@ -5984,9 +5984,10 @@ function renderBulkPage() {
       overflow:hidden;background:var(--card);opacity:${opacity};
       ${approved ? 'box-shadow:0 0 0 1px #22c55e33' : ''}">
 
-      <!-- Card header -->
-      <div style="padding:7px 10px;border-bottom:1px solid var(--border);
-        display:flex;align-items:center;justify-content:space-between">
+      <!-- Card header — click to open lightbox -->
+      <div onclick="openLb(${fidIdx})" style="padding:7px 10px;border-bottom:1px solid var(--border);
+        display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+        title="Open lightbox">
         <div>
           <div style="font-family:var(--mono);font-size:9px;font-weight:700;
             color:var(--fg)">${f.fieldId}</div>
@@ -5997,14 +5998,14 @@ function renderBulkPage() {
           color:${diag.c}">${diag.t}</span>
       </div>
 
-      <!-- SVG previews -->
+      <!-- SVG previews — click to open lightbox -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:6px">
-        <div>
+        <div onclick="openLb(${fidIdx})" style="cursor:pointer" title="Open in lightbox">
           <div style="font-family:var(--mono);font-size:8px;color:var(--muted);
             margin-bottom:3px;text-align:center">BEFORE</div>
           ${svgBefore}
         </div>
-        <div>
+        <div onclick="openLb(${fidIdx})" style="cursor:pointer" title="Open in lightbox">
           <div style="font-family:var(--mono);font-size:8px;color:var(--muted);
             margin-bottom:3px;text-align:center">AFTER</div>
           ${svgAfter}
@@ -6036,11 +6037,7 @@ function renderBulkPage() {
           background:${skipped?'rgba(107,114,128,0.15)':'transparent'};
           border:1px solid var(--border);color:var(--muted)">
           ${skipped ? '— Skipped' : '✗ Skip'}</button>
-        <button onclick="openLb(${fieldsData.indexOf(f)})"
-          style="font-family:var(--mono);font-size:9px;padding:4px 8px;
-          border-radius:3px;cursor:pointer;background:transparent;
-          border:1px solid var(--border);color:var(--muted)"
-          title="Open lightbox">🔍</button>
+
       </div>
     </div>`;
   }).join('');
