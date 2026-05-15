@@ -680,6 +680,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnIdConflicts" onclick="toggleIdConflicts()"
         style="color:#fb923c;border-color:rgba(251,146,60,0.3)"
         title="Show fields sharing the same ID but with different polygon coordinates">⊗ ID Conflicts</button>
+      <button class="view-btn" id="btnBulkCorrect" onclick="toggleBulkCorrect()"
+        style="color:#22c55e;border-color:rgba(34,197,94,0.3)"
+        title="Bulk Smart Corrector — review before/after polygon corrections in a grid">⚙️ Bulk Correct</button>
       <button class="view-btn" id="btnGoodExample" onclick="toggleGoodExample()"
         style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
         title="Find clean simple fields — good for screenshots and demonstrations">⭐ Example</button>
@@ -3190,6 +3193,7 @@ function toggleQueue() {
     if (emptyOverlapsActive) toggleEmptyOverlaps();
     if (goodExampleActive)   toggleGoodExample();
     if (idConflictsActive)   toggleIdConflicts();
+    if (_bulkCorrectActive)  toggleBulkCorrect();
     queue.classList.add('active');
     grid.classList.add('hidden');
     if (pager) pager.style.display = 'none';
@@ -5618,6 +5622,514 @@ function acceptSmartCorrection() {
 }
 
 // Show Smart Correct button only when field has overlapping neighbours
+
+
+// ── BULK SMART CORRECTOR ─────────────────────────────────────────────────
+// Grid view showing before/after polygon previews for all overlapping fields.
+// User approves or skips each correction, then writes approved ones to Fieldforce.
+
+let _bulkCorrectActive  = false;
+let _bulkQueue          = [];   // [{field, neighbour, diagnosis, correctedCoords, overlapHa, method, confidence, fieldToCorrect, approved}]
+let _bulkPage           = 0;
+let _bulkCardSize       = 'medium'; // 'medium' | 'large'
+const BULK_PAGE_SIZE    = 24;
+// Fieldforce GeoJSON field name — update if schema changes
+const FIELD_GEOJSON_KEY = 'ccs_fieldgeojson_field';
+
+function toggleBulkCorrect() {
+  _bulkCorrectActive = !_bulkCorrectActive;
+  const btn   = document.getElementById('btnBulkCorrect');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+  btn.classList.toggle('active', _bulkCorrectActive);
+  if (_bulkCorrectActive) {
+    if (queueActive)       toggleQueue();
+    if (emptyOverlapsActive) toggleEmptyOverlaps();
+    if (idConflictsActive) toggleIdConflicts();
+    if (goodExampleActive) toggleGoodExample();
+    btn.style.background = 'rgba(34,197,94,0.12)';
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    document.getElementById('catCount').textContent =
+      '⚙️ Bulk Smart Corrector — before / after polygon review';
+    _bulkQueue = [];
+    _bulkPage  = 0;
+    renderBulkCorrectView();
+  } else {
+    btn.style.background = '';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+    renderPage();
+  }
+}
+
+function renderBulkCorrectView() {
+  // Replace queue table with our custom grid layout
+  const wrap = document.getElementById('queueWrap');
+  wrap.innerHTML = `
+    <!-- Summary / controls bar -->
+    <div id="bcSummary" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);
+      font-size:10px;background:var(--card)">
+      <span id="bcStatus" style="color:var(--muted)">Processing overlapping fields…</span>
+      <span style="flex:1"></span>
+      <button onclick="setBulkCardSize('medium')" id="bcSizeMed"
+        style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;
+        border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.12);
+        color:#22c55e;cursor:pointer">Medium</button>
+      <button onclick="setBulkCardSize('large')" id="bcSizeLg"
+        style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;
+        border:1px solid var(--border);background:transparent;
+        color:var(--muted);cursor:pointer">Large</button>
+      <button id="bcBtnApproveAll" onclick="approveAllVisible()"
+        style="font-family:var(--mono);font-size:9px;padding:2px 10px;border-radius:3px;
+        border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);
+        color:#22c55e;cursor:pointer;display:none">✓ Approve all visible</button>
+      <button id="bcBtnWrite" onclick="writeApprovedCorrections()" disabled
+        style="font-family:var(--mono);font-size:9px;padding:3px 12px;border-radius:3px;
+        border:1px solid rgba(56,189,248,0.4);background:rgba(56,189,248,0.1);
+        color:#38bdf8;cursor:pointer;opacity:0.4;font-weight:700">
+        ⬆ Write 0 approved to Fieldforce</button>
+    </div>
+
+    <!-- Card grid -->
+    <div id="bcGrid" style="padding:12px;overflow-y:auto;max-height:calc(100vh - 280px);
+      display:grid;gap:12px;
+      grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
+        grid-column:1/-1;text-align:center;padding:32px 0">
+        ⏳ Analysing overlapping fields…
+      </div>
+    </div>
+
+    <!-- Load more -->
+    <div id="bcLoadMore" style="display:none;text-align:center;padding:12px">
+      <button onclick="loadMoreBulkCorrections()"
+        style="font-family:var(--mono);font-size:10px;padding:6px 24px;
+        border:1px solid var(--border);background:var(--card);
+        color:var(--muted);border-radius:4px;cursor:pointer">
+        Load more fields</button>
+    </div>`;
+
+  // Process first batch asynchronously
+  setTimeout(() => processBulkBatch(), 50);
+}
+
+function processBulkBatch() {
+  const ovSet    = window._overlappingFieldIds;
+  if (!ovSet || ovSet.size === 0) {
+    document.getElementById('bcStatus').textContent = 'No overlapping fields found.';
+    document.getElementById('bcGrid').innerHTML = `
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
+        grid-column:1/-1;text-align:center;padding:32px 0">
+        No overlapping fields detected.</div>`;
+    return;
+  }
+
+  // Build candidate list on first call
+  if (_bulkQueue.length === 0 && _bulkPage === 0) {
+    const candidates = fieldsData.filter(f =>
+      ovSet.has(f.fieldId) && f.ring &&
+      (_overlapNeighbours[f.fieldId]||[]).some(nid => {
+        const nf = fieldsData.find(x => x.fieldId === nid);
+        return nf && nf.ring;
+      })
+    );
+    // Sort by severity then overlap count
+    const SEV = { true_overlap:0, tip_over:1, line_on:2, touching:3 };
+    candidates.sort((a, b) => {
+      const sevA = Math.min(...Object.values(_overlapSeverity[a.fieldId]||{true_overlap:3}).map(s=>SEV[s]??3));
+      const sevB = Math.min(...Object.values(_overlapSeverity[b.fieldId]||{true_overlap:3}).map(s=>SEV[s]??3));
+      return sevA - sevB || (_overlapNeighbours[b.fieldId]||[]).length - (_overlapNeighbours[a.fieldId]||[]).length;
+    });
+
+    // Run turf analysis on each candidate and build queue
+    candidates.forEach(f => {
+      const nbrId  = (_overlapNeighbours[f.fieldId]||[]).find(nid => {
+        const nf = fieldsData.find(x => x.fieldId === nid);
+        return nf && nf.ring;
+      });
+      if (!nbrId) return;
+      const nbr = fieldsData.find(x => x.fieldId === nbrId);
+      if (!nbr) return;
+
+      const entry = analyseOverlapPair(f, nbr);
+      _bulkQueue.push(entry);
+    });
+  }
+
+  renderBulkPage();
+}
+
+function analyseOverlapPair(f, nbr) {
+  const toTurf = ring => {
+    const coords = ring.map(c => [c[1], c[0]]);
+    if (coords[0][0] !== coords[coords.length-1][0] ||
+        coords[0][1] !== coords[coords.length-1][1]) coords.push(coords[0]);
+    return turf.polygon([coords]);
+  };
+
+  let diagnosis = 'minor_overlap', method = 'Clip', confidence = 'high';
+  let fieldToCorrect = f.fieldId, correctedCoords = null, overlapHa = 0;
+  let convexRatioA = 1, explanation = '';
+
+  try {
+    const polyA = toTurf(f.ring);
+    const polyB = toTurf(nbr.ring);
+    const mA    = ringMetrics(f.ring);
+    const mB    = nbr.ring ? ringMetrics(nbr.ring) : null;
+    const areaA = mA ? mA.area : 0;
+    const areaB = mB ? mB.area : 0;
+
+    // Intersection
+    const inter = turf.intersect(polyA, polyB);
+    if (!inter) return { f, nbr, diagnosis:'no_overlap', correctedCoords:null,
+      overlapHa:0, method:'None', confidence:'high', fieldToCorrect:f.fieldId,
+      explanation:'No geometric intersection found.', convexRatioA:1, approved:false, skipped:false };
+
+    overlapHa = turf.area(inter) / 10000;
+    const overlapRatio = overlapHa / Math.min(areaA, areaB);
+
+    // Convexity
+    try {
+      const hull = turf.convex(polyA);
+      if (hull) { const ha = turf.area(hull)/10000; convexRatioA = ha > 0 ? areaA/ha : 1; }
+    } catch(e) {}
+
+    if (convexRatioA < 0.65) {
+      diagnosis      = 'malformed_boundary';
+      method         = 'Convex hull';
+      confidence     = 'medium';
+      fieldToCorrect = f.fieldId;
+      explanation    = `Boundary shape is highly non-convex (ratio: ${convexRatioA.toFixed(2)}). Convex hull applied.`;
+      try {
+        const hull = turf.convex(polyA);
+        if (hull) correctedCoords = hull.geometry.coordinates[0];
+      } catch(e) {}
+    } else if (overlapRatio > 0.8) {
+      diagnosis      = 'contained';
+      method         = 'Disable smaller';
+      confidence     = 'high';
+      fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
+      explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly contained within its neighbour.`;
+    } else {
+      diagnosis      = 'minor_overlap';
+      method         = 'Clip';
+      confidence     = 'high';
+      fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
+      explanation    = `Overlap: ${overlapHa.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}%).`;
+      try {
+        const toClip  = areaA <= areaB ? polyA : polyB;
+        const clipper = areaA <= areaB ? polyB  : polyA;
+        const diff    = turf.difference(toClip, clipper);
+        if (diff) correctedCoords = diff.geometry.coordinates[0];
+      } catch(e) { confidence = 'low'; explanation += ' Clip failed.'; }
+    }
+  } catch(e) {
+    diagnosis = 'error'; explanation = e.message;
+  }
+
+  return { f, nbr, diagnosis, correctedCoords, overlapHa, method, confidence,
+           fieldToCorrect, explanation, convexRatioA, approved:false, skipped:false };
+}
+
+function renderBulkPage() {
+  const visibleEntries = _bulkQueue.filter(e => e.diagnosis !== 'no_overlap' && e.diagnosis !== 'error');
+  const page = visibleEntries.slice(0, (_bulkPage + 1) * BULK_PAGE_SIZE);
+  const remaining = visibleEntries.length - page.length;
+
+  const approvedCount = _bulkQueue.filter(e => e.approved).length;
+  const cardW = _bulkCardSize === 'large' ? 420 : 280;
+  const svgH  = _bulkCardSize === 'large' ? 140 : 100;
+  const svgW  = _bulkCardSize === 'large' ? 190 : 128;
+
+  document.getElementById('bcStatus').innerHTML =
+    `<span style="color:var(--fg);font-weight:700">${visibleEntries.length.toLocaleString()}</span>
+     <span style="color:var(--muted)"> fields analysed</span>
+     &nbsp;·&nbsp;
+     <span style="color:#22c55e;font-weight:700">${approvedCount}</span>
+     <span style="color:var(--muted)"> approved</span>
+     &nbsp;·&nbsp;
+     <span style="color:var(--muted)">${_bulkQueue.filter(e=>e.skipped).length} skipped</span>`;
+
+  // Update write button
+  const writeBtn = document.getElementById('bcBtnWrite');
+  writeBtn.disabled = approvedCount === 0;
+  writeBtn.style.opacity = approvedCount > 0 ? '1' : '0.4';
+  writeBtn.textContent = `\u2b06 Write ${approvedCount} approved to Fieldforce`;
+
+  document.getElementById('bcBtnApproveAll').style.display = page.length > 0 ? 'inline-block' : 'none';
+
+  // Update grid columns
+  const gridEl = document.getElementById('bcGrid');
+  gridEl.style.gridTemplateColumns = `repeat(auto-fill,minmax(${cardW}px,1fr))`;
+
+  // Render cards
+  const DIAG_LABELS = {
+    minor_overlap:    { t:'⚠ Minor overlap',    c:'#f59e0b' },
+    malformed_boundary:{ t:'✗ Malformed',        c:'#ef4444' },
+    contained:        { t:'🟡 Contains Other',   c:'#f59e0b' },
+  };
+
+  gridEl.innerHTML = page.map((entry, i) => {
+    const { f, nbr, diagnosis, correctedCoords, overlapHa, method, confidence,
+            fieldToCorrect, explanation, approved, skipped } = entry;
+    const diag     = DIAG_LABELS[diagnosis] || { t: diagnosis, c:'#6b7280' };
+    const confCol  = confidence === 'high' ? '#22c55e' : confidence === 'medium' ? '#f59e0b' : '#ef4444';
+    const trees    = (treesByField[f.fieldId]||[]).length;
+    const mA       = f.ring ? ringMetrics(f.ring) : null;
+    const inactive = _deactivatedGuids.has(f.guid);
+
+    // SVG polygon previews
+    // Use bounding box of BOTH rings for consistent scale
+    const allPts = [...(f.ring||[]), ...(nbr.ring||[])];
+    const lats   = allPts.map(c => c[0]), lngs = allPts.map(c => c[1]);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    const pad    = 6;
+
+    const toSVGpt = ([lat, lng]) => {
+      const x = maxLng === minLng ? svgW/2 : pad + ((lng - minLng)/(maxLng - minLng)) * (svgW - pad*2);
+      const y = maxLat === minLat ? svgH/2 : pad + ((maxLat - lat)/(maxLat - minLat)) * (svgH - pad*2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    };
+
+    const ringToPoints = ring => ring.map(c => toSVGpt(c)).join(' ');
+
+    const svgBefore = `<svg viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg"
+      style="width:100%;height:${svgH}px;background:#0a0a14;border-radius:3px">
+      <polygon points="${ringToPoints(nbr.ring)}" fill="rgba(245,158,11,0.15)"
+        stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <polygon points="${ringToPoints(f.ring)}" fill="rgba(56,189,248,0.15)"
+        stroke="#38bdf8" stroke-width="2"/>
+    </svg>`;
+
+    const svgAfter = correctedCoords ? (() => {
+      // correctedCoords is [[lng,lat],...] — convert to [lat,lng]
+      const corrRing = correctedCoords.map(c => [c[1], c[0]]);
+      return `<svg viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg"
+        style="width:100%;height:${svgH}px;background:#0a0a14;border-radius:3px">
+        <polygon points="${ringToPoints(nbr.ring)}" fill="rgba(245,158,11,0.1)"
+          stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" opacity="0.6"/>
+        <polygon points="${ringToPoints(corrRing)}" fill="rgba(34,197,94,0.2)"
+          stroke="#22c55e" stroke-width="2"/>
+      </svg>`;
+    })() : `<div style="width:100%;height:${svgH}px;background:#0a0a14;border-radius:3px;
+      display:flex;align-items:center;justify-content:center;
+      font-family:var(--mono);font-size:9px;color:var(--muted)">
+      ${diagnosis === 'contained' ? 'Disable smaller field' : 'No correction computed'}
+    </div>`;
+
+    const borderColor = approved ? '#22c55e' : skipped ? '#374151' : 'var(--border)';
+    const opacity     = skipped  ? '0.4' : '1';
+    const queueIdx    = _bulkQueue.indexOf(entry);
+
+    return `<div style="border:1px solid ${borderColor};border-radius:6px;
+      overflow:hidden;background:var(--card);opacity:${opacity};
+      ${approved ? 'box-shadow:0 0 0 1px #22c55e33' : ''}">
+
+      <!-- Card header -->
+      <div style="padding:7px 10px;border-bottom:1px solid var(--border);
+        display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;font-weight:700;
+            color:var(--fg)">${f.fieldId}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--muted)">
+            ${f.owner||'—'} · ${trees} trees · ${mA?mA.area.toFixed(2)+' ha':'—'}</div>
+        </div>
+        <span style="font-family:var(--mono);font-size:8px;font-weight:700;
+          color:${diag.c}">${diag.t}</span>
+      </div>
+
+      <!-- SVG previews -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:6px">
+        <div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--muted);
+            margin-bottom:3px;text-align:center">BEFORE</div>
+          ${svgBefore}
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--muted);
+            margin-bottom:3px;text-align:center">AFTER</div>
+          ${svgAfter}
+        </div>
+      </div>
+
+      <!-- Details -->
+      <div style="padding:5px 10px;border-top:1px solid var(--border);
+        font-family:var(--mono);font-size:8px;color:var(--muted);line-height:1.7">
+        <span style="color:var(--fg)">${method}</span> ·
+        <span style="color:${confCol}">${confidence} confidence</span>
+        ${overlapHa > 0 ? ` · ${overlapHa.toFixed(4)} ha overlap` : ''}
+        <br>${explanation}
+      </div>
+
+      <!-- Action buttons -->
+      <div style="padding:6px 8px;border-top:1px solid var(--border);
+        display:flex;gap:6px">
+        <button onclick="approveBulkEntry(${queueIdx})"
+          style="flex:1;font-family:var(--mono);font-size:9px;padding:4px;
+          border-radius:3px;cursor:pointer;font-weight:700;
+          background:${approved?'rgba(34,197,94,0.25)':'rgba(34,197,94,0.08)'};
+          border:1px solid ${approved?'#22c55e':'rgba(34,197,94,0.3)'};
+          color:#22c55e">
+          ${approved ? '✓ Approved' : '✓ Approve'}</button>
+        <button onclick="skipBulkEntry(${queueIdx})"
+          style="flex:1;font-family:var(--mono);font-size:9px;padding:4px;
+          border-radius:3px;cursor:pointer;
+          background:${skipped?'rgba(107,114,128,0.15)':'transparent'};
+          border:1px solid var(--border);color:var(--muted)">
+          ${skipped ? '— Skipped' : '✗ Skip'}</button>
+        <button onclick="openLb(${fieldsData.indexOf(f)})"
+          style="font-family:var(--mono);font-size:9px;padding:4px 8px;
+          border-radius:3px;cursor:pointer;background:transparent;
+          border:1px solid var(--border);color:var(--muted)"
+          title="Open lightbox">🔍</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Load more button
+  const loadMore = document.getElementById('bcLoadMore');
+  loadMore.style.display = remaining > 0 ? 'block' : 'none';
+  if (remaining > 0) {
+    loadMore.querySelector('button').textContent =
+      `Load more (${remaining} remaining)`;
+  }
+}
+
+function setBulkCardSize(size) {
+  _bulkCardSize = size;
+  document.getElementById('bcSizeMed').style.background =
+    size === 'medium' ? 'rgba(34,197,94,0.12)' : 'transparent';
+  document.getElementById('bcSizeMed').style.borderColor =
+    size === 'medium' ? 'rgba(34,197,94,0.4)' : 'var(--border)';
+  document.getElementById('bcSizeMed').style.color =
+    size === 'medium' ? '#22c55e' : 'var(--muted)';
+  document.getElementById('bcSizeLg').style.background =
+    size === 'large' ? 'rgba(34,197,94,0.12)' : 'transparent';
+  document.getElementById('bcSizeLg').style.borderColor =
+    size === 'large' ? 'rgba(34,197,94,0.4)' : 'var(--border)';
+  document.getElementById('bcSizeLg').style.color =
+    size === 'large' ? '#22c55e' : 'var(--muted)';
+  renderBulkPage();
+}
+
+function approveBulkEntry(idx) {
+  if (!_bulkQueue[idx]) return;
+  _bulkQueue[idx].approved = !_bulkQueue[idx].approved;
+  _bulkQueue[idx].skipped  = false;
+  renderBulkPage();
+}
+
+function skipBulkEntry(idx) {
+  if (!_bulkQueue[idx]) return;
+  _bulkQueue[idx].skipped  = !_bulkQueue[idx].skipped;
+  _bulkQueue[idx].approved = false;
+  renderBulkPage();
+}
+
+function approveAllVisible() {
+  const visible = _bulkQueue.filter(e => e.diagnosis !== 'no_overlap' && e.diagnosis !== 'error')
+                             .slice(0, (_bulkPage + 1) * BULK_PAGE_SIZE);
+  visible.forEach(e => {
+    if (!e.skipped && e.correctedCoords) { e.approved = true; }
+  });
+  renderBulkPage();
+}
+
+function loadMoreBulkCorrections() {
+  _bulkPage++;
+  renderBulkPage();
+}
+
+async function writeApprovedCorrections() {
+  const approved = _bulkQueue.filter(e => e.approved && e.correctedCoords);
+  if (!approved.length) { showToast('No approved corrections to write', 'info'); return; }
+
+  if (!confirm(
+    `Write ${approved.length} corrected polygon${approved.length>1?'s':''} to Fieldforce?\n\n` +
+    `This will update the boundary coordinates in Fieldforce for each approved field.\n` +
+    `The original coordinates are preserved in the Print record.\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const writeBtn = document.getElementById('bcBtnWrite');
+  writeBtn.disabled = true;
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < approved.length; i++) {
+    const entry = approved[i];
+    const f     = entry.f;
+    writeBtn.textContent = `Writing ${i+1}/${approved.length}…`;
+    try {
+      await patchFieldGeometry(f.guid, f.fieldId, entry.correctedCoords);
+      entry.approved = false; // mark as written — remove from queue
+      entry.skipped  = true;
+      ok++;
+    } catch(e) {
+      console.warn(`Geometry patch failed for ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  writeBtn.disabled = false;
+  showToast(
+    fail > 0
+      ? `⬆ ${ok} written · ${fail} failed — check console`
+      : `⬆ ${ok} correction${ok>1?'s':''} written to Fieldforce`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+  renderBulkPage();
+}
+
+async function patchFieldGeometry(guid, fieldId, correctedCoords) {
+  // correctedCoords = [[lng,lat],...] from turf — convert to GeoJSON Polygon string
+  const token = await getToken();
+  // Close the ring
+  const ring = [...correctedCoords];
+  if (ring[0][0] !== ring[ring.length-1][0] || ring[0][1] !== ring[ring.length-1][1]) {
+    ring.push(ring[0]);
+  }
+  const geojson = JSON.stringify({
+    type: 'Polygon',
+    coordinates: [ring]
+  });
+
+  const res = await fetch(`${DV_API}/ccs_fields(${guid})`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization':    `Bearer ${token}`,
+      'Content-Type':     'application/json',
+      'OData-MaxVersion': '4.0',
+      'OData-Version':    '4.0',
+      'If-Match':         '*'
+    },
+    body: JSON.stringify({ [FIELD_GEOJSON_KEY]: geojson })
+  });
+
+  if (!res.ok && res.status !== 204) {
+    const err = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${err.slice(0,120)}`);
+  }
+
+  // Confirmation GET
+  await new Promise(r => setTimeout(r, 400));
+  const check = await fetch(`${DV_API}/ccs_fields(${guid})?$select=${FIELD_GEOJSON_KEY}`, {
+    headers: {
+      'Authorization':    `Bearer ${token}`,
+      'OData-MaxVersion': '4.0',
+      'OData-Version':    '4.0'
+    }
+  });
+  if (!check.ok) throw new Error(`Confirmation GET failed: HTTP ${check.status}`);
+  const data = await check.json();
+  if (!data[FIELD_GEOJSON_KEY]) throw new Error('Geometry not confirmed after write');
+}
+
 </script>
 </body>
 </html>
