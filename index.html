@@ -444,6 +444,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Overlapping Fields + GeoJSON</strong>
         <span>Overlapping fields with full polygon coordinates for field verification</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportOverlapPriorityList()">
+        <strong>⬇ Overlap Priority Work List</strong>
+        <span>Tiered action plan — four phases from bulk-disable to field verification, sorted by impact</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportEmptyOverlapsGeoJSON()">
         <strong>⬇ Empty Overlapping Fields + GeoJSON</strong>
         <span>Overlapping fields with zero trees — safe to disable, with polygon coordinates</span>
@@ -4533,6 +4537,185 @@ function exportOverlapsWithGeoJSON() {
   const date = new Date().toISOString().slice(0,10);
   downloadCSV(csv, `CCS_Overlapping_Fields_GeoJSON_${date}.csv`);
   showToast(`⬇ Exporting ${rows.length.toLocaleString()} overlapping fields`, 'ok');
+}
+
+// ── OVERLAP PRIORITY WORK LIST ────────────────────────────────────────────
+// Produces a tiered, sequenced action plan for clearing overlapping fields.
+// Four phases: bulk-disable zero-tree overlaps → true overlaps with trees →
+// version conflicts → near boundary. Sorted by impact within each phase.
+function exportOverlapPriorityList() {
+  const ovSet = window._overlappingFieldIds;
+  if (!ovSet || ovSet.size === 0) {
+    showToast('No overlapping fields detected — wait for detection to complete', 'info');
+    return;
+  }
+
+  const threshold  = getLargeThreshold();
+  const SEV_ORDER  = ['true_overlap','tip_over','line_on','touching'];
+  const SEV_LABELS = {
+    true_overlap: 'True overlap — must correct',
+    tip_over:     'Corner/tip — review',
+    line_on:      'Line on boundary — document',
+    touching:     'Touching boundary — document'
+  };
+  const PHASE_LABELS = {
+    1: 'PHASE 1 — Bulk disable: zero-tree overlapping fields (no risk)',
+    2: 'PHASE 2 — Boundary correction: true overlaps with trees (Polygon Corrector)',
+    3: 'PHASE 3 — Version conflict: redrawn boundaries needing new polygon',
+    4: 'PHASE 4 — Near boundary fields (post-overlap cleanup)'
+  };
+
+  // Build enriched overlap records
+  const ovFields = fieldsData.filter(f => ovSet.has(f.fieldId));
+  const nearSet  = window._nearFieldIds || new Set();
+
+  const enriched = ovFields.map(f => {
+    const trees    = treesByField[f.fieldId] || [];
+    const cl       = _classCache[f.fieldId]  || {};
+    const m        = f.ring ? ringMetrics(f.ring) : null;
+    const nbrs     = _overlapNeighbours[f.fieldId] || [];
+    const sevMap   = _overlapSeverity[f.fieldId]   || {};
+    const sevVals  = Object.values(sevMap);
+    const worstSev = SEV_ORDER.find(s => sevVals.includes(s)) || 'touching';
+    const isInIdConflict = (window._dupeIdPairs||[]).some(
+      p => (p.relationship === 'conflict' || p.relationship === 'id_collision') &&
+           (p.a.fieldId === f.fieldId || p.b.fieldId === f.fieldId)
+    );
+    const inactive   = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+    const isLarge    = m && m.area > threshold;
+    const treesHa    = (m && m.area > 0 && trees.length > 0) ? (trees.length / m.area).toFixed(1) : '-';
+    const maxDist    = (cl.maxDist || 0).toFixed(1);
+    const pct        = trees.length > 0 ? (((cl.compliant||0)/trees.length)*100).toFixed(1)+'%' : '-';
+
+    // Assign phase
+    let phase;
+    if (trees.length === 0)                             phase = 1; // safe bulk-disable
+    else if (worstSev === 'true_overlap')               phase = 2; // boundary correction
+    else if (isInIdConflict || worstSev === 'tip_over') phase = 3; // version conflict / review
+    else                                                phase = 3; // line/touch — document
+
+    return { f, trees, cl, m, nbrs, worstSev, isLarge, treesHa, maxDist, pct, phase, inactive };
+  });
+
+  // Near-boundary-only fields (not already in overlap set) go to Phase 4
+  const nearOnly = fieldsData.filter(f =>
+    nearSet.has(f.fieldId) && !ovSet.has(f.fieldId)
+  ).map(f => {
+    const trees  = treesByField[f.fieldId] || [];
+    const cl     = _classCache[f.fieldId]  || {};
+    const m      = f.ring ? ringMetrics(f.ring) : null;
+    const pct    = trees.length > 0 ? (((cl.compliant||0)/trees.length)*100).toFixed(1)+'%' : '-';
+    const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+    return { f, trees, cl, m, nbrs:[], worstSev:'near', isLarge:false,
+             treesHa:'-', maxDist:'-', pct, phase:4, inactive };
+  });
+
+  // Sort within each phase: most overlaps first, then worst severity, then most trees outside
+  const sortFn = (a, b) =>
+    (b.nbrs.length - a.nbrs.length) ||
+    (SEV_ORDER.indexOf(a.worstSev) - SEV_ORDER.indexOf(b.worstSev)) ||
+    ((b.cl.outside||0) - (a.cl.outside||0));
+
+  const allPhases = [
+    ...enriched.filter(r => r.phase === 1).sort(sortFn),
+    ...enriched.filter(r => r.phase === 2).sort(sortFn),
+    ...enriched.filter(r => r.phase === 3).sort(sortFn),
+    ...nearOnly.sort((a,b) => (b.trees.length - a.trees.length))
+  ];
+
+  // ── Summary block ──────────────────────────────────────────────────────
+  const p1 = enriched.filter(r => r.phase === 1);
+  const p2 = enriched.filter(r => r.phase === 2);
+  const p3 = enriched.filter(r => r.phase === 3);
+  const p4 = nearOnly;
+
+  const summaryRows = [
+    ['CCS Overlap Priority Work List'],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [`Total overlapping fields: ${ovSet.size.toLocaleString()}`],
+    [],
+    ['PHASE SUMMARY', 'Fields', 'Action', 'Tool'],
+    ['Phase 1 — Zero-tree overlapping fields',
+      p1.length,
+      'Bulk-disable via Empty Overlaps view — no tree risk',
+      'Field Tree Catalog'],
+    ['Phase 2 — True overlaps with trees',
+      p2.length,
+      'Correct boundary in Polygon Corrector — drag vertices to cover all trees',
+      'CCS Polygon Corrector'],
+    ['Phase 3 — Corner/tip, line, touching with trees',
+      p3.length,
+      'Review satellite image — document or correct boundary',
+      'CCS Polygon Corrector / Fieldforce'],
+    ['Phase 4 — Near boundary fields (no overlap)',
+      p4.length,
+      'Review after phases 1-3 complete — ensure 10m clearance between boundaries',
+      'Field Tree Catalog'],
+    [],
+    ['ESTIMATED IMPACT OF PHASE 1'],
+    ['Fields to disable',           p1.length],
+    ['Overlaps cleared (pairs)',     p1.reduce((s,r) => s+r.nbrs.length, 0)],
+    ['Near count reduction (est)',   Math.round(p1.length * 0.8)],
+    [],
+    ['FIELD DETAIL — all phases below'],
+  ];
+
+  // ── Detail headers ─────────────────────────────────────────────────────
+  const headers = [
+    'Phase', 'Phase Action',
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Area (ha)', 'Large Polygon', 'Trees/ha',
+    'Total Trees', 'Compliant', 'Needs Correction', 'Verra %', 'Max Tree Distance (m)',
+    'Overlap Count', 'Worst Severity', 'Overlap Severity Label',
+    'Overlapping Neighbour IDs',
+    'Near Boundary',
+    'Duplicate Field ID', 'Status',
+    'Recommended Action', 'GeoJSON Polygon'
+  ];
+
+  const PHASE_ACTIONS = {
+    1: 'Bulk-disable (Empty Overlaps view)',
+    2: 'Correct boundary — Polygon Corrector',
+    3: 'Review and document or correct',
+    4: 'Review near boundary — post-overlap cleanup'
+  };
+
+  const detailRows = allPhases.map(({ f, trees, cl, m, nbrs, worstSev, isLarge, treesHa, maxDist, pct, phase, inactive }) => {
+    const action =
+      phase === 1 ? 'Zero trees — disable in Fieldforce via Empty Overlaps view. No tree risk.' :
+      phase === 2 ? `True overlap — open in Polygon Corrector, drag boundary to cover all ${trees.length} trees. Then disable overlapping neighbour if it has zero trees.` :
+      phase === 3 ? `${SEV_LABELS[worstSev]} — review satellite image. If boundaries are genuinely separate, document. If one is incorrect, correct in Polygon Corrector.` :
+                   'Near boundary — verify 10m clearance from neighbouring field after overlap corrections complete.';
+    return [
+      phase,
+      PHASE_ACTIONS[phase],
+      f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
+      m ? m.area.toFixed(4) : '',
+      isLarge ? 'Yes' : 'No',
+      treesHa,
+      trees.length, cl.compliant||0, cl.outside||0, pct, maxDist,
+      nbrs.length,
+      worstSev === 'near' ? 'Near boundary' : worstSev,
+      worstSev === 'near' ? 'Near boundary only' : (SEV_LABELS[worstSev] || ''),
+      nbrs.join(' | '),
+      nearSet.has(f.fieldId) ? 'Yes' : 'No',
+      _duplicateFieldIds.has(f.fieldId) ? 'Yes' : 'No',
+      inactive ? 'Disabled (pending sync)' : 'Active',
+      action,
+      f.geoJSON || ''
+    ];
+  });
+
+  const allRows = [...summaryRows, headers, ...detailRows];
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  const date = new Date().toISOString().slice(0,10);
+  downloadCSV(csv, `CCS_Overlap_Priority_WorkList_${date}.csv`);
+  showToast(`⬇ Overlap priority list exported — ${allPhases.length.toLocaleString()} fields across 4 phases`, 'ok');
 }
 
 // ── DUPLICATE FIELD REGISTRATIONS EXPORT ─────────────────────────────────
