@@ -460,6 +460,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>📊 Collector Report (CSV)</strong>
         <span>All fields for the current "Filter by intern" value — with full compliance metrics</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportFieldSizeAnalysis()">
+        <strong>📐 Field Size Analysis (CSV)</strong>
+        <span>Area distribution with recommended min/max cutoffs — answers what is a valid field size</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
@@ -4716,6 +4720,171 @@ function exportOverlapPriorityList() {
   const date = new Date().toISOString().slice(0,10);
   downloadCSV(csv, `CCS_Overlap_Priority_WorkList_${date}.csv`);
   showToast(`⬇ Overlap priority list exported — ${allPhases.length.toLocaleString()} fields across 4 phases`, 'ok');
+}
+
+// ── FIELD SIZE ANALYSIS EXPORT ────────────────────────────────────────────
+// Answers Flurin's question: what min/max area cutoff is reasonable?
+// Computes the full area distribution and recommends thresholds from the data.
+function exportFieldSizeAnalysis() {
+  if (!fieldsData.length) { showToast('No field data loaded', 'info'); return; }
+
+  const exportDate = new Date().toISOString().slice(0, 10);
+
+  // Collect areas for all fields with geometry
+  const areas = fieldsData
+    .filter(f => f.ring)
+    .map(f => ({ fieldId: f.fieldId, owner: f.owner||'', createdBy: f.createdBy||'',
+                 area: ringAreaHa(f.ring), trees: (treesByField[f.fieldId]||[]).length }))
+    .sort((a, b) => a.area - b.area);
+
+  if (!areas.length) { showToast('No polygon geometry available', 'info'); return; }
+
+  const areaVals = areas.map(a => a.area);
+  const n        = areaVals.length;
+
+  // Percentile helper
+  const pct = (p) => {
+    const idx = Math.floor((p / 100) * n);
+    return areaVals[Math.min(idx, n - 1)];
+  };
+
+  // Key percentiles
+  const p1   = pct(1),   p5  = pct(5),  p10 = pct(10);
+  const p25  = pct(25),  p50 = pct(50), p75 = pct(75);
+  const p90  = pct(90),  p95 = pct(95), p99 = pct(99), p999 = pct(99.9);
+  const mean = areaVals.reduce((s, v) => s + v, 0) / n;
+
+  // Recommended cutoffs — based on data, not assumption
+  // Min: P1 rounded up to nearest 0.05, floor at 0.05
+  const recMin = Math.max(0.05, Math.ceil(p1 * 20) / 20);
+  // Max: P99 rounded up to nearest 0.5
+  const recMax = Math.ceil(p99 * 2) / 2;
+
+  // Count fields excluded at various thresholds
+  const countBelow = (thr) => areaVals.filter(v => v < thr).length;
+  const countAbove = (thr) => areaVals.filter(v => v > thr).length;
+  const pctStr = (c) => ((c / n) * 100).toFixed(2) + '%';
+
+  // Bracket distribution
+  const brackets = [
+    [0,      0.05,  '< 0.05 ha — almost certainly GPS error or mis-tap'],
+    [0.05,   0.1,   '0.05 – 0.10 ha — very small, likely error'],
+    [0.1,    0.25,  '0.10 – 0.25 ha — small plot, possible'],
+    [0.25,   0.5,   '0.25 – 0.50 ha — small smallholder plot'],
+    [0.5,    1.0,   '0.50 – 1.00 ha — typical smallholder plot'],
+    [1.0,    2.0,   '1.00 – 2.00 ha — medium smallholder plot'],
+    [2.0,    3.0,   '2.00 – 3.00 ha — larger smallholder plot'],
+    [3.0,    5.0,   '3.00 – 5.00 ha — large smallholder plot'],
+    [5.0,    7.0,   '5.00 – 7.00 ha — Flurin suggested maximum'],
+    [7.0,    10.0,  '7.00 – 10.00 ha — above suggested maximum'],
+    [10.0,   9999,  '> 10.00 ha — almost certainly misregistered boundary'],
+  ];
+
+  const bracketCounts = brackets.map(([lo, hi, label]) => {
+    const count = areaVals.filter(v => v >= lo && v < hi).length;
+    const treesIn = areas.filter(a => a.area >= lo && a.area < hi)
+                         .reduce((s, a) => s + a.trees, 0);
+    return { lo, hi, label, count, treesIn };
+  });
+
+  // ── Summary block ──────────────────────────────────────────────────────
+  const summaryRows = [
+    ['CCS Field Size Analysis'],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [`Fields analysed: ${n.toLocaleString()} (all fields with polygon geometry)`],
+    [],
+    ['RECOMMENDED CUTOFFS'],
+    ['Minimum field size (recommended)', `${recMin.toFixed(2)} ha`,
+     `Based on P1 of actual data — excludes ${countBelow(recMin)} fields (${pctStr(countBelow(recMin))})`],
+    ['Maximum field size (recommended)', `${recMax.toFixed(2)} ha`,
+     `Based on P99 of actual data — excludes ${countAbove(recMax)} fields (${pctStr(countAbove(recMax))})`],
+    [],
+    ['FLURIN\'S PROPOSED CUTOFFS — DATA CHECK'],
+    ['If minimum = 0.03 ha', `Excludes ${countBelow(0.03)} fields (${pctStr(countBelow(0.03))})`,
+     `${n - countBelow(0.03)} fields remain`],
+    ['If minimum = 0.10 ha', `Excludes ${countBelow(0.1)} fields (${pctStr(countBelow(0.1))})`,
+     `${n - countBelow(0.1)} fields remain`],
+    ['If maximum = 5.00 ha', `Excludes ${countAbove(5)} fields (${pctStr(countAbove(5))})`,
+     `${n - countAbove(5)} fields remain (above minimum)`],
+    ['If maximum = 7.00 ha', `Excludes ${countAbove(7)} fields (${pctStr(countAbove(7))})`,
+     `${n - countAbove(7)} fields remain (above minimum)`],
+    ['If maximum = 10.00 ha', `Excludes ${countAbove(10)} fields (${pctStr(countAbove(10))})`,
+     `${n - countAbove(10)} fields remain (above minimum)`],
+    [],
+    ['AREA DISTRIBUTION — KEY PERCENTILES'],
+    ['P1  (1st percentile)',    p1.toFixed(4)   + ' ha', '1% of fields are smaller than this'],
+    ['P5  (5th percentile)',    p5.toFixed(4)   + ' ha', '5% of fields are smaller than this'],
+    ['P10 (10th percentile)',   p10.toFixed(4)  + ' ha', ''],
+    ['P25 (25th percentile)',   p25.toFixed(4)  + ' ha', 'Lower quartile'],
+    ['P50 (median)',            p50.toFixed(4)  + ' ha', 'Half of all fields are smaller than this'],
+    ['Mean (average)',          mean.toFixed(4) + ' ha', ''],
+    ['P75 (75th percentile)',   p75.toFixed(4)  + ' ha', 'Upper quartile'],
+    ['P90 (90th percentile)',   p90.toFixed(4)  + ' ha', ''],
+    ['P95 (95th percentile)',   p95.toFixed(4)  + ' ha', '95% of fields are smaller than this'],
+    ['P99 (99th percentile)',   p99.toFixed(4)  + ' ha', '99% of fields are smaller than this'],
+    ['P99.9 (99.9th pctile)',   p999.toFixed(4) + ' ha', 'Only 0.1% of fields exceed this'],
+    ['Maximum',                 areaVals[n-1].toFixed(4) + ' ha', 'Largest field in dataset'],
+    ['Minimum',                 areaVals[0].toFixed(4)   + ' ha', 'Smallest field in dataset'],
+    [],
+    ['BRACKET DISTRIBUTION'],
+    ['Area Range', 'Field Count', 'Trees in Range', '% of Fields', 'Interpretation'],
+    ...bracketCounts.map(({ label, count, treesIn }) => [
+      label, count, treesIn, pctStr(count), ''
+    ]),
+    [],
+    ['FIELD DETAIL — all fields sorted smallest to largest'],
+  ];
+
+  // ── Detail headers ─────────────────────────────────────────────────────
+  const headers = [
+    'Rank (smallest first)', 'Field ID', 'Owner', 'Created By',
+    'Area (ha)', 'Vertices', 'Total Trees', 'Trees/ha',
+    'Size Category', 'Include in Analysis (min 0.10 ha / max 7.00 ha)',
+    'Include in Analysis (min 0.03 ha / max 7.00 ha)',
+    'Verra %', 'Overlapping', 'Status'
+  ];
+
+  const ovSet    = window._overlappingFieldIds || new Set();
+  const detailRows = areas.map(({ fieldId, owner, createdBy, area, trees }, i) => {
+    const f       = fieldsData.find(x => x.fieldId === fieldId);
+    const m       = f?.ring ? ringMetrics(f.ring) : null;
+    const cl      = _classCache[fieldId] || {};
+    const pctVal  = trees > 0 ? (((cl.compliant||0)/trees)*100).toFixed(1)+'%' : '-';
+    const treesHa = (area > 0 && trees > 0) ? (trees/area).toFixed(1) : '-';
+    const cat     = area < 0.05  ? 'GPS error / mis-tap'
+                  : area < 0.1   ? 'Very small — likely error'
+                  : area < 0.25  ? 'Small plot'
+                  : area < 0.5   ? 'Small smallholder'
+                  : area < 1.0   ? 'Typical smallholder'
+                  : area < 2.0   ? 'Medium smallholder'
+                  : area < 3.0   ? 'Larger smallholder'
+                  : area < 5.0   ? 'Large smallholder'
+                  : area < 7.0   ? 'Above typical — review'
+                  : area < 10.0  ? 'Above Flurin maximum (7 ha)'
+                  : 'Likely misregistered boundary';
+    const incl_strict = (area >= 0.10 && area <= 7.0) ? 'Yes' : 'No';
+    const incl_loose  = (area >= 0.03 && area <= 7.0) ? 'Yes' : 'No';
+    const inactive    = f && (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId));
+    return [
+      i + 1, fieldId, owner, createdBy,
+      area.toFixed(4), m ? m.vertices : '',
+      trees, treesHa, cat,
+      incl_strict, incl_loose,
+      pctVal,
+      ovSet.has(fieldId) ? 'Yes' : 'No',
+      inactive ? 'Disabled' : 'Active'
+    ];
+  });
+
+  const allRows = [...summaryRows, headers, ...detailRows];
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_Field_Size_Analysis_${exportDate}.csv`);
+  showToast(`📐 Field size analysis exported — ${n.toLocaleString()} fields`, 'ok');
 }
 
 // ── DUPLICATE FIELD REGISTRATIONS EXPORT ─────────────────────────────────
