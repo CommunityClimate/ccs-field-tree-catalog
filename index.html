@@ -5684,6 +5684,11 @@ function renderBulkCorrectView() {
         style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;
         border:1px solid var(--border);background:transparent;
         color:var(--muted);cursor:pointer">Large</button>
+      <button id="bcBtnAutoApprove" onclick="autoApproveSafeCases()"
+        style="font-family:var(--mono);font-size:9px;padding:2px 10px;border-radius:3px;
+        border:1px solid rgba(34,197,94,0.5);background:rgba(34,197,94,0.15);
+        color:#22c55e;cursor:pointer;font-weight:700;display:none">
+        ⚡ Auto-approve safe cases</button>
       <button id="bcBtnApproveAll" onclick="approveAllVisible()"
         style="font-family:var(--mono);font-size:9px;padding:2px 10px;border-radius:3px;
         border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);
@@ -5846,14 +5851,26 @@ function renderBulkPage() {
   const svgH  = _bulkCardSize === 'large' ? 140 : 100;
   const svgW  = _bulkCardSize === 'large' ? 190 : 128;
 
+  const safeCount = _bulkQueue.filter(e => {
+    if (!e.correctedCoords || e.diagnosis === 'contained') return false;
+    const trees    = (treesByField[e.f.fieldId]||[]).length;
+    const mA       = e.f.ring ? ringMetrics(e.f.ring) : null;
+    const areaA    = mA ? mA.area : 0;
+    const ovPct    = areaA > 0 ? (e.overlapHa/areaA)*100 : 100;
+    return trees === 0 || (e.diagnosis==='minor_overlap' && e.confidence==='high' && (ovPct<5||e.overlapHa<0.005));
+  }).length;
+
   document.getElementById('bcStatus').innerHTML =
     `<span style="color:var(--fg);font-weight:700">${visibleEntries.length.toLocaleString()}</span>
-     <span style="color:var(--muted)"> fields analysed</span>
+     <span style="color:var(--muted)"> fields</span>
      &nbsp;·&nbsp;
      <span style="color:#22c55e;font-weight:700">${approvedCount}</span>
      <span style="color:var(--muted)"> approved</span>
      &nbsp;·&nbsp;
-     <span style="color:var(--muted)">${_bulkQueue.filter(e=>e.skipped).length} skipped</span>`;
+     <span style="color:#6b7280">${_bulkQueue.filter(e=>e.skipped).length} skipped</span>
+     &nbsp;·&nbsp;
+     <span style="color:#22c55e" title="Zero trees or trivial clip — safe to auto-approve">
+       ⚡ ${safeCount.toLocaleString()} safe cases</span>`;
 
   // Update write button
   const writeBtn = document.getElementById('bcBtnWrite');
@@ -5862,6 +5879,7 @@ function renderBulkPage() {
   writeBtn.textContent = `\u2b06 Write ${approvedCount} approved to Fieldforce`;
 
   document.getElementById('bcBtnApproveAll').style.display = page.length > 0 ? 'inline-block' : 'none';
+  document.getElementById('bcBtnAutoApprove').style.display = _bulkQueue.length > 0 ? 'inline-block' : 'none';
 
   // Update grid columns
   const gridEl = document.getElementById('bcGrid');
@@ -6043,6 +6061,37 @@ function approveAllVisible() {
 
 function loadMoreBulkCorrections() {
   _bulkPage++;
+  renderBulkPage();
+}
+
+function autoApproveSafeCases() {
+  // Safe = has correctedCoords AND meets one of:
+  //   (a) zero trees — no compliance risk regardless of method
+  //   (b) high confidence clip with overlap < 5% of field area
+  //   (c) high confidence clip with overlap < 0.005 ha (trivially small)
+  let count = 0;
+  _bulkQueue.forEach(entry => {
+    if (entry.skipped || entry.approved) return;
+    if (!entry.correctedCoords)          return;
+    if (entry.diagnosis === 'contained') return; // contained = disable action, not geometry patch
+
+    const trees     = (treesByField[entry.f.fieldId]||[]).length;
+    const mA        = entry.f.ring ? ringMetrics(entry.f.ring) : null;
+    const areaA     = mA ? mA.area : 0;
+    const overlapPct = areaA > 0 ? (entry.overlapHa / areaA) * 100 : 100;
+
+    const isZeroTree     = trees === 0;
+    const isTrivialClip  = entry.diagnosis === 'minor_overlap' &&
+                           entry.confidence === 'high' &&
+                           (overlapPct < 5 || entry.overlapHa < 0.005);
+
+    if (isZeroTree || isTrivialClip) {
+      entry.approved = true;
+      count++;
+    }
+  });
+
+  showToast(`⚡ ${count.toLocaleString()} safe cases auto-approved`, 'ok');
   renderBulkPage();
 }
 
