@@ -4616,96 +4616,157 @@ function exportCollectorReport() {
   const cacheReady      = !_cacheBuilding && Object.keys(_classCache).length >= fieldsWithTrees * 0.95;
   if (!cacheReady) {
     if (!confirm(
-      '⏳ Compliance figures are still being calculated.\n\n' +
+      '\u23F3 Compliance figures are still being calculated.\n\n' +
       'Exporting now will show incomplete Compliant / Tolerance / Review / Correction counts.\n\n' +
       'Click OK to export anyway, or Cancel and wait a few seconds for the cache to finish.'
     )) return;
   }
 
-  // Use visibleCache if filter is active, otherwise all fields
   const fields = qCreated ? visibleCache : fieldsData;
-  if (!fields.length) { showToast('No fields to export — type a collector name first', 'info'); return; }
+  if (!fields.length) { showToast('No fields to export \u2014 type a collector name first', 'info'); return; }
 
   const collectorLabel = qCreated || 'all collectors';
-  const date = new Date().toISOString().slice(0, 10);
+  const exportDate     = new Date().toISOString().slice(0, 10);
+  const threshold      = getLargeThreshold();
 
-  // ── Summary block (first rows) ────────────────────────────────────────
-  const totalTrees  = fields.reduce((s, f) => s + (treesByField[f.fieldId]||[]).length, 0);
-  let compliant = 0, tolerance = 0, review = 0, outside = 0;
-  fields.forEach(f => {
-    const cl = _classCache[f.fieldId];
-    if (cl) { compliant += cl.compliant||0; tolerance += cl.tolerance||0; review += cl.review||0; outside += cl.outside||0; }
+  // Shared lookup sets
+  const ovSet      = window._overlappingFieldIds || new Set();
+  const nearSet    = window._nearFieldIds        || new Set();
+  const fieldIdSet = new Set(fields.map(f => f.fieldId));
+
+  // ID Conflict lookup
+  const idConflictByField = {};
+  (window._dupeIdPairs || []).forEach(pair => {
+    const lbl = {
+      technical_dupe: 'Technical Duplicate',
+      true_dupe:      'True Duplicate',
+      contains:       'One Contains Other',
+      conflict:       'Version Conflict',
+      id_collision:   'ID Collision'
+    }[pair.relationship] || pair.relationship;
+    [pair.a, pair.b].forEach(r => {
+      if (!idConflictByField[r.fieldId]) idConflictByField[r.fieldId] = [];
+      idConflictByField[r.fieldId].push(lbl);
+    });
   });
-  const ovSet    = window._overlappingFieldIds || new Set();
-  const nearSet  = window._nearFieldIds        || new Set();
-  const totalPct = totalTrees > 0 ? ((compliant / totalTrees) * 100).toFixed(1) : '—';
+
+  // Summary aggregates
+  let compliantSum = 0, toleranceSum = 0, reviewSum = 0, outsideSum = 0;
+  let verraSum = 0, verraCount = 0;
+  let ovSameCount = 0, ovCrossCount = 0;
+  let sevTrue = 0, sevTip = 0, sevLine = 0, sevTouch = 0;
+  let largeCount = 0, zeroTreeCount = 0, needsCorrCount = 0, idConflictCount = 0;
+  const totalTrees = fields.reduce((s, f) => s + (treesByField[f.fieldId]||[]).length, 0);
+
+  fields.forEach(f => {
+    const cl    = _classCache[f.fieldId] || {};
+    const trees = treesByField[f.fieldId] || [];
+    const area  = f.ring ? ringAreaHa(f.ring) : 0;
+    compliantSum  += cl.compliant || 0;
+    toleranceSum  += cl.tolerance || 0;
+    reviewSum     += cl.review    || 0;
+    outsideSum    += cl.outside   || 0;
+    if (cl.pct !== null && cl.pct !== undefined) { verraSum += cl.pct; verraCount++; }
+    if (trees.length === 0)     zeroTreeCount++;
+    if ((cl.outside || 0) > 0) needsCorrCount++;
+    if (area > threshold)       largeCount++;
+    if (idConflictByField[f.fieldId]) idConflictCount++;
+    const nbrs  = _overlapNeighbours[f.fieldId] || [];
+    const sameN = nbrs.filter(nid => fieldIdSet.has(nid)).length;
+    if (sameN > 0)               ovSameCount++;
+    if (nbrs.length - sameN > 0) ovCrossCount++;
+    const sevVals = Object.values(_overlapSeverity[f.fieldId] || {});
+    if      (sevVals.includes('true_overlap')) sevTrue++;
+    else if (sevVals.includes('tip_over'))     sevTip++;
+    else if (sevVals.includes('line_on'))      sevLine++;
+    else if (sevVals.includes('touching'))     sevTouch++;
+  });
+
+  const totalPct    = totalTrees > 0 ? ((compliantSum / totalTrees) * 100).toFixed(1) + '%' : '-';
+  const avgVerraPct = verraCount  > 0 ? (verraSum / verraCount).toFixed(1) + '%'             : '-';
 
   const summaryRows = [
     ['CCS Field Collector Report'],
-    [`Collector filter: ${collectorLabel}`],
-    [`Generated: ${new Date().toLocaleString()}`],
+    ['Collector filter: ' + collectorLabel],
+    ['Generated: ' + new Date().toLocaleString()],
     [],
-    ['SUMMARY', ''],
-    ['Total fields',             fields.length],
-    ['Total trees',              totalTrees],
-    ['Compliant trees',          compliant],
-    ['Tolerance trees',          tolerance],
-    ['Review trees',             review],
-    ['Needs correction',         outside],
-    ['Verra compliance %',       totalPct + '%'],
-    ['Overlapping fields',       fields.filter(f => ovSet.has(f.fieldId)).length],
-    ['Near boundary fields',     fields.filter(f => nearSet.has(f.fieldId)).length],
-    ['Duplicate field IDs',      fields.filter(f => _duplicateFieldIds.has(f.fieldId)).length],
-    ['Zero-tree fields',         fields.filter(f => (treesByField[f.fieldId]||[]).length === 0).length],
+    ['SUMMARY'],
+    ['Total fields',                       fields.length],
+    ['Total trees',                        totalTrees],
+    ['Compliant trees',                    compliantSum],
+    ['Tolerance trees',                    toleranceSum],
+    ['Review trees',                       reviewSum],
+    ['Needs correction',                   outsideSum],
+    ['Verra compliance % (aggregate)',     totalPct],
+    ['Verra compliance % (avg per field)', avgVerraPct],
+    [],
+    ['OVERLAP BREAKDOWN'],
+    ['Total overlapping fields',           fields.filter(f => ovSet.has(f.fieldId)).length],
+    ['  Overlaps within same collector',   ovSameCount],
+    ['  Overlaps with other collectors',   ovCrossCount],
+    ['  True overlap severity',            sevTrue],
+    ['  Corner/tip severity',              sevTip],
+    ['  Line on boundary severity',        sevLine],
+    ['  Touching severity',                sevTouch],
+    [],
+    ['ADDITIONAL METRICS'],
+    ['Near boundary fields',               fields.filter(f => nearSet.has(f.fieldId)).length],
+    ['Large polygon fields',               largeCount],
+    ['Fields needing correction (>10m)',   needsCorrCount],
+    ['Zero-tree fields',                   zeroTreeCount],
+    ['Duplicate field IDs',                fields.filter(f => _duplicateFieldIds.has(f.fieldId)).length],
+    ['ID conflict records',                idConflictCount],
     [],
     ['FIELD DETAIL'],
   ];
 
-  // ── Field detail headers ───────────────────────────────────────────────
   const headers = [
     'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
-    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng', 'Large Polygon', 'Trees/ha',
     'Total Trees', 'Compliant', 'Tolerance', 'Review', 'Needs Correction',
-    'Verra %', 'Overlapping', 'Overlap Severity', 'Near Boundary',
-    'Duplicate Field ID', 'Zero Trees', 'Status'
+    'Verra %', 'Max Tree Distance (m)',
+    'Overlapping', 'Overlap Count', 'Overlap Severity',
+    'Same Collector Overlaps', 'Same Collector Overlap IDs',
+    'All Overlapping Neighbour IDs', 'Near Boundary',
+    'Duplicate Field ID', 'ID Conflict Type', 'Zero Trees', 'Status'
   ];
 
   const detailRows = fields.map(f => {
-    const trees  = treesByField[f.fieldId] || [];
-    const cl     = _classCache[f.fieldId]  || {};
-    const m      = f.ring ? ringMetrics(f.ring) : null;
-    const pct    = trees.length > 0 ? (((cl.compliant||0) / trees.length) * 100).toFixed(1) + '%' : '—';
-    const sevMap = _overlapSeverity?.[f.fieldId] || {};
-    const sevVals = Object.values(sevMap);
-    const sev    = sevVals.includes('true_overlap') ? 'True overlap'
-                 : sevVals.includes('tip_over')     ? 'Corner/tip'
-                 : sevVals.includes('line_on')      ? 'Line on boundary'
-                 : sevVals.includes('touching')     ? 'Touching'
-                 : ovSet.has(f.fieldId)             ? 'Overlapping'
-                 : '';
-    const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+    const trees   = treesByField[f.fieldId] || [];
+    const cl      = _classCache[f.fieldId]  || {};
+    const m       = f.ring ? ringMetrics(f.ring) : null;
+    const area    = m ? m.area : 0;
+    const isLarge = area > threshold;
+    const treesHa = (area > 0 && trees.length > 0) ? (trees.length / area).toFixed(1) : '-';
+    const pct     = trees.length > 0 ? (((cl.compliant||0) / trees.length) * 100).toFixed(1) + '%' : '-';
+    const maxDist = (cl.maxDist || 0).toFixed(1);
+    const nbrs    = _overlapNeighbours[f.fieldId] || [];
+    const sameN   = nbrs.filter(nid => fieldIdSet.has(nid));
+    const sevVals = Object.values(_overlapSeverity[f.fieldId] || {});
+    const sev     = sevVals.includes('true_overlap') ? 'True overlap'
+                  : sevVals.includes('tip_over')     ? 'Corner/tip'
+                  : sevVals.includes('line_on')      ? 'Line on boundary'
+                  : sevVals.includes('touching')     ? 'Touching'
+                  : ovSet.has(f.fieldId)             ? 'Overlapping' : '';
+    const conflicts    = idConflictByField[f.fieldId] || [];
+    const conflictType = conflicts.length > 0 ? [...new Set(conflicts)].join(' | ') : 'None';
+    const inactive     = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
     return [
-      f.fieldId,
-      f.owner        || '',
-      f.createdOn    || '',
-      f.createdBy    || '',
-      f.modifiedBy   || '',
-      m ? m.area.toFixed(4)       : '',
-      m ? m.vertices              : '',
-      m ? m.cLat.toFixed(6)       : '',
-      m ? m.cLng.toFixed(6)       : '',
-      trees.length,
-      cl.compliant  || 0,
-      cl.tolerance  || 0,
-      cl.review     || 0,
-      cl.outside    || 0,
-      pct,
-      ovSet.has(f.fieldId)               ? 'Yes' : 'No',
-      sev,
-      nearSet.has(f.fieldId)             ? 'Yes' : 'No',
-      _duplicateFieldIds.has(f.fieldId)  ? 'Yes' : 'No',
-      trees.length === 0                 ? 'Yes' : 'No',
-      inactive                           ? 'Disabled (pending sync)' : 'Active'
+      f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
+      m ? m.area.toFixed(4) : '', m ? m.vertices : '',
+      m ? m.cLat.toFixed(6) : '', m ? m.cLng.toFixed(6) : '',
+      isLarge ? 'Yes' : 'No', treesHa,
+      trees.length, cl.compliant||0, cl.tolerance||0, cl.review||0, cl.outside||0,
+      pct, maxDist,
+      ovSet.has(f.fieldId) ? 'Yes' : 'No',
+      nbrs.length, sev,
+      sameN.length, sameN.join(' | '),
+      nbrs.join(' | '),
+      nearSet.has(f.fieldId) ? 'Yes' : 'No',
+      _duplicateFieldIds.has(f.fieldId) ? 'Yes' : 'No',
+      conflictType,
+      trees.length === 0 ? 'Yes' : 'No',
+      inactive ? 'Disabled (pending sync)' : 'Active'
     ];
   });
 
@@ -4717,9 +4778,10 @@ function exportCollectorReport() {
   ).join('\n');
 
   const slug = collectorLabel.replace(/\s+/g, '_').replace(/[^a-z0-9_]/gi, '').slice(0, 40);
-  downloadCSV(csv, `CCS_Collector_Report_${slug}_${date}.csv`);
-  showToast(`📊 Exported ${fields.length} fields for "${collectorLabel}"`, 'ok');
+  downloadCSV(csv, `CCS_Collector_Report_${slug}_${exportDate}.csv`);
+  showToast(`Export complete: ${fields.length} fields for "${collectorLabel}"`, 'ok');
 }
+
 
 function downloadCSV(csv, filename) {
   const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
