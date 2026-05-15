@@ -1008,12 +1008,84 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     <div class="lb-foot">
       <button class="btn-deactivate" id="lbBtnDeactivate" onclick="lbDeactivate()">⊘ Disable in Fieldforce</button>
       <button class="btn-activate"   id="lbBtnActivate"   onclick="lbActivate()" style="display:none">✓ Reactivate</button>
+      <button class="btn-export" id="lbBtnSmartCorrect" onclick="openSmartCorrector()"
+        style="display:none;background:rgba(34,197,94,0.1);color:#22c55e;
+        border-color:rgba(34,197,94,0.3)" title="AI-assisted boundary correction">
+        🤖 Smart Correct</button>
       <button class="btn-export" onclick="printFieldRecord()" style="margin-left:auto"
         title="Print field record with GeoJSON coordinates">🖨 Print record</button>
       <button class="btn-export" id="lbBtnFix" onclick="lbOpenFix()"
         style="background:rgba(56,189,248,0.1);color:var(--blue);border-color:rgba(56,189,248,0.3)"
         title="Open in Polygon Corrector">✎ Fix in Corrector</button>
       <button class="btn btn-sec" onclick="closeLb()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SMART OVERLAP CORRECTOR MODAL ─────────────────────────────────── -->
+<div id="scModal" style="display:none;position:fixed;inset:0;z-index:3000;
+  background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+    width:min(1100px,96vw);max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:12px 16px;border-bottom:1px solid var(--border)">
+      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--fg)">
+        🤖 Smart Overlap Corrector</span>
+      <button onclick="closeSmartCorrector()" style="background:none;border:none;
+        color:var(--muted);cursor:pointer;font-size:18px;line-height:1">×</button>
+    </div>
+
+    <!-- Body: map left, analysis right -->
+    <div style="display:flex;flex:1;overflow:hidden;min-height:0">
+
+      <!-- Left: mini map -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+        <div style="padding:8px 12px;font-family:var(--mono);font-size:9px;color:var(--muted);
+          border-bottom:1px solid var(--border)">
+          <span style="color:#38bdf8">━━</span> This field &nbsp;
+          <span style="color:#f59e0b">┅┅</span> Overlapping neighbour &nbsp;
+          <span style="color:#22c55e">━━</span> Proposed correction
+        </div>
+        <div id="scMap" style="flex:1;min-height:360px"></div>
+      </div>
+
+      <!-- Right: analysis panel -->
+      <div style="width:340px;border-left:1px solid var(--border);
+        display:flex;flex-direction:column;overflow-y:auto">
+
+        <!-- Field summary -->
+        <div id="scFieldSummary" style="padding:12px;border-bottom:1px solid var(--border)"></div>
+
+        <!-- Analysis result -->
+        <div id="scResult" style="padding:12px;flex:1">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
+            text-align:center;padding:32px 0">
+            Click <strong>Analyse</strong> to start
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="padding:12px;border-top:1px solid var(--border);
+          display:flex;flex-direction:column;gap:6px">
+          <button id="scBtnAnalyse" onclick="runSmartCorrection()"
+            style="font-family:var(--mono);font-size:10px;padding:7px;
+            background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);
+            color:#22c55e;border-radius:4px;cursor:pointer;font-weight:700">
+            🤖 Analyse boundary</button>
+          <button id="scBtnAccept" onclick="acceptSmartCorrection()" disabled
+            style="font-family:var(--mono);font-size:10px;padding:7px;
+            background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.3);
+            color:#38bdf8;border-radius:4px;cursor:pointer;opacity:0.4">
+            ✓ Open corrected boundary in Corrector</button>
+          <button onclick="closeSmartCorrector()"
+            style="font-family:var(--mono);font-size:10px;padding:7px;
+            background:transparent;border:1px solid var(--border);
+            color:var(--muted);border-radius:4px;cursor:pointer">
+            Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2329,6 +2401,14 @@ function lbOpenFix() {
 }
 
 function updateLbButtons(f) {
+  // Smart Correct button — show only when field has overlapping neighbours with geometry
+  const scBtn = document.getElementById('lbBtnSmartCorrect');
+  if (scBtn) {
+    const hasOverlapNbr = ((_overlapNeighbours[f.fieldId] || [])
+      .map(id => fieldsData.find(x => x.fieldId === id))
+      .some(x => x && x.ring));
+    scBtn.style.display = hasOverlapNbr ? 'inline-flex' : 'none';
+  }
   const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
   const btnD = document.getElementById('lbBtnDeactivate');
   const btnA = document.getElementById('lbBtnActivate');
@@ -5230,6 +5310,290 @@ function exportCSV(type) {
   const date = new Date().toISOString().slice(0,10);
   downloadCSV(csv, `CCS_${labels[type] || type}_${date}.csv`);
 }
+
+// ── SMART OVERLAP CORRECTOR ───────────────────────────────────────────────
+let _scMap         = null;
+let _scField       = null;
+let _scNeighbour   = null;
+let _scProposedLayer = null;
+let _scOrigLayer   = null;
+let _scNbrLayer    = null;
+let _scProposedCoords = null;
+
+function openSmartCorrector() {
+  const f = fieldsData[_lbCurrentIdx];
+  if (!f || !f.ring) { showToast('No polygon geometry available', 'info'); return; }
+
+  // Find first overlapping neighbour with geometry
+  const nbrIds = _overlapNeighbours[f.fieldId] || [];
+  const nbr    = nbrIds.map(id => fieldsData.find(x => x.fieldId === id))
+                       .find(x => x && x.ring);
+  if (!nbr) { showToast('No overlapping neighbour geometry found', 'info'); return; }
+
+  _scField     = f;
+  _scNeighbour = nbr;
+  _scProposedCoords = null;
+
+  // Show modal
+  const modal = document.getElementById('scModal');
+  modal.style.display = 'flex';
+
+  // Field summary panel
+  const trees   = (treesByField[f.fieldId] || []).length;
+  const m       = f.ring ? ringMetrics(f.ring) : null;
+  const sevMap  = _overlapSeverity[f.fieldId] || {};
+  const sevVals = Object.values(sevMap);
+  const sev     = sevVals.includes('true_overlap') ? '✗ True overlap'
+                : sevVals.includes('tip_over')     ? '⚠ Corner/tip'
+                : sevVals.includes('line_on')      ? '~ Line on boundary'
+                : '◌ Touching';
+  document.getElementById('scFieldSummary').innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--fg);font-weight:700;
+      margin-bottom:6px">${f.fieldId}</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.8">
+      Owner: ${f.owner||'—'}<br>
+      Area: ${m?m.area.toFixed(2)+' ha':'—'} · Vertices: ${m?m.vertices:'—'}<br>
+      Trees: ${trees}<br>
+      Overlap: <span style="color:#f59e0b">${sev}</span><br>
+      Neighbour: ${nbr.fieldId}
+    </div>`;
+
+  // Reset result panel
+  document.getElementById('scResult').innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
+      text-align:center;padding:32px 0">
+      Click <strong style="color:var(--fg)">Analyse boundary</strong> to start
+    </div>`;
+  document.getElementById('scBtnAccept').disabled = true;
+  document.getElementById('scBtnAccept').style.opacity = '0.4';
+
+  // Init mini map
+  setTimeout(() => {
+    if (_scMap) { try { _scMap.remove(); } catch(e){} _scMap = null; }
+    _scOrigLayer = null; _scNbrLayer = null; _scProposedLayer = null;
+
+    const mapEl = document.getElementById('scMap');
+    _scMap = L.map(mapEl, { zoomControl:true, attributionControl:false });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom:20 }).addTo(_scMap);
+
+    // Draw this field (blue)
+    const coordsA = f.ring.map(c => [c[0], c[1]]);
+    _scOrigLayer  = L.polygon(coordsA, {
+      color:'#38bdf8', weight:2, fillOpacity:0.1, dashArray:'6,3'
+    }).addTo(_scMap).bindTooltip(f.fieldId, { permanent:false });
+
+    // Draw neighbour (amber)
+    const coordsB = nbr.ring.map(c => [c[0], c[1]]);
+    _scNbrLayer   = L.polygon(coordsB, {
+      color:'#f59e0b', weight:2, fillOpacity:0.1, dashArray:'4,4'
+    }).addTo(_scMap).bindTooltip(nbr.fieldId, { permanent:false });
+
+    // Fit bounds to both
+    const allCoords = [...coordsA, ...coordsB];
+    const bounds = L.latLngBounds(allCoords);
+    _scMap.fitBounds(bounds, { padding:[24,24] });
+    setTimeout(() => { try { _scMap.invalidateSize(); } catch(e){} }, 200);
+  }, 120);
+}
+
+function closeSmartCorrector() {
+  document.getElementById('scModal').style.display = 'none';
+  if (_scMap) { try { _scMap.remove(); } catch(e){} _scMap = null; }
+  _scField = null; _scNeighbour = null; _scProposedCoords = null;
+}
+
+async function runSmartCorrection() {
+  if (!_scField || !_scNeighbour) return;
+
+  const btn = document.getElementById('scBtnAnalyse');
+  btn.textContent = '⏳ Analysing…';
+  btn.disabled    = true;
+
+  document.getElementById('scResult').innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
+      text-align:center;padding:32px 0">
+      <div style="font-size:20px;margin-bottom:12px">🤖</div>
+      Analysing boundary geometry…<br>
+      <span style="font-size:9px">Calling Claude API</span>
+    </div>`;
+
+  try {
+    const f   = _scField;
+    const nbr = _scNeighbour;
+
+    // Build coordinate strings for the prompt
+    const mA = f.ring   ? ringMetrics(f.ring)   : null;
+    const mB = nbr.ring ? ringMetrics(nbr.ring) : null;
+
+    // Compute intersection area if turf available
+    let intersectionArea = null;
+    try {
+      const polyA = turf.polygon([f.ring.map(c => [c[1],c[0]])]);
+      const polyB = turf.polygon([nbr.ring.map(c => [c[1],c[0]])]);
+      const inter = turf.intersect(polyA, polyB);
+      if (inter) intersectionArea = turf.area(inter) / 10000; // ha
+    } catch(e) {}
+
+    // Simplify coordinates for the prompt (max 20 vertices each)
+    const simplify = (ring) => {
+      if (!ring) return [];
+      const step = Math.max(1, Math.floor(ring.length / 20));
+      return ring.filter((_, i) => i % step === 0)
+                 .map(c => [parseFloat(c[1].toFixed(6)), parseFloat(c[0].toFixed(6))]);
+    };
+
+    const coordsA = simplify(f.ring);
+    const coordsB = simplify(nbr.ring);
+
+    const prompt = `You are a GIS boundary correction expert for smallholder farm fields in Zambia.
+
+FIELD TO CORRECT: ${f.fieldId}
+- Owner: ${f.owner || 'unknown'}
+- Area: ${mA ? mA.area.toFixed(3) + ' ha' : 'unknown'}
+- Vertices: ${mA ? mA.vertices : 'unknown'}
+- Centroid: ${mA ? mA.cLat.toFixed(6) + ', ' + mA.cLng.toFixed(6) : 'unknown'}
+- Coordinates [lng, lat]: ${JSON.stringify(coordsA)}
+
+OVERLAPPING NEIGHBOUR: ${nbr.fieldId}
+- Owner: ${nbr.owner || 'unknown'}
+- Area: ${mB ? mB.area.toFixed(3) + ' ha' : 'unknown'}
+- Vertices: ${mB ? mB.vertices : 'unknown'}
+- Coordinates [lng, lat]: ${JSON.stringify(coordsB)}
+
+OVERLAP: ${intersectionArea ? intersectionArea.toFixed(4) + ' ha' : 'unknown area'}
+
+TASK:
+1. Diagnose the type of boundary problem
+2. Determine which field's boundary needs correction (the one that appears misregistered)
+3. Propose corrected coordinates for the field to correct that eliminates the overlap
+
+Respond ONLY with valid JSON, no other text:
+{
+  "diagnosis": "minor_overlap" | "malformed_boundary" | "version_conflict",
+  "field_to_correct": "${f.fieldId}" | "${nbr.fieldId}",
+  "explanation": "one sentence explanation",
+  "confidence": "high" | "medium" | "low",
+  "corrected_coordinates": [[lng, lat], ...],
+  "correction_method": "clip" | "reshape" | "simplify"
+}`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const raw  = data.content?.find(b => b.type === 'text')?.text || '';
+
+    // Parse JSON from response
+    let result;
+    try {
+      const clean = raw.replace(/```json|```/g, '').trim();
+      result = JSON.parse(clean);
+    } catch(e) {
+      throw new Error('Could not parse AI response: ' + raw.slice(0, 100));
+    }
+
+    // Show result
+    const diagLabel = {
+      minor_overlap:    '⚠ Minor overlap',
+      malformed_boundary: '✗ Malformed boundary',
+      version_conflict: '🟠 Version conflict'
+    }[result.diagnosis] || result.diagnosis;
+
+    const confColor = result.confidence === 'high'   ? '#22c55e'
+                    : result.confidence === 'medium' ? '#f59e0b' : '#ef4444';
+
+    document.getElementById('scResult').innerHTML = `
+      <div style="font-family:var(--mono);font-size:10px;line-height:1.9">
+        <div style="margin-bottom:8px;padding:6px 8px;background:rgba(34,197,94,0.06);
+          border:1px solid rgba(34,197,94,0.2);border-radius:4px">
+          <div style="font-weight:700;color:var(--fg)">Diagnosis</div>
+          <div style="color:#f59e0b">${diagLabel}</div>
+        </div>
+        <div style="margin-bottom:8px">
+          <span style="color:var(--muted)">Field to correct:</span>
+          <span style="color:var(--fg);font-weight:700"> ${result.field_to_correct}</span>
+        </div>
+        <div style="margin-bottom:8px">
+          <span style="color:var(--muted)">Method:</span>
+          <span style="color:var(--fg)"> ${result.correction_method}</span>
+        </div>
+        <div style="margin-bottom:8px">
+          <span style="color:var(--muted)">Confidence:</span>
+          <span style="color:${confColor};font-weight:700"> ${result.confidence}</span>
+        </div>
+        <div style="margin-bottom:8px;padding:6px 8px;background:var(--bg);
+          border-radius:4px;color:var(--muted);font-size:9px;line-height:1.5">
+          ${result.explanation}
+        </div>
+        <div style="color:var(--muted);font-size:9px">
+          ${result.corrected_coordinates?.length || 0} corrected vertices proposed
+        </div>
+      </div>`;
+
+    // Draw proposed correction on map (green)
+    if (result.corrected_coordinates?.length >= 3) {
+      _scProposedCoords = result.corrected_coordinates;
+
+      // Convert [lng, lat] → Leaflet [lat, lng]
+      const proposed = result.corrected_coordinates.map(c => [c[1], c[0]]);
+      if (_scProposedLayer) { try { _scMap.removeLayer(_scProposedLayer); } catch(e){} }
+      _scProposedLayer = L.polygon(proposed, {
+        color: '#22c55e', weight: 3, fillOpacity: 0.15
+      }).addTo(_scMap).bindTooltip('Proposed correction', { permanent:false });
+
+      // Enable accept button
+      document.getElementById('scBtnAccept').disabled = false;
+      document.getElementById('scBtnAccept').style.opacity = '1';
+    }
+
+  } catch(e) {
+    document.getElementById('scResult').innerHTML = `
+      <div style="font-family:var(--mono);font-size:10px;color:#ef4444;padding:16px;
+        line-height:1.6">
+        ✗ Analysis failed<br>
+        <span style="color:var(--muted);font-size:9px">${e.message}</span>
+      </div>`;
+  } finally {
+    btn.textContent = '🔄 Re-analyse';
+    btn.disabled    = false;
+  }
+}
+
+function acceptSmartCorrection() {
+  if (!_scProposedCoords || !_scField) return;
+  // Convert [lng, lat] → Polygon Corrector format [lat, lng] and open
+  const leafletCoords = _scProposedCoords.map(c => [c[1], c[0]]);
+  closeSmartCorrector();
+
+  // Open Polygon Corrector with the corrected coordinates via URL
+  const baseUrl = 'https://communityof-clim.github.io/ccs-polygon-corrector/';
+  const params  = new URLSearchParams({ fieldId: _scField.fieldId });
+  window.open(baseUrl + '?' + params.toString(), '_blank');
+  showToast('Opening Polygon Corrector — apply the proposed coordinates manually', 'ok');
+
+  // Also copy corrected GeoJSON to clipboard for easy paste
+  const geojson = JSON.stringify({
+    type: 'Feature',
+    properties: { fieldId: _scField.fieldId },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[..._scProposedCoords, _scProposedCoords[0]]]
+    }
+  }, null, 2);
+  navigator.clipboard?.writeText(geojson).then(() =>
+    showToast('Corrected GeoJSON copied to clipboard', 'ok')
+  ).catch(() => {});
+}
+
+// Show Smart Correct button only when field has overlapping neighbours
 </script>
 </body>
 </html>
