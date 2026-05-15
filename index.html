@@ -5428,105 +5428,25 @@ function runSmartCorrection() {
   try {
     const f   = _scField;
     const nbr = _scNeighbour;
-    const mA  = f.ring   ? ringMetrics(f.ring)   : null;
-    const mB  = nbr.ring ? ringMetrics(nbr.ring) : null;
+    // Use native analyseOverlapPair — no turf required
+    const result = analyseOverlapPair(f, nbr);
 
-    // Convert rings to turf polygons [lng, lat]
-    const toTurf = ring => {
-      const coords = ring.map(c => [c[1], c[0]]);
-      if (coords[0][0] !== coords[coords.length-1][0] ||
-          coords[0][1] !== coords[coords.length-1][1]) coords.push(coords[0]);
-      return turf.polygon([coords]);
+    const DIAG_LABELS_SC = {
+      malformed_boundary: '✗ Malformed boundary',
+      contained:          '🟡 One Contains Other',
+      minor_overlap:      '⚠ Minor overlap',
+      manual:             '🔧 Manual correction needed'
     };
 
-    const polyA = toTurf(f.ring);
-    const polyB = toTurf(nbr.ring);
-
-    // 1. Compute intersection
-    let intersection = null, intersectionArea = 0;
-    try {
-      intersection    = turf.intersect(polyA, polyB);
-      intersectionArea = intersection ? turf.area(intersection) / 10000 : 0;
-    } catch(e) {}
-
-    if (!intersection) {
-      document.getElementById('scResult').innerHTML = `
-        <div style="font-family:var(--mono);font-size:10px;color:#f59e0b;padding:16px">
-          No geometric overlap found between these polygons.<br>
-          <span style="color:var(--muted);font-size:9px">
-            The overlap may be very small or a boundary touching case.
-          </span>
-        </div>`;
-      btn.textContent = '🔄 Re-analyse';
-      btn.disabled    = false;
-      return;
-    }
-
-    // 2. Diagnose — check convexity ratio of field A to detect malformed shapes
-    let diagnosisType, diagnosisLabel, correctionMethod, fieldToCorrect, explanation, confidence;
-    let correctedCoords = null;
-
-    const areaA = mA ? mA.area : 0;
-    const areaB = mB ? mB.area : 0;
-    const overlapRatio = intersectionArea / Math.min(areaA, areaB);
-
-    // Convexity check — ratio of polygon area to convex hull area
-    let convexRatioA = 1;
-    try {
-      const hull = turf.convex(polyA);
-      if (hull) {
-        const hullArea = turf.area(hull) / 10000;
-        convexRatioA = areaA / hullArea;
-      }
-    } catch(e) {}
-
-    const isMalformed = convexRatioA < 0.65; // very non-convex = likely malformed
-
-    if (isMalformed) {
-      // Malformed boundary — use convex hull to simplify
-      diagnosisType  = 'malformed_boundary';
-      diagnosisLabel = '✗ Malformed boundary';
-      correctionMethod = 'Convex hull simplification';
-      fieldToCorrect = f.fieldId;
-      confidence     = 'medium';
-      explanation    = `The boundary of ${f.fieldId} has an unusual shape (convexity ratio: ${convexRatioA.toFixed(2)}). The convex hull has been computed as a simplified replacement.`;
-      try {
-        const hull = turf.convex(polyA);
-        if (hull) correctedCoords = hull.geometry.coordinates[0];
-      } catch(e) {}
-
-    } else if (overlapRatio > 0.8) {
-      // One polygon mostly inside the other — keep the larger
-      diagnosisType  = 'contained';
-      diagnosisLabel = '🟡 One Contains Other';
-      correctionMethod = 'Remove smaller duplicate';
-      fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
-      confidence     = 'high';
-      explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly contained within its neighbour. The smaller field should be disabled.`;
-      // No coordinate correction — action is to disable the smaller field
-      correctedCoords = null;
-
-    } else {
-      // Minor overlap — clip field A at neighbour's boundary
-      diagnosisType  = 'minor_overlap';
-      diagnosisLabel = '⚠ Minor overlap';
-      correctionMethod = 'Clip at neighbour boundary';
-      fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
-      confidence     = 'high';
-      explanation    = `Overlap of ${intersectionArea.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}% of the smaller field). The boundary of ${fieldToCorrect} has been clipped at the neighbour's edge.`;
-      try {
-        const toClip  = areaA < areaB ? polyA : polyB;
-        const clipper = areaA < areaB ? polyB : polyA;
-        const diff    = turf.difference(toClip, clipper);
-        if (diff) correctedCoords = diff.geometry.coordinates[0];
-      } catch(e) {
-        explanation += ' (clip failed — manual correction required)';
-      }
-    }
-
-    // Show result panel
-    const confColor = confidence === 'high'   ? '#22c55e'
-                    : confidence === 'medium' ? '#f59e0b' : '#ef4444';
+    const diagnosisLabel  = DIAG_LABELS_SC[result.diagnosis] || result.diagnosis;
+    const correctedCoords = result.correctedCoords;
+    const fieldToCorrect  = result.fieldToCorrect;
+    const confidence      = result.confidence;
+    const explanation     = result.explanation;
+    const correctionMethod = result.method;
+    const convexRatioA    = result.convexRatioA;
+    const isMalformed     = result.diagnosis === 'malformed_boundary';
+    const confColor       = confidence === 'high' ? '#22c55e' : confidence === 'medium' ? '#f59e0b' : '#ef4444';
 
     document.getElementById('scResult').innerHTML = `
       <div style="font-family:var(--mono);font-size:10px;line-height:1.9">
@@ -5534,11 +5454,6 @@ function runSmartCorrection() {
           border:1px solid rgba(34,197,94,0.2);border-radius:4px">
           <div style="font-weight:700;color:var(--fg)">Diagnosis</div>
           <div style="color:#f59e0b">${diagnosisLabel}</div>
-        </div>
-        <div style="margin-bottom:6px">
-          <span style="color:var(--muted)">Overlap area:</span>
-          <span style="color:var(--fg)"> ${intersectionArea.toFixed(4)} ha
-            (${(overlapRatio*100).toFixed(1)}% of smaller field)</span>
         </div>
         <div style="margin-bottom:6px">
           <span style="color:var(--muted)">Field to correct:</span>
@@ -5563,22 +5478,21 @@ function runSmartCorrection() {
         </div>
         ${correctedCoords
           ? `<div style="color:var(--muted);font-size:9px">${correctedCoords.length} corrected vertices</div>`
-          : `<div style="color:#f59e0b;font-size:9px">Action: disable the smaller field</div>`}
+          : `<div style="color:#f59e0b;font-size:9px">${result.diagnosis === 'contained' ? 'Action: disable the smaller field' : 'Manual correction required — open in Corrector'}</div>`}
       </div>`;
 
     // Draw proposed correction on map
     if (correctedCoords && correctedCoords.length >= 3) {
-      _scProposedCoords = correctedCoords.map(c => [c[0], c[1]]); // [lng, lat]
-      const leaflet     = correctedCoords.map(c => [c[1], c[0]]); // [lat, lng] for Leaflet
+      // correctedCoords are in [lat, lng] format (native)
+      _scProposedCoords = correctedCoords.map(c => [c[1], c[0]]); // store as [lng, lat]
+      const leaflet = correctedCoords; // already [lat, lng] for Leaflet
       if (_scProposedLayer) { try { _scMap.removeLayer(_scProposedLayer); } catch(e){} }
       _scProposedLayer = L.polygon(leaflet, {
         color:'#22c55e', weight:3, fillOpacity:0.15
       }).addTo(_scMap).bindTooltip('Proposed correction', { permanent:false });
-
       document.getElementById('scBtnAccept').disabled = false;
       document.getElementById('scBtnAccept').style.opacity = '1';
-    } else if (diagnosisType === 'contained') {
-      // For contained case — enable accept to open the smaller field for disable
+    } else if (result.diagnosis === 'contained') {
       _scProposedCoords = null;
       document.getElementById('scBtnAccept').disabled = false;
       document.getElementById('scBtnAccept').style.opacity = '1';
@@ -5597,7 +5511,6 @@ function runSmartCorrection() {
   btn.textContent = '🔄 Re-analyse';
   btn.disabled    = false;
 }
-
 
 function acceptSmartCorrection() {
   if (!_scProposedCoords || !_scField) return;
@@ -5786,136 +5699,173 @@ async function processBulkBatch() {
   renderBulkPage();
 }
 
-function analyseOverlapPair(f, nbr) {
-  // Safe polygon builder — cleans duplicate/near-duplicate points and closes ring
-  const toTurf = ring => {
-    let coords = ring.map(c => [
-      parseFloat(c[1].toFixed(7)),  // lng
-      parseFloat(c[0].toFixed(7))   // lat
-    ]);
-    // Remove duplicate consecutive points
-    coords = coords.filter((c, i) =>
-      i === 0 || Math.abs(c[0]-coords[i-1][0]) > 1e-8 || Math.abs(c[1]-coords[i-1][1]) > 1e-8
-    );
-    // Need at least 3 unique points
-    if (coords.length < 3) return null;
-    // Close ring
-    if (coords[0][0] !== coords[coords.length-1][0] ||
-        coords[0][1] !== coords[coords.length-1][1]) coords.push([...coords[0]]);
-    // turf.polygon needs at least 4 coords (3 unique + close)
-    if (coords.length < 4) return null;
-    try { return turf.polygon([coords]); } catch(e) { return null; }
-  };
+// ── NATIVE GEOMETRY UTILITIES (no turf required) ─────────────────────────
 
-  const mA    = f.ring   ? ringMetrics(f.ring)   : null;
-  const mB    = nbr.ring ? ringMetrics(nbr.ring) : null;
+// Segment intersection — rings use [lat, lng]
+function _segIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
+  const dLat1=lat2-lat1, dLng1=lng2-lng1;
+  const dLat2=lat4-lat3, dLng2=lng4-lng3;
+  const denom = dLat1*dLng2 - dLng1*dLat2;
+  if (Math.abs(denom) < 1e-12) return null;
+  const t = ((lat3-lat1)*dLng2-(lng3-lng1)*dLat2)/denom;
+  const u = ((lat3-lat1)*dLng1-(lng3-lng1)*dLat1)/denom;
+  if (t>-1e-9&&t<1+1e-9&&u>-1e-9&&u<1+1e-9)
+    return [lat1+t*dLat1, lng1+t*dLng1];
+  return null;
+}
+
+// Clip polygon A against polygon B — returns vertices of A outside B
+// Uses Sutherland-Hodgman inspired approach
+function _clipRing(ringA, ringB) {
+  const result = [];
+  const n = ringA.length;
+  for (let i = 0; i < n; i++) {
+    const curr = ringA[i];
+    const next = ringA[(i+1) % n];
+    const cIn  = pip(curr[0], curr[1], ringB);
+    const nIn  = pip(next[0], next[1], ringB);
+    if (!cIn) result.push(curr);
+    // Find edge-ring intersection
+    if (cIn !== nIn) {
+      for (let j = 0; j < ringB.length-1; j++) {
+        const pt = _segIntersect(curr, next, ringB[j], ringB[j+1]);
+        if (pt) { result.push(pt); break; }
+      }
+    }
+  }
+  return result.length >= 3 ? result : null;
+}
+
+// Convex hull (gift wrapping / Jarvis march) — for malformed boundary correction
+function _convexHull(pts) {
+  if (pts.length < 3) return pts;
+  const cross = ([lat1,lng1],[lat2,lng2],[lat3,lng3]) =>
+    (lng2-lng1)*(lat3-lat1)-(lat2-lat1)*(lng3-lng1);
+  let start = 0;
+  for (let i=1; i<pts.length; i++)
+    if (pts[i][1]<pts[start][1]||(pts[i][1]===pts[start][1]&&pts[i][0]<pts[start][0])) start=i;
+  const hull=[]; let cur=start;
+  do {
+    hull.push(pts[cur]);
+    let next=(cur+1)%pts.length;
+    for (let i=0; i<pts.length; i++)
+      if (cross(pts[cur],pts[next],pts[i])<0) next=i;
+    cur=next;
+  } while (cur!==start && hull.length<=pts.length);
+  return hull;
+}
+
+// Shoelace area in ha (ring = [[lat,lng],...])
+function _ringAreaNative(ring) {
+  // Approximate using planar coords scaled by ~111km/deg
+  let area = 0;
+  const n = ring.length;
+  for (let i=0; i<n; i++) {
+    const j=(i+1)%n;
+    const x1=ring[i][1]*111320*Math.cos(ring[i][0]*Math.PI/180);
+    const y1=ring[i][0]*111320;
+    const x2=ring[j][1]*111320*Math.cos(ring[j][0]*Math.PI/180);
+    const y2=ring[j][0]*111320;
+    area += x1*y2 - x2*y1;
+  }
+  return Math.abs(area)/2/10000; // m² → ha
+}
+
+// Convexity ratio (area / convex hull area) — 1.0 = perfectly convex
+function _convexityRatio(ring) {
+  try {
+    const hull = _convexHull([...ring]);
+    const hullArea = _ringAreaNative(hull);
+    const ringArea = _ringAreaNative(ring);
+    return hullArea > 0 ? ringArea/hullArea : 1;
+  } catch(e) { return 1; }
+}
+
+function analyseOverlapPair(f, nbr) {
+  const mA   = f.ring   ? ringMetrics(f.ring)   : null;
+  const mB   = nbr.ring ? ringMetrics(nbr.ring) : null;
   const areaA = mA ? mA.area : 0;
   const areaB = mB ? mB.area : 0;
 
-  // Default — manual correction if geometry analysis fails
   const manual = {
     f, nbr, diagnosis:'manual', correctedCoords:null,
     overlapHa:0, method:'Manual correction', confidence:'low',
     fieldToCorrect: areaA <= areaB ? f.fieldId : nbr.fieldId,
-    explanation:'Polygon topology is too complex for automatic correction. Open in Polygon Corrector.',
+    explanation: 'Polygon is too complex for automatic correction. Open in Polygon Corrector.',
     convexRatioA:1, approved:false, skipped:false
   };
 
-  let polyA, polyB;
-  try { polyA = toTurf(f.ring);   } catch(e) { polyA = null; }
-  try { polyB = toTurf(nbr.ring); } catch(e) { polyB = null; }
-  if (!polyA || !polyB) return manual;
+  if (!f.ring || !nbr.ring || f.ring.length < 3 || nbr.ring.length < 3) return manual;
 
-  let overlapHa = 0;
-  let inter = null;
-  try {
-    inter = turf.intersect(polyA, polyB);
-    if (inter) overlapHa = turf.area(inter) / 10000;
-  } catch(e) { /* turf.intersect may fail for complex geometries — proceed anyway */ }
+  // Convexity of field A
+  const convexRatioA = _convexityRatio(f.ring);
 
-  const overlapRatio = (Math.min(areaA, areaB) > 0 && overlapHa > 0)
-    ? overlapHa / Math.min(areaA, areaB) : 0;
-
-  // Convexity check on field A
-  let convexRatioA = 1;
-  try {
-    const hull = turf.convex(polyA);
-    if (hull) {
-      const ha = turf.area(hull) / 10000;
-      convexRatioA = (ha > 0 && areaA > 0) ? areaA / ha : 1;
-    }
-  } catch(e) {}
-
-  // ── Diagnose & compute correction ───────────────────────────────────────
   let diagnosis, method, confidence, fieldToCorrect, correctedCoords = null, explanation;
+  let overlapHa = 0;
 
   if (convexRatioA < 0.65) {
-    // Malformed shape — convex hull simplification
+    // Malformed boundary — convex hull
     diagnosis      = 'malformed_boundary';
     method         = 'Convex hull';
     confidence     = 'medium';
     fieldToCorrect = f.fieldId;
     explanation    = `Non-convex boundary (ratio: ${convexRatioA.toFixed(2)}). Convex hull applied.`;
     try {
-      const hull = turf.convex(polyA);
-      if (hull) correctedCoords = hull.geometry.coordinates[0];
+      const hull = _convexHull([...f.ring]);
+      if (hull && hull.length >= 3) correctedCoords = hull;
     } catch(e) { explanation += ' Hull failed.'; }
 
-  } else if (inter && overlapRatio > 0.8) {
-    // One mostly inside the other
-    diagnosis      = 'contained';
-    method         = 'Disable smaller';
-    confidence     = 'high';
-    fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
-    explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly within its neighbour.`;
-
   } else {
-    // Try turf.difference — if it clips something meaningful, we have a correction
-    diagnosis      = 'minor_overlap';
-    method         = 'Clip boundary';
-    confidence     = overlapHa > 0 ? 'high' : 'medium';
-    fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
-    explanation    = overlapHa > 0
-      ? `Overlap: ${overlapHa.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}% of smaller field).`
-      : 'Boundaries are touching or very close — clip applied to remove contact.';
+    // Try to clip the smaller field against the larger
+    const toClipRing  = areaA <= areaB ? f.ring   : nbr.ring;
+    const clipperRing = areaA <= areaB ? nbr.ring  : f.ring;
+    const clipArea    = areaA <= areaB ? areaA     : areaB;
+    fieldToCorrect    = areaA <= areaB ? f.fieldId : nbr.fieldId;
 
-    const toClip  = areaA <= areaB ? polyA : polyB;
-    const clipper = areaA <= areaB ? polyB  : polyA;
-    const clipArea = areaA <= areaB ? areaA : areaB;
+    // Count vertices of toClip inside clipper — estimate overlap
+    const vInside = toClipRing.filter(v => pip(v[0], v[1], clipperRing)).length;
+    const centreIn = pip(
+      toClipRing.reduce((s,v)=>s+v[0],0)/toClipRing.length,
+      toClipRing.reduce((s,v)=>s+v[1],0)/toClipRing.length,
+      clipperRing
+    );
 
-    try {
-      const diff = turf.difference(toClip, clipper);
-      if (diff) {
-        // Verify the clip actually changed something (result should be smaller)
-        const diffArea = turf.area(diff) / 10000;
-        if (diffArea < clipArea * 0.999) {
-          // Meaningful clip — use it
-          if (diff.geometry.type === 'MultiPolygon') {
-            // Take the largest ring from multipolygon
-            const rings = diff.geometry.coordinates;
-            correctedCoords = rings.reduce((a,b) => a[0].length >= b[0].length ? a : b)[0];
-          } else {
-            correctedCoords = diff.geometry.coordinates[0];
+    if (vInside > toClipRing.length * 0.8 || centreIn) {
+      // One mostly inside the other
+      diagnosis      = 'contained';
+      method         = 'Disable smaller';
+      confidence     = 'high';
+      explanation    = `${fieldToCorrect} (${clipArea.toFixed(2)} ha) is mostly within its neighbour.`;
+    } else {
+      // Minor overlap — clip
+      diagnosis = 'minor_overlap';
+      method    = 'Clip boundary';
+      confidence = vInside > 0 ? 'high' : 'medium';
+      overlapHa  = vInside > 0 ? (vInside / toClipRing.length) * clipArea : 0;
+      explanation = vInside > 0
+        ? `${vInside} of ${toClipRing.length} vertices inside neighbour. Overlap: ~${overlapHa.toFixed(3)} ha.`
+        : 'Boundaries cross — clip applied to remove intersection.';
+
+      try {
+        const clipped = _clipRing(toClipRing, clipperRing);
+        if (clipped && clipped.length >= 3) {
+          const clippedArea = _ringAreaNative(clipped);
+          if (clippedArea < clipArea * 0.999 && clippedArea > 0.001) {
+            correctedCoords = clipped;
+          } else if (clippedArea >= clipArea * 0.999) {
+            // No meaningful clip — touching only
+            diagnosis   = 'manual';
+            method      = 'Manual correction';
+            confidence  = 'low';
+            explanation = 'Boundaries touch but do not overlap — no clip needed.';
           }
-        } else {
-          // Difference returned essentially the same polygon — touching boundary only
-          diagnosis   = 'manual';
-          method      = 'Manual correction';
-          confidence  = 'low';
-          explanation = 'Boundaries are touching but overlap is too small to clip automatically.';
         }
-      } else {
-        // Null difference — clip would eliminate the entire polygon
+      } catch(e) {
         diagnosis   = 'manual';
         method      = 'Manual correction';
         confidence  = 'low';
-        explanation = 'Clip would eliminate the polygon entirely. Manual boundary review required.';
+        explanation = 'Clip failed — open in Polygon Corrector.';
       }
-    } catch(e) {
-      diagnosis   = 'manual';
-      method      = 'Manual correction';
-      confidence  = 'low';
-      explanation = 'Boundary geometry is too complex for automatic clip. Open in Polygon Corrector.';
     }
   }
 
