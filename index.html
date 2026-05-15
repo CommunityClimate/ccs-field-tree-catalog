@@ -1643,6 +1643,7 @@ async function detectOverlapsKPI() {
   if (fields.length < 2) {
     el.textContent = '0'; el.style.color = '#22c55e';
     window._overlappingFieldIds = new Set();
+    window._overlapDetectionComplete = false;
     return;
   }
 
@@ -1874,6 +1875,9 @@ async function detectOverlapsKPI() {
     `⚠ Corner/tip: ${tipCount.toLocaleString()} fields — review\n` +
     `~ Line on boundary: ${lineCount.toLocaleString()} fields — document\n` +
     `◌ Touching: ${touchCount.toLocaleString()} fields — document`;
+
+  // Signal that detection is fully complete — used by Bulk Corrector wait loop
+  window._overlapDetectionComplete = true;
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
@@ -5724,11 +5728,11 @@ function renderBulkCorrectView() {
 }
 
 async function processBulkBatch() {
-  // Wait for overlap detection to complete
+  // Wait for overlap detection to fully complete — not just partially populated
   let waited = 0;
-  while ((!window._overlappingFieldIds || window._overlappingFieldIds.size === 0) && waited < 30) {
+  while (!window._overlapDetectionComplete && waited < 60) {
     document.getElementById('bcStatus').innerHTML =
-      `<span style="color:var(--muted)">⏳ Waiting for overlap detection to complete…</span>`;
+      `<span style="color:var(--muted)">⏳ Waiting for overlap detection to complete… (${waited}s)</span>`;
     await new Promise(r => setTimeout(r, 500));
     waited++;
   }
