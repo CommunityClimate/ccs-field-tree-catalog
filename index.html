@@ -5671,8 +5671,9 @@ function toggleBulkCorrect() {
 }
 
 function renderBulkCorrectView() {
-  // Replace queue table with our custom grid layout
+  // Replace queue content with flex column layout filling queueWrap
   const wrap = document.getElementById('queueWrap');
+  wrap.style.flexDirection = 'column';
   wrap.innerHTML = `
     <!-- Summary / controls bar -->
     <div id="bcSummary" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
@@ -5705,8 +5706,8 @@ function renderBulkCorrectView() {
     </div>
 
     <!-- Card grid -->
-    <div id="bcGrid" style="padding:12px;overflow-y:auto;max-height:calc(100vh - 280px);
-      display:grid;gap:12px;
+    <div id="bcGrid" style="padding:12px;overflow-y:auto;flex:1;min-height:0;
+      display:grid;gap:12px;align-content:start;
       grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted);
         grid-column:1/-1;text-align:center;padding:32px 0">
@@ -5825,18 +5826,15 @@ function analyseOverlapPair(f, nbr) {
   try { polyB = toTurf(nbr.ring); } catch(e) { polyB = null; }
   if (!polyA || !polyB) return manual;
 
-  let overlapHa = 0, overlapRatio = 0;
+  let overlapHa = 0;
   let inter = null;
   try {
     inter = turf.intersect(polyA, polyB);
-    if (inter) {
-      overlapHa    = turf.area(inter) / 10000;
-      overlapRatio = Math.min(areaA, areaB) > 0 ? overlapHa / Math.min(areaA, areaB) : 0;
-    }
-  } catch(e) {
-    // intersect failed — use bounding box overlap as a fallback signal
-    overlapHa = 0;
-  }
+    if (inter) overlapHa = turf.area(inter) / 10000;
+  } catch(e) { /* turf.intersect may fail for complex geometries — proceed anyway */ }
+
+  const overlapRatio = (Math.min(areaA, areaB) > 0 && overlapHa > 0)
+    ? overlapHa / Math.min(areaA, areaB) : 0;
 
   // Convexity check on field A
   let convexRatioA = 1;
@@ -5848,7 +5846,7 @@ function analyseOverlapPair(f, nbr) {
     }
   } catch(e) {}
 
-  // ── Diagnose ────────────────────────────────────────────────────────────
+  // ── Diagnose & compute correction ───────────────────────────────────────
   let diagnosis, method, confidence, fieldToCorrect, correctedCoords = null, explanation;
 
   if (convexRatioA < 0.65) {
@@ -5857,11 +5855,11 @@ function analyseOverlapPair(f, nbr) {
     method         = 'Convex hull';
     confidence     = 'medium';
     fieldToCorrect = f.fieldId;
-    explanation    = `Non-convex boundary (ratio: ${convexRatioA.toFixed(2)}). Convex hull applied as simplified replacement.`;
+    explanation    = `Non-convex boundary (ratio: ${convexRatioA.toFixed(2)}). Convex hull applied.`;
     try {
       const hull = turf.convex(polyA);
       if (hull) correctedCoords = hull.geometry.coordinates[0];
-    } catch(e) { explanation += ' Hull failed — manual correction needed.'; }
+    } catch(e) { explanation += ' Hull failed.'; }
 
   } else if (inter && overlapRatio > 0.8) {
     // One mostly inside the other
@@ -5869,42 +5867,56 @@ function analyseOverlapPair(f, nbr) {
     method         = 'Disable smaller';
     confidence     = 'high';
     fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
-    explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly within its neighbour. Disable the smaller field.`;
-
-  } else if (inter && overlapHa > 0) {
-    // Minor overlap — clip
-    diagnosis      = 'minor_overlap';
-    method         = 'Clip boundary';
-    confidence     = 'high';
-    fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
-    explanation    = `Overlap: ${overlapHa.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}% of smaller field).`;
-    try {
-      const toClip  = areaA <= areaB ? polyA : polyB;
-      const clipper = areaA <= areaB ? polyB  : polyA;
-      const diff    = turf.difference(turf.featureCollection ? toClip : toClip, clipper);
-      if (diff) {
-        // difference may return Polygon or MultiPolygon — take largest
-        if (diff.geometry.type === 'MultiPolygon') {
-          const rings = diff.geometry.coordinates;
-          const largest = rings.reduce((a,b) =>
-            (a[0].length >= b[0].length ? a : b));
-          correctedCoords = largest[0];
-        } else {
-          correctedCoords = diff.geometry.coordinates[0];
-        }
-      }
-    } catch(e) {
-      confidence  = 'low';
-      explanation += ' Clip failed — manual correction needed.';
-    }
+    explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly within its neighbour.`;
 
   } else {
-    // No computable intersection — flag for manual
-    diagnosis      = 'manual';
-    method         = 'Manual correction';
-    confidence     = 'low';
+    // Try turf.difference — if it clips something meaningful, we have a correction
+    diagnosis      = 'minor_overlap';
+    method         = 'Clip boundary';
+    confidence     = overlapHa > 0 ? 'high' : 'medium';
     fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
-    explanation    = 'Boundary geometries are adjacent or touching but intersection cannot be computed. Open in Polygon Corrector.';
+    explanation    = overlapHa > 0
+      ? `Overlap: ${overlapHa.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}% of smaller field).`
+      : 'Boundaries are touching or very close — clip applied to remove contact.';
+
+    const toClip  = areaA <= areaB ? polyA : polyB;
+    const clipper = areaA <= areaB ? polyB  : polyA;
+    const clipArea = areaA <= areaB ? areaA : areaB;
+
+    try {
+      const diff = turf.difference(toClip, clipper);
+      if (diff) {
+        // Verify the clip actually changed something (result should be smaller)
+        const diffArea = turf.area(diff) / 10000;
+        if (diffArea < clipArea * 0.999) {
+          // Meaningful clip — use it
+          if (diff.geometry.type === 'MultiPolygon') {
+            // Take the largest ring from multipolygon
+            const rings = diff.geometry.coordinates;
+            correctedCoords = rings.reduce((a,b) => a[0].length >= b[0].length ? a : b)[0];
+          } else {
+            correctedCoords = diff.geometry.coordinates[0];
+          }
+        } else {
+          // Difference returned essentially the same polygon — touching boundary only
+          diagnosis   = 'manual';
+          method      = 'Manual correction';
+          confidence  = 'low';
+          explanation = 'Boundaries are touching but overlap is too small to clip automatically.';
+        }
+      } else {
+        // Null difference — clip would eliminate the entire polygon
+        diagnosis   = 'manual';
+        method      = 'Manual correction';
+        confidence  = 'low';
+        explanation = 'Clip would eliminate the polygon entirely. Manual boundary review required.';
+      }
+    } catch(e) {
+      diagnosis   = 'manual';
+      method      = 'Manual correction';
+      confidence  = 'low';
+      explanation = 'Boundary geometry is too complex for automatic clip. Open in Polygon Corrector.';
+    }
   }
 
   return { f, nbr, diagnosis, correctedCoords, overlapHa, method, confidence,
