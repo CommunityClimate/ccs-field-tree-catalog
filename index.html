@@ -5719,12 +5719,21 @@ function renderBulkCorrectView() {
         Load more fields</button>
     </div>`;
 
-  // Process first batch asynchronously
-  setTimeout(() => processBulkBatch(), 50);
+  // Process first batch asynchronously — give overlap detection time to finish
+  setTimeout(() => processBulkBatch(), 200);
 }
 
-function processBulkBatch() {
-  const ovSet    = window._overlappingFieldIds;
+async function processBulkBatch() {
+  // Wait for overlap detection to complete
+  let waited = 0;
+  while ((!window._overlappingFieldIds || window._overlappingFieldIds.size === 0) && waited < 30) {
+    document.getElementById('bcStatus').innerHTML =
+      `<span style="color:var(--muted)">⏳ Waiting for overlap detection to complete…</span>`;
+    await new Promise(r => setTimeout(r, 500));
+    waited++;
+  }
+
+  const ovSet = window._overlappingFieldIds;
   if (!ovSet || ovSet.size === 0) {
     document.getElementById('bcStatus').textContent = 'No overlapping fields found.';
     document.getElementById('bcGrid').innerHTML = `
@@ -5736,6 +5745,9 @@ function processBulkBatch() {
 
   // Build candidate list on first call
   if (_bulkQueue.length === 0 && _bulkPage === 0) {
+    document.getElementById('bcStatus').innerHTML =
+      `<span style="color:var(--muted)">⏳ Analysing ${ovSet.size.toLocaleString()} overlapping fields…</span>`;
+    await new Promise(r => setTimeout(r, 50)); // allow UI to update
     const candidates = fieldsData.filter(f =>
       ovSet.has(f.fieldId) && f.ring &&
       (_overlapNeighbours[f.fieldId]||[]).some(nid => {
