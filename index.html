@@ -5786,71 +5786,125 @@ async function processBulkBatch() {
 }
 
 function analyseOverlapPair(f, nbr) {
+  // Safe polygon builder — cleans duplicate/near-duplicate points and closes ring
   const toTurf = ring => {
-    const coords = ring.map(c => [c[1], c[0]]);
+    let coords = ring.map(c => [
+      parseFloat(c[1].toFixed(7)),  // lng
+      parseFloat(c[0].toFixed(7))   // lat
+    ]);
+    // Remove duplicate consecutive points
+    coords = coords.filter((c, i) =>
+      i === 0 || Math.abs(c[0]-coords[i-1][0]) > 1e-8 || Math.abs(c[1]-coords[i-1][1]) > 1e-8
+    );
+    // Need at least 3 unique points
+    if (coords.length < 3) return null;
+    // Close ring
     if (coords[0][0] !== coords[coords.length-1][0] ||
-        coords[0][1] !== coords[coords.length-1][1]) coords.push(coords[0]);
-    return turf.polygon([coords]);
+        coords[0][1] !== coords[coords.length-1][1]) coords.push([...coords[0]]);
+    // turf.polygon needs at least 4 coords (3 unique + close)
+    if (coords.length < 4) return null;
+    try { return turf.polygon([coords]); } catch(e) { return null; }
   };
 
-  let diagnosis = 'minor_overlap', method = 'Clip', confidence = 'high';
-  let fieldToCorrect = f.fieldId, correctedCoords = null, overlapHa = 0;
-  let convexRatioA = 1, explanation = '';
+  const mA    = f.ring   ? ringMetrics(f.ring)   : null;
+  const mB    = nbr.ring ? ringMetrics(nbr.ring) : null;
+  const areaA = mA ? mA.area : 0;
+  const areaB = mB ? mB.area : 0;
 
+  // Default — manual correction if geometry analysis fails
+  const manual = {
+    f, nbr, diagnosis:'manual', correctedCoords:null,
+    overlapHa:0, method:'Manual correction', confidence:'low',
+    fieldToCorrect: areaA <= areaB ? f.fieldId : nbr.fieldId,
+    explanation:'Polygon topology is too complex for automatic correction. Open in Polygon Corrector.',
+    convexRatioA:1, approved:false, skipped:false
+  };
+
+  let polyA, polyB;
+  try { polyA = toTurf(f.ring);   } catch(e) { polyA = null; }
+  try { polyB = toTurf(nbr.ring); } catch(e) { polyB = null; }
+  if (!polyA || !polyB) return manual;
+
+  let overlapHa = 0, overlapRatio = 0;
+  let inter = null;
   try {
-    const polyA = toTurf(f.ring);
-    const polyB = toTurf(nbr.ring);
-    const mA    = ringMetrics(f.ring);
-    const mB    = nbr.ring ? ringMetrics(nbr.ring) : null;
-    const areaA = mA ? mA.area : 0;
-    const areaB = mB ? mB.area : 0;
-
-    // Intersection
-    const inter = turf.intersect(polyA, polyB);
-    if (!inter) return { f, nbr, diagnosis:'no_overlap', correctedCoords:null,
-      overlapHa:0, method:'None', confidence:'high', fieldToCorrect:f.fieldId,
-      explanation:'No geometric intersection found.', convexRatioA:1, approved:false, skipped:false };
-
-    overlapHa = turf.area(inter) / 10000;
-    const overlapRatio = overlapHa / Math.min(areaA, areaB);
-
-    // Convexity
-    try {
-      const hull = turf.convex(polyA);
-      if (hull) { const ha = turf.area(hull)/10000; convexRatioA = ha > 0 ? areaA/ha : 1; }
-    } catch(e) {}
-
-    if (convexRatioA < 0.65) {
-      diagnosis      = 'malformed_boundary';
-      method         = 'Convex hull';
-      confidence     = 'medium';
-      fieldToCorrect = f.fieldId;
-      explanation    = `Boundary shape is highly non-convex (ratio: ${convexRatioA.toFixed(2)}). Convex hull applied.`;
-      try {
-        const hull = turf.convex(polyA);
-        if (hull) correctedCoords = hull.geometry.coordinates[0];
-      } catch(e) {}
-    } else if (overlapRatio > 0.8) {
-      diagnosis      = 'contained';
-      method         = 'Disable smaller';
-      confidence     = 'high';
-      fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
-      explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly contained within its neighbour.`;
-    } else {
-      diagnosis      = 'minor_overlap';
-      method         = 'Clip';
-      confidence     = 'high';
-      fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
-      explanation    = `Overlap: ${overlapHa.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}%).`;
-      try {
-        const toClip  = areaA <= areaB ? polyA : polyB;
-        const clipper = areaA <= areaB ? polyB  : polyA;
-        const diff    = turf.difference(toClip, clipper);
-        if (diff) correctedCoords = diff.geometry.coordinates[0];
-      } catch(e) { confidence = 'low'; explanation += ' Clip failed.'; }
+    inter = turf.intersect(polyA, polyB);
+    if (inter) {
+      overlapHa    = turf.area(inter) / 10000;
+      overlapRatio = Math.min(areaA, areaB) > 0 ? overlapHa / Math.min(areaA, areaB) : 0;
     }
   } catch(e) {
-    diagnosis = 'error'; explanation = e.message;
+    // intersect failed — use bounding box overlap as a fallback signal
+    overlapHa = 0;
+  }
+
+  // Convexity check on field A
+  let convexRatioA = 1;
+  try {
+    const hull = turf.convex(polyA);
+    if (hull) {
+      const ha = turf.area(hull) / 10000;
+      convexRatioA = (ha > 0 && areaA > 0) ? areaA / ha : 1;
+    }
+  } catch(e) {}
+
+  // ── Diagnose ────────────────────────────────────────────────────────────
+  let diagnosis, method, confidence, fieldToCorrect, correctedCoords = null, explanation;
+
+  if (convexRatioA < 0.65) {
+    // Malformed shape — convex hull simplification
+    diagnosis      = 'malformed_boundary';
+    method         = 'Convex hull';
+    confidence     = 'medium';
+    fieldToCorrect = f.fieldId;
+    explanation    = `Non-convex boundary (ratio: ${convexRatioA.toFixed(2)}). Convex hull applied as simplified replacement.`;
+    try {
+      const hull = turf.convex(polyA);
+      if (hull) correctedCoords = hull.geometry.coordinates[0];
+    } catch(e) { explanation += ' Hull failed — manual correction needed.'; }
+
+  } else if (inter && overlapRatio > 0.8) {
+    // One mostly inside the other
+    diagnosis      = 'contained';
+    method         = 'Disable smaller';
+    confidence     = 'high';
+    fieldToCorrect = areaA < areaB ? f.fieldId : nbr.fieldId;
+    explanation    = `${fieldToCorrect} (${Math.min(areaA,areaB).toFixed(2)} ha) is mostly within its neighbour. Disable the smaller field.`;
+
+  } else if (inter && overlapHa > 0) {
+    // Minor overlap — clip
+    diagnosis      = 'minor_overlap';
+    method         = 'Clip boundary';
+    confidence     = 'high';
+    fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
+    explanation    = `Overlap: ${overlapHa.toFixed(4)} ha (${(overlapRatio*100).toFixed(1)}% of smaller field).`;
+    try {
+      const toClip  = areaA <= areaB ? polyA : polyB;
+      const clipper = areaA <= areaB ? polyB  : polyA;
+      const diff    = turf.difference(turf.featureCollection ? toClip : toClip, clipper);
+      if (diff) {
+        // difference may return Polygon or MultiPolygon — take largest
+        if (diff.geometry.type === 'MultiPolygon') {
+          const rings = diff.geometry.coordinates;
+          const largest = rings.reduce((a,b) =>
+            (a[0].length >= b[0].length ? a : b));
+          correctedCoords = largest[0];
+        } else {
+          correctedCoords = diff.geometry.coordinates[0];
+        }
+      }
+    } catch(e) {
+      confidence  = 'low';
+      explanation += ' Clip failed — manual correction needed.';
+    }
+
+  } else {
+    // No computable intersection — flag for manual
+    diagnosis      = 'manual';
+    method         = 'Manual correction';
+    confidence     = 'low';
+    fieldToCorrect = areaA <= areaB ? f.fieldId : nbr.fieldId;
+    explanation    = 'Boundary geometries are adjacent or touching but intersection cannot be computed. Open in Polygon Corrector.';
   }
 
   return { f, nbr, diagnosis, correctedCoords, overlapHa, method, confidence,
@@ -5858,7 +5912,8 @@ function analyseOverlapPair(f, nbr) {
 }
 
 function renderBulkPage() {
-  const visibleEntries = _bulkQueue.filter(e => e.diagnosis !== 'no_overlap' && e.diagnosis !== 'error');
+  // Include 'manual' entries (show as needing correction) but exclude true no-ops
+  const visibleEntries = _bulkQueue.filter(e => e.diagnosis !== 'no_overlap');
   const page = visibleEntries.slice(0, (_bulkPage + 1) * BULK_PAGE_SIZE);
   const remaining = visibleEntries.length - page.length;
 
@@ -5903,9 +5958,11 @@ function renderBulkPage() {
 
   // Render cards
   const DIAG_LABELS = {
-    minor_overlap:    { t:'⚠ Minor overlap',    c:'#f59e0b' },
-    malformed_boundary:{ t:'✗ Malformed',        c:'#ef4444' },
-    contained:        { t:'🟡 Contains Other',   c:'#f59e0b' },
+    minor_overlap:      { t:'⚠ Minor overlap',    c:'#f59e0b' },
+    malformed_boundary: { t:'✗ Malformed',         c:'#ef4444' },
+    contained:          { t:'🟡 Contains Other',   c:'#f59e0b' },
+    manual:             { t:'🔧 Manual needed',    c:'#6b7280' },
+    error:              { t:'⚠ Geometry error',    c:'#ef4444' },
   };
 
   gridEl.innerHTML = page.map((entry, i) => {
@@ -6070,7 +6127,9 @@ function approveAllVisible() {
   const visible = _bulkQueue.filter(e => e.diagnosis !== 'no_overlap' && e.diagnosis !== 'error')
                              .slice(0, (_bulkPage + 1) * BULK_PAGE_SIZE);
   visible.forEach(e => {
-    if (!e.skipped && e.correctedCoords) { e.approved = true; }
+    if (!e.skipped && e.correctedCoords && e.diagnosis !== 'manual' && e.diagnosis !== 'contained') {
+      e.approved = true;
+    }
   });
   renderBulkPage();
 }
