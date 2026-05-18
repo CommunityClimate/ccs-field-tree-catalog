@@ -902,6 +902,8 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <button class="view-btn" id="trendBtnMonth" onclick="setTrendView('month')" style="font-size:10px">Monthly</button>
         <div style="width:1px;height:16px;background:var(--border)"></div>
         <button class="btn-export" onclick="exportSnapshots()" style="font-size:9px;padding:3px 8px">⬇ Export</button>
+        <button class="btn-export" onclick="exportSnapshotsDelta()" style="font-size:9px;padding:3px 8px"
+          title="Export with Latest vs Previous column comparisons">⬇ Export with Δ</button>
         <button class="btn-deactivate" onclick="clearSnapshots()" style="font-size:9px;padding:3px 8px">🗑 Clear</button>
         <button class="ov-close" onclick="closeTrend()">✕</button>
       </div>
@@ -4334,6 +4336,113 @@ function exportSnapshots() {
   const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   downloadCSV(csv, `CCS_Compliance_Trend_${new Date().toISOString().slice(0,10)}.csv`);
   showToast(`⬇ Exported ${snaps.length} snapshots`, 'ok');
+}
+
+function exportSnapshotsDelta() {
+  const snaps = getSnapshots();
+  if (!snaps.length) { showToast('No snapshots to export', 'info'); return; }
+
+  const METRICS = [
+    { key:'fields',     label:'Fields' },
+    { key:'trees',      label:'Trees' },
+    { key:'compliant',  label:'✓ Compliant' },
+    { key:'tolerance',  label:'± Tolerance' },
+    { key:'review',     label:'⚠ Review' },
+    { key:'correct',    label:'✗ Correct' },
+    { key:'pct',        label:'Verra %',     fmt: v => v + '%' },
+    { key:'overlap',    label:'⧖ Overlap' },
+    { key:'near',       label:'◻ Near' },
+    { key:'large',      label:'⬡ Large' },
+    { key:'dupeFields', label:'⊕ Dupe Fields' },
+    { key:'dupeTrees',  label:'⊕ Dupe Trees' },
+  ];
+
+  const fmt = (key, val) => key === 'pct' ? val + '%' : val?.toLocaleString() ?? '—';
+  const delta = (cur, prev, key) => {
+    if (prev == null || cur == null) return '—';
+    const d = (key === 'pct')
+      ? parseFloat((cur - prev).toFixed(1))
+      : cur - prev;
+    return d === 0 ? '—' : (d > 0 ? '+' + d.toLocaleString() : d.toLocaleString());
+  };
+  const deltaColor = (cur, prev, key) => {
+    if (prev == null || cur == null) return '';
+    const d = cur - prev;
+    // For Verra %, overlap, near, correct, dupeFields, dupeTrees — direction matters differently
+    const goodUp   = ['fields','trees','compliant','tolerance','pct'];
+    const goodDown = ['correct','overlap','near','dupeFields','dupeTrees','large','review'];
+    if (d === 0) return '';
+    if (goodUp.includes(key))   return d > 0 ? 'UP_GOOD'   : 'DOWN_BAD';
+    if (goodDown.includes(key)) return d > 0 ? 'UP_BAD'    : 'DOWN_GOOD';
+    return '';
+  };
+
+  const exportDate = new Date().toISOString().slice(0,10);
+  const genDate    = new Date().toLocaleString('en-GB');
+
+  // ── Section 1: SUMMARY TABLE — latest snapshot with delta vs previous ───
+  const latest  = snaps[snaps.length - 1];
+  const prev    = snaps.length > 1 ? snaps[snaps.length - 2] : null;
+  const latDate = new Date(latest.ts).toLocaleString('en-GB');
+  const prevDate = prev ? new Date(prev.ts).toLocaleString('en-GB') : '—';
+
+  const summaryRows = [
+    ['CCS Field Tree Catalog — Compliance Trend Report with Δ (Delta) Comparison'],
+    [`Generated: ${genDate}`],
+    [`Latest snapshot: ${latDate}`],
+    [`Previous snapshot: ${prevDate}`],
+    [],
+    ['LATEST vs PREVIOUS SNAPSHOT'],
+    ['Metric', 'Latest', 'vs Previous', 'Direction'],
+    ...METRICS.map(m => {
+      const cur  = latest[m.key];
+      const pre  = prev ? prev[m.key] : null;
+      const d    = delta(cur, pre, m.key);
+      const dir  = deltaColor(cur, pre, m.key);
+      const dirLabel = dir === 'UP_GOOD' ? '▲ Improvement'
+                     : dir === 'DOWN_GOOD' ? '▼ Improvement'
+                     : dir === 'UP_BAD'   ? '▲ Worsened'
+                     : dir === 'DOWN_BAD' ? '▼ Worsened' : '—';
+      return [m.label, fmt(m.key, cur), d, dirLabel];
+    }),
+    [],
+  ];
+
+  // ── Section 2: FULL SNAPSHOT HISTORY with rolling delta ─────────────────
+  const histHeaders = [
+    'Snapshot #', 'Date', 'Time',
+    ...METRICS.flatMap(m => [m.label, `Δ ${m.label}`])
+  ];
+
+  const histRows = snaps.map((s, i) => {
+    const p = i > 0 ? snaps[i-1] : null;
+    const d = new Date(s.ts);
+    return [
+      i + 1,
+      d.toLocaleDateString('en-GB'),
+      d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}),
+      ...METRICS.flatMap(m => [
+        fmt(m.key, s[m.key]),
+        p ? delta(s[m.key], p[m.key], m.key) : '—'
+      ])
+    ];
+  });
+
+  const allRows = [
+    ...summaryRows,
+    ['FULL SNAPSHOT HISTORY — rolling delta between each snapshot'],
+    histHeaders,
+    ...histRows
+  ];
+
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+      : `"${String(r).replace(/"/g, '""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_Compliance_Trend_Delta_${exportDate}.csv`);
+  showToast(`⬇ Exported ${snaps.length} snapshots with delta comparison`, 'ok');
 }
 
 function setTrendView(v) {
