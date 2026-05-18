@@ -5990,6 +5990,7 @@ function renderBulkPage() {
     const borderColor = approved ? '#22c55e' : skipped ? '#374151' : 'var(--border)';
     const opacity     = skipped  ? '0.4' : '1';
     const queueIdx    = _bulkQueue.indexOf(entry);
+    const fidIdx      = fieldsData.indexOf(f);
 
     return `<div style="border:1px solid ${borderColor};border-radius:6px;
       overflow:hidden;background:var(--card);opacity:${opacity};
