@@ -464,7 +464,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>📐 Field Size Analysis (CSV)</strong>
         <span>Area distribution with recommended min/max cutoffs — answers what is a valid field size</span>
       </div>
-      <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
+      <div class="export-item" onclick="closeExportMenu();exportSelfIntersectFields()">
+        <strong>⬇ Self-Intersecting Fields + GeoJSON</strong>
+        <span>Polygons with vertex ordering errors — for Fieldforce administrator script fix</span>
+      </div>
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
       </div>
@@ -528,6 +531,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: fields with duplicate tree registrations" onclick="setKpiFilter('duplicate_trees')">
       <span class="v" id="kpiDupeTrees" style="color:#fbbf24">…</span>
       <span class="l">⊕ Dupe Trees</span></div>
+    <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
+      title="Click to filter: self-intersecting polygons — vertices connected in wrong order, creating star/bowtie shapes. Requires script fix." onclick="setKpiFilter('self_intersect')">
+      <span class="v" id="kpiSelfIntersect" style="color:#ef4444">…</span>
+      <span class="l">✗ Self-Intersect</span></div>
 
   </div>
 </header>
@@ -565,6 +572,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="dupe_fields_no_trees">⊕ Duplicate fields — no trees (safe to disable)</option>
         <option value="duplicate_trees">⊕ Duplicate tree registrations</option>
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
+        <option value="self_intersect">✗ Self-intersecting polygon (vertex ordering error)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
       <input type="text" id="fltCreatedBy" placeholder="Filter by intern / owner / created by…" oninput="render()"
@@ -1541,6 +1549,70 @@ function updateKPIs() {
   setTimeout(() => detectNearKPI(), 1200);
   // Run duplicate detection after overlap (slightly delayed)
   setTimeout(() => detectDuplicatesKPI(), 800);
+  // Run self-intersection detection — fast, runs early
+  setTimeout(() => detectSelfIntersectKPI(), 300);
+}
+
+// ── SELF-INTERSECTION DETECTION ───────────────────────────────────────────
+// Detects polygons where edges cross each other — the star/bowtie pattern
+// caused by vertices connected in the wrong order during upload.
+// Detection: min side = 0 OR any two non-adjacent edges intersect.
+
+function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
+  const d1l = lat2-lat1, d1g = lng2-lng1;
+  const d2l = lat4-lat3, d2g = lng4-lng3;
+  const denom = d1l*d2g - d1g*d2l;
+  if (Math.abs(denom) < 1e-12) return false;
+  const t = ((lat3-lat1)*d2g-(lng3-lng1)*d2l)/denom;
+  const u = ((lat3-lat1)*d1g-(lng3-lng1)*d1l)/denom;
+  return t > 1e-8 && t < 1-1e-8 && u > 1e-8 && u < 1-1e-8;
+}
+
+function isSelfIntersecting(ring) {
+  if (!ring || ring.length < 4) return false;
+  // Fast check: min side = 0 means polygon crosses itself
+  for (let i = 0; i < ring.length - 1; i++) {
+    const dx = ring[i][0]-ring[i+1][0], dy = ring[i][1]-ring[i+1][1];
+    if (Math.sqrt(dx*dx+dy*dy) < 1e-10) return true;
+  }
+  // Full check: test non-adjacent edge pairs
+  const n = ring.length - 1; // last = first for closed rings
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n-1) continue; // adjacent at wrap-around
+      if (_edgesIntersect(ring[i], ring[i+1], ring[j], ring[j+1])) return true;
+    }
+  }
+  return false;
+}
+
+function detectSelfIntersectKPI() {
+  const el = document.getElementById('kpiSelfIntersect');
+  if (el) el.textContent = '…';
+  window._selfIntersectIds = new Set();
+
+  fieldsData.forEach(f => {
+    if (f.ring && isSelfIntersecting(f.ring)) {
+      window._selfIntersectIds.add(f.fieldId);
+    }
+  });
+
+  const count = window._selfIntersectIds.size;
+  if (el) {
+    el.textContent   = count.toLocaleString();
+    el.style.color   = count > 0 ? '#ef4444' : '#22c55e';
+  }
+
+  // Update dropdown option with live count
+  const opt = document.querySelector('#fltStatus option[value="self_intersect"]');
+  if (opt) opt.textContent = count > 0
+    ? `✗ Self-intersecting polygon (${count.toLocaleString()}) — vertex ordering error`
+    : '✗ Self-intersecting polygon — vertex ordering error';
+
+  // Also add to snapshot guard
+  window._selfIntersectDetectionComplete = true;
+
+  console.log(`✗ Self-intersect detection: ${count} fields flagged`);
 }
 
 // ── NEAR-FIELD DETECTION ──────────────────────────────────────────────────
@@ -2002,6 +2074,9 @@ function render() {
     if (filter === 'overlap_no_trees') {
       const ovSet = window._overlappingFieldIds;
       return ovSet && ovSet.has(f.fieldId) && (treesByField[f.fieldId]||[]).length === 0;
+    }
+    if (filter === 'self_intersect') {
+      return window._selfIntersectIds && window._selfIntersectIds.has(f.fieldId);
     }
 
     // Zone-aware filters
@@ -4322,6 +4397,7 @@ function takeSnapshot() {
     large:      parseInt(document.getElementById('kpiLarge')?.textContent?.replace(/\D/g,'')) || 0,
     dupeFields: parseInt(document.getElementById('kpiDupeFields')?.textContent?.replace(/\D/g,'')) || 0,
     dupeTrees:  parseInt(document.getElementById('kpiDupeTrees')?.textContent?.replace(/\D/g,'')) || 0,
+    selfIntersect: parseInt(document.getElementById('kpiSelfIntersect')?.textContent?.replace(/\D/g,'')) || 0,
   };
   snap.pct = snap.trees > 0
     ? Math.round((snap.compliant + snap.tolerance) / snap.trees * 100) : 0;
@@ -5103,6 +5179,90 @@ function exportFieldSizeAnalysis() {
 
   downloadCSV(csv, `CCS_Field_Size_Analysis_${exportDate}.csv`);
   showToast(`📐 Field size analysis exported — ${n.toLocaleString()} fields`, 'ok');
+}
+
+function exportSelfIntersectFields() {
+  const siSet = window._selfIntersectIds;
+  if (!siSet || siSet.size === 0) {
+    showToast('No self-intersecting fields detected', 'info'); return;
+  }
+
+  const fields = fieldsData.filter(f => siSet.has(f.fieldId));
+  const date   = new Date().toISOString().slice(0,10);
+
+  // Group by creation date to identify batch
+  const byDate = {};
+  fields.forEach(f => {
+    const d = f.createdOn || 'Unknown';
+    if (!byDate[d]) byDate[d] = 0;
+    byDate[d]++;
+  });
+
+  const summaryRows = [
+    ['CCS Self-Intersecting Field Polygons — For Script Fix'],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [`Total affected fields: ${fields.length.toLocaleString()}`],
+    [],
+    ['ISSUE DESCRIPTION'],
+    ['Self-intersecting polygons have vertices connected in the wrong order, creating a star or bowtie shape.'],
+    ['These fields cannot be corrected automatically — the vertex coordinates are correct but the connection sequence is wrong.'],
+    ['Recommended fix: re-order vertices for each affected field to form a valid convex polygon (e.g. sort by angle from centroid).'],
+    [],
+    ['BATCH BREAKDOWN — fields by registration date'],
+    ['Registration Date', 'Field Count'],
+    ...Object.entries(byDate).sort((a,b) => b[1]-a[1]).map(([d,c]) => [d, c]),
+    [],
+    ['FIELD DETAIL'],
+  ];
+
+  const headers = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Total Trees', 'Min Side (m)', 'Max Side (m)',
+    'Overlapping', 'Status', 'GeoJSON Polygon'
+  ];
+
+  const ovSet = window._overlappingFieldIds || new Set();
+
+  const detailRows = fields
+    .sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''))
+    .map(f => {
+      const m       = f.ring ? ringMetrics(f.ring) : null;
+      const trees   = (treesByField[f.fieldId]||[]).length;
+      const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+      // Compute min/max side
+      let minSide = Infinity, maxSide = 0;
+      if (f.ring) {
+        for (let i = 0; i < f.ring.length-1; i++) {
+          const d = haversineM(f.ring[i][0], f.ring[i][1], f.ring[i+1][0], f.ring[i+1][1]);
+          if (d < minSide) minSide = d;
+          if (d > maxSide) maxSide = d;
+        }
+      }
+      return [
+        f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
+        m ? m.area.toFixed(4) : '',
+        m ? m.vertices : '',
+        m ? m.cLat.toFixed(6) : '',
+        m ? m.cLng.toFixed(6) : '',
+        trees,
+        minSide === Infinity ? '' : minSide.toFixed(1),
+        maxSide === 0 ? '' : maxSide.toFixed(1),
+        ovSet.has(f.fieldId) ? 'Yes' : 'No',
+        inactive ? 'Disabled (pending sync)' : 'Active',
+        f.geoJSON || ''
+      ];
+    });
+
+  const allRows = [...summaryRows, headers, ...detailRows];
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_Self_Intersecting_Fields_${date}.csv`);
+  showToast(`⬇ Exported ${fields.length} self-intersecting fields for script fix`, 'ok');
 }
 
 // ── DUPLICATE FIELD REGISTRATIONS EXPORT ─────────────────────────────────
@@ -5938,6 +6098,16 @@ function analyseOverlapPair(f, nbr) {
 
   if (!f.ring || !nbr.ring || f.ring.length < 3 || nbr.ring.length < 3) return manual;
 
+  // Self-intersection guard — skip corrupted polygons entirely
+  if (isSelfIntersecting(f.ring) || isSelfIntersecting(nbr.ring)) {
+    return {
+      ...manual,
+      diagnosis: 'self_intersect',
+      method: 'Script fix required',
+      explanation: 'Self-intersecting polygon (vertex ordering error). Cannot be corrected automatically — requires upload script fix by Fieldforce administrator.'
+    };
+  }
+
   // Convexity of field A
   const convexRatioA = _convexityRatio(f.ring);
 
@@ -6071,6 +6241,7 @@ function renderBulkPage() {
     contained:          { t:'🟡 Contains Other',   c:'#f59e0b' },
     manual:             { t:'🔧 Manual needed',    c:'#6b7280' },
     error:              { t:'⚠ Geometry error',    c:'#ef4444' },
+    self_intersect:     { t:'✗ Script fix needed', c:'#ef4444' },
   };
 
   gridEl.innerHTML = page.map((entry, i) => {
