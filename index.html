@@ -5616,6 +5616,12 @@ function renderBulkCorrectView() {
         border:1px solid rgba(56,189,248,0.4);background:rgba(56,189,248,0.1);
         color:#38bdf8;cursor:pointer;opacity:0.4;font-weight:700">
         ⬆ Write 0 approved to Fieldforce</button>
+      <input id="bcBatchSize" type="number" min="1" max="9999" placeholder="All"
+        title="Limit write to first N approved fields (leave blank for all)"
+        oninput="renderBulkPage()"
+        style="width:52px;font-family:var(--mono);font-size:9px;padding:3px 6px;
+        background:var(--bg);border:1px solid var(--border);border-radius:3px;
+        color:var(--muted);text-align:center" />
     </div>
 
     <!-- Card grid -->
@@ -5906,10 +5912,15 @@ function renderBulkPage() {
        ⚡ ${safeCount.toLocaleString()} safe cases</span>`;
 
   // Update write button
-  const writeBtn = document.getElementById('bcBtnWrite');
+  const writeBtn    = document.getElementById('bcBtnWrite');
+  const batchInput  = document.getElementById('bcBatchSize');
+  const batchLimit  = batchInput && batchInput.value ? parseInt(batchInput.value) : null;
+  const writeCount  = batchLimit ? Math.min(approvedCount, batchLimit) : approvedCount;
   writeBtn.disabled = approvedCount === 0;
   writeBtn.style.opacity = approvedCount > 0 ? '1' : '0.4';
-  writeBtn.textContent = `\u2b06 Write ${approvedCount} approved to Fieldforce`;
+  writeBtn.textContent = batchLimit && approvedCount > 0
+    ? `\u2b06 Write first ${writeCount} of ${approvedCount} approved`
+    : `\u2b06 Write ${approvedCount} approved to Fieldforce`;
 
   document.getElementById('bcBtnApproveAll').style.display = page.length > 0 ? 'inline-block' : 'none';
   document.getElementById('bcBtnAutoApprove').style.display = _bulkQueue.length > 0 ? 'inline-block' : 'none';
@@ -6130,13 +6141,20 @@ function autoApproveSafeCases() {
 }
 
 async function writeApprovedCorrections() {
-  const approved = _bulkQueue.filter(e => e.approved && e.correctedCoords);
-  if (!approved.length) { showToast('No approved corrections to write', 'info'); return; }
+  const allApproved = _bulkQueue.filter(e => e.approved && e.correctedCoords);
+  if (!allApproved.length) { showToast('No approved corrections to write', 'info'); return; }
+
+  // Respect batch size input
+  const batchInput = document.getElementById('bcBatchSize');
+  const batchSize  = batchInput && batchInput.value ? parseInt(batchInput.value) : null;
+  const approved   = batchSize ? allApproved.slice(0, batchSize) : allApproved;
+  const remaining  = allApproved.length - approved.length;
 
   if (!confirm(
-    `Write ${approved.length} corrected polygon${approved.length>1?'s':''} to Fieldforce?\n\n` +
-    `This will update the boundary coordinates in Fieldforce for each approved field.\n` +
-    `The original coordinates are preserved in the Print record.\n\n` +
+    `Write ${approved.length} corrected polygon${approved.length>1?'s':''} to Fieldforce?` +
+    (remaining > 0 ? `\n(${remaining} more approved fields will be written in the next batch)` : '') +
+    `\n\nThis will update the boundary coordinates in Fieldforce for each field.\n` +
+    `Original coordinates are preserved in the Print record.\n\n` +
     `This action cannot be undone from this tool.`
   )) return;
 
