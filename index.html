@@ -567,7 +567,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
-      <input type="text" id="fltCreatedBy" placeholder="Filter by intern / created by…" oninput="render()"
+      <input type="text" id="fltCreatedBy" placeholder="Filter by intern / owner / created by…" oninput="render()"
         style="margin-top:5px;background:var(--bg);border:1px solid var(--border);
         border-radius:4px;color:var(--text);font-family:var(--mono);font-size:10px;
         padding:4px 6px;outline:none;width:100%"/>
@@ -1557,6 +1557,7 @@ async function detectNearKPI() {
   if (el) el.textContent = '…';
 
   _nearFieldIds = new Set();
+  window._nearDetectionComplete = false;
 
   // Use same grid as overlap detection
   const CELL = 0.05;
@@ -1635,6 +1636,7 @@ async function detectNearKPI() {
   }
   const opt = document.querySelector('#fltStatus option[value="near"]');
   if (opt) opt.textContent = `◻ Neighbouring fields within ${NEAR_THRESHOLD_M}m (${count.toLocaleString()})`;
+  window._nearDetectionComplete = true;
 }
 
 // ── END NEAR-FIELD DETECTION ──────────────────────────────────────────────
@@ -1646,6 +1648,7 @@ async function detectOverlapsKPI() {
     el.textContent = '0'; el.style.color = '#22c55e';
     window._overlappingFieldIds = new Set();
     window._overlapDetectionComplete = false;
+    window._nearDetectionComplete    = false;
     return;
   }
 
@@ -1967,8 +1970,9 @@ function render() {
   visibleCache = fieldsData.filter(f => {
     if (q && !f.fieldId.toLowerCase().includes(q) &&
               !f.owner.toLowerCase().includes(q)) return false;
-    if (qCreated && !(f.createdBy || '').toLowerCase().includes(qCreated) &&
-                   !(f.modifiedBy || '').toLowerCase().includes(qCreated)) return false;
+    if (qCreated && !(f.createdBy  || '').toLowerCase().includes(qCreated) &&
+                   !(f.modifiedBy || '').toLowerCase().includes(qCreated) &&
+                   !(f.owner      || '').toLowerCase().includes(qCreated)) return false;
     if (dateFrom && f.createdOn && f.createdOn < dateFrom) return false;
     if (dateTo   && f.createdOn && f.createdOn > dateTo)   return false;
 
@@ -2044,8 +2048,10 @@ function render() {
       fieldsData.forEach(f => {
         const cb = (f.createdBy  || '').toLowerCase();
         const mb = (f.modifiedBy || '').toLowerCase();
+        const ob = (f.owner      || '').toLowerCase();
         if (cb.includes(qCreated) && cb !== qCreated) matchingCodes.add(f.createdBy);
         if (mb.includes(qCreated) && mb !== qCreated) matchingCodes.add(f.modifiedBy);
+        if (ob.includes(qCreated) && ob !== qCreated) matchingCodes.add(f.owner);
       });
       if (matchingCodes.size > 0) {
         const examples = [...matchingCodes].slice(0, 3).join(', ');
@@ -4288,6 +4294,21 @@ function saveSnapshots(snaps) {
 
 function takeSnapshot() {
   if (!fieldsData.length) { showToast('Connect to Fieldforce first', 'info'); return; }
+
+  // Guard — both overlap and near detection must be complete
+  const overlapReady = window._overlapDetectionComplete;
+  const nearReady    = window._nearDetectionComplete;
+
+  if (!overlapReady || !nearReady) {
+    const missing = [];
+    if (!overlapReady) missing.push('Overlap (⧖)');
+    if (!nearReady)    missing.push('Near (◻)');
+    if (!confirm(
+      `⚠ Detection still running: ${missing.join(' and ')}\n\n` +
+      `Taking a snapshot now will record incorrect ${missing.join('/')} counts.\n\n` +
+      `Click OK to snapshot anyway, or Cancel and wait for detection to complete.`
+    )) return;
+  }
   const snap = {
     ts:         new Date().toISOString(),
     fields:     fieldsData.length,
@@ -5171,7 +5192,12 @@ function exportCollectorReport() {
     )) return;
   }
 
-  const fields = qCreated ? visibleCache : fieldsData;
+  const fields = qCreated
+    ? visibleCache.filter(f =>
+        (f.createdBy  || '').toLowerCase().includes(qCreated) ||
+        (f.modifiedBy || '').toLowerCase().includes(qCreated) ||
+        (f.owner      || '').toLowerCase().includes(qCreated))
+    : fieldsData;
   if (!fields.length) { showToast('No fields to export \u2014 type a collector name first', 'info'); return; }
 
   const collectorLabel = qCreated || 'all collectors';
