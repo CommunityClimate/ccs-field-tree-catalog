@@ -468,6 +468,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Self-Intersecting Fields + GeoJSON</strong>
         <span>Polygons with vertex ordering errors — for Fieldforce administrator script fix</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportCoordDupeFields()">
+        <strong>⬇ Coordinate Duplicate Fields + GeoJSON</strong>
+        <span>Fields sharing identical polygon coordinates — same geometry uploaded under multiple field IDs</span>
+      </div>
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
       </div>
@@ -535,6 +539,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: self-intersecting polygons — vertices connected in wrong order, creating star/bowtie shapes. Requires script fix." onclick="setKpiFilter('self_intersect')">
       <span class="v" id="kpiSelfIntersect" style="color:#ef4444">…</span>
       <span class="l">✗ Self-Intersect</span></div>
+    <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
+      title="Click to filter: fields sharing identical polygon coordinates — same geometry uploaded under different field IDs. Pipeline duplication error." onclick="setKpiFilter('coord_dupe')">
+      <span class="v" id="kpiCoordDupe" style="color:#ef4444">…</span>
+      <span class="l">✗ Coord Dupe</span></div>
 
   </div>
 </header>
@@ -573,6 +581,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="duplicate_trees">⊕ Duplicate tree registrations</option>
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
         <option value="self_intersect">✗ Self-intersecting polygon (vertex ordering error)</option>
+        <option value="coord_dupe">✗ Coordinate duplicate (identical polygon registered multiple times)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
       <input type="text" id="fltCreatedBy" placeholder="Filter by intern / owner / created by…" oninput="render()"
@@ -1551,6 +1560,8 @@ function updateKPIs() {
   setTimeout(() => detectDuplicatesKPI(), 800);
   // Run self-intersection detection — fast, runs early
   setTimeout(() => detectSelfIntersectKPI(), 300);
+  // Run coordinate duplicate detection — finds same polygon uploaded multiple times
+  setTimeout(() => detectCoordDupeKPI(), 500);
 }
 
 // ── SELF-INTERSECTION DETECTION ───────────────────────────────────────────
@@ -1610,6 +1621,51 @@ function detectSelfIntersectKPI() {
   window._selfIntersectDetectionComplete = true;
 
   console.log(`✗ Self-intersect detection: ${count} fields flagged`);
+}
+
+// ── COORDINATE DUPLICATE DETECTION ───────────────────────────────────────
+// Finds fields where identical polygon coordinates have been uploaded under
+// different field IDs — the "same polygon stamped on multiple records" pattern.
+// Uses a fingerprint: centroid (6dp) + area (4dp) + vertex count.
+// Any two fields sharing the same fingerprint but different field IDs are
+// coordinate duplicates regardless of field ID or owner name.
+
+function detectCoordDupeKPI() {
+  const el = document.getElementById('kpiCoordDupe');
+  if (el) el.textContent = '…';
+  window._coordDupeIds     = new Set();
+  window._coordDupeGroups  = {}; // fingerprint → [fieldIds]
+
+  const fingerprints = {}; // fingerprint → [fieldId, ...]
+  fieldsData.forEach(f => {
+    if (!f.ring) return;
+    const m = ringMetrics(f.ring);
+    if (!m) return;
+    const fp = `${m.cLat.toFixed(6)}|${m.cLng.toFixed(6)}|${m.area.toFixed(4)}|${m.vertices}`;
+    if (!fingerprints[fp]) fingerprints[fp] = [];
+    fingerprints[fp].push(f.fieldId);
+  });
+
+  // Any fingerprint shared by 2+ fields = coordinate duplicates
+  Object.entries(fingerprints).forEach(([fp, ids]) => {
+    if (ids.length > 1) {
+      ids.forEach(id => window._coordDupeIds.add(id));
+      window._coordDupeGroups[fp] = ids;
+    }
+  });
+
+  const count = window._coordDupeIds.size;
+  if (el) {
+    el.textContent = count.toLocaleString();
+    el.style.color = count > 0 ? '#ef4444' : '#22c55e';
+  }
+
+  const opt = document.querySelector('#fltStatus option[value="coord_dupe"]');
+  if (opt) opt.textContent = count > 0
+    ? `✗ Coordinate duplicate (${count.toLocaleString()}) — same polygon uploaded multiple times`
+    : '✗ Coordinate duplicate — same polygon uploaded multiple times';
+
+  console.log(`✗ Coordinate duplicate detection: ${count} fields in ${Object.keys(window._coordDupeGroups).length} groups`);
 }
 
 // ── NEAR-FIELD DETECTION ──────────────────────────────────────────────────
@@ -2084,6 +2140,9 @@ function render() {
     }
     if (filter === 'self_intersect') {
       return window._selfIntersectIds && window._selfIntersectIds.has(f.fieldId);
+    }
+    if (filter === 'coord_dupe') {
+      return window._coordDupeIds && window._coordDupeIds.has(f.fieldId);
     }
 
     // Zone-aware filters
@@ -4405,6 +4464,7 @@ function takeSnapshot() {
     dupeFields: parseInt(document.getElementById('kpiDupeFields')?.textContent?.replace(/\D/g,'')) || 0,
     dupeTrees:  parseInt(document.getElementById('kpiDupeTrees')?.textContent?.replace(/\D/g,'')) || 0,
     selfIntersect: parseInt(document.getElementById('kpiSelfIntersect')?.textContent?.replace(/\D/g,'')) || 0,
+    coordDupe:     parseInt(document.getElementById('kpiCoordDupe')?.textContent?.replace(/\D/g,''))     || 0,
   };
   snap.pct = snap.trees > 0
     ? Math.round((snap.compliant + snap.tolerance) / snap.trees * 100) : 0;
@@ -5270,6 +5330,80 @@ function exportSelfIntersectFields() {
 
   downloadCSV(csv, `CCS_Self_Intersecting_Fields_${date}.csv`);
   showToast(`⬇ Exported ${fields.length} self-intersecting fields for script fix`, 'ok');
+}
+
+function exportCoordDupeFields() {
+  const groups = window._coordDupeGroups;
+  if (!groups || Object.keys(groups).length === 0) {
+    showToast('No coordinate duplicates detected — run a Refresh first', 'info'); return;
+  }
+
+  const exportDate = new Date().toISOString().slice(0,10);
+  const ovSet      = window._overlappingFieldIds || new Set();
+
+  // Build grouped rows — one group per fingerprint
+  const groupList = Object.entries(groups)
+    .sort((a,b) => b[1].length - a[1].length); // largest groups first
+
+  const summaryRows = [
+    ['CCS Coordinate Duplicate Fields — Pipeline Duplication Error'],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [`Total affected fields: ${window._coordDupeIds.size.toLocaleString()}`],
+    [`Total duplication groups: ${groupList.length.toLocaleString()}`],
+    [],
+    ['ISSUE DESCRIPTION'],
+    ['These fields share identical polygon coordinates (centroid, area, vertex count) but are registered under different field IDs.'],
+    ['This is not a field officer error — it is a pipeline error where the same GeoJSON polygon has been uploaded multiple times under different records.'],
+    ['Recommended fix: identify the source data mapping error in the upload script. For each group, keep one record and disable the rest.'],
+    [],
+    ['GROUP SUMMARY — largest groups first'],
+    ['Group #', 'Fingerprint (centroid | area | vertices)', 'Field count', 'Field IDs in group'],
+    ...groupList.map(([fp, ids], i) => [i+1, fp, ids.length, ids.join(' | ')]),
+    [],
+    ['FIELD DETAIL — all coordinate duplicate fields'],
+  ];
+
+  const headers = [
+    'Group #', 'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Total Trees', 'Verra %',
+    'Overlapping', 'Status', 'GeoJSON Polygon'
+  ];
+
+  const detailRows = [];
+  groupList.forEach(([fp, ids], groupIdx) => {
+    ids.forEach(fieldId => {
+      const f      = fieldsData.find(x => x.fieldId === fieldId);
+      if (!f) return;
+      const m      = f.ring ? ringMetrics(f.ring) : null;
+      const trees  = (treesByField[f.fieldId]||[]).length;
+      const cl     = _classCache[f.fieldId] || {};
+      const pct    = trees > 0 ? (((cl.compliant||0)/trees)*100).toFixed(1)+'%' : '-';
+      const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+      detailRows.push([
+        groupIdx + 1,
+        f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
+        m ? m.area.toFixed(4) : '',
+        m ? m.vertices : '',
+        m ? m.cLat.toFixed(6) : '',
+        m ? m.cLng.toFixed(6) : '',
+        trees, pct,
+        ovSet.has(f.fieldId) ? 'Yes' : 'No',
+        inactive ? 'Disabled (pending sync)' : 'Active',
+        f.geoJSON || ''
+      ]);
+    });
+  });
+
+  const allRows = [...summaryRows, headers, ...detailRows];
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_Coordinate_Duplicate_Fields_${exportDate}.csv`);
+  showToast(`⬇ Exported ${window._coordDupeIds.size} coordinate duplicate fields in ${groupList.length} groups`, 'ok');
 }
 
 // ── DUPLICATE FIELD REGISTRATIONS EXPORT ─────────────────────────────────
