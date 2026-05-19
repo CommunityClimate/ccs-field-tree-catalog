@@ -700,6 +700,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnBulkCorrect" onclick="toggleBulkCorrect()"
         style="color:#22c55e;border-color:rgba(34,197,94,0.3)"
         title="Bulk Smart Corrector — review before/after polygon corrections in a grid">⚙️ Bulk Correct</button>
+      <button class="view-btn" id="btnCoordDupeGroups" onclick="toggleCoordDupeGroups()"
+        style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
+        title="Show coordinate duplicate groups — same polygon uploaded under multiple field IDs">✗ Coord Dupe Groups</button>
       <button class="view-btn" id="btnGoodExample" onclick="toggleGoodExample()"
         style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
         title="Find clean simple fields — good for screenshots and demonstrations">⭐ Example</button>
@@ -1666,6 +1669,17 @@ function detectCoordDupeKPI() {
     : '✗ Coordinate duplicate — same polygon uploaded multiple times';
 
   console.log(`✗ Coordinate duplicate detection: ${count} fields in ${Object.keys(window._coordDupeGroups).length} groups`);
+
+  // Update toolbar button label
+  const cdgBtn = document.getElementById('btnCoordDupeGroups');
+  if (cdgBtn) {
+    const grpCount = Object.keys(window._coordDupeGroups).length;
+    cdgBtn.textContent = grpCount > 0
+      ? `✗ Coord Dupe Groups (${grpCount.toLocaleString()})`
+      : '✗ Coord Dupe Groups';
+    cdgBtn.style.color       = grpCount > 0 ? '#ef4444' : '#fb923c';
+    cdgBtn.style.borderColor = grpCount > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(251,146,60,0.3)';
+  }
 }
 
 // ── NEAR-FIELD DETECTION ──────────────────────────────────────────────────
@@ -3346,7 +3360,8 @@ function toggleQueue() {
     if (emptyOverlapsActive) toggleEmptyOverlaps();
     if (goodExampleActive)   toggleGoodExample();
     if (idConflictsActive)   toggleIdConflicts();
-    if (_bulkCorrectActive)  toggleBulkCorrect();
+    if (_bulkCorrectActive)       toggleBulkCorrect();
+    if (_coordDupeGroupsActive)  toggleCoordDupeGroups();
     queue.classList.add('active');
     grid.classList.add('hidden');
     if (pager) pager.style.display = 'none';
@@ -4312,6 +4327,248 @@ function exportIdConflictsCSV(typeOverride) {
     : (_idcFilter.noTrees ? 'notrees' : 'all');
   downloadCSV(csv, `CCS_Field_ID_Conflicts_${typeSlug}_${date}.csv`);
   showToast(`⬇ Exported ${pairs.length} pair${pairs.length>1?'s':''}`, 'ok');
+}
+
+// ── COORD DUPE GROUPS VIEW ────────────────────────────────────────────────
+// Shows each group of fields sharing identical polygon coordinates.
+// For each group: lists all records, highlights which has trees (keep)
+// vs which are empty duplicates (safe to disable).
+
+let _coordDupeGroupsActive = false;
+let _cdgSort = { col: 'size', dir: -1 }; // default: largest groups first
+
+function toggleCoordDupeGroups() {
+  _coordDupeGroupsActive = !_coordDupeGroupsActive;
+  const btn   = document.getElementById('btnCoordDupeGroups');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+  btn.classList.toggle('active', _coordDupeGroupsActive);
+
+  if (_coordDupeGroupsActive) {
+    if (queueActive)         toggleQueue();
+    if (emptyOverlapsActive) toggleEmptyOverlaps();
+    if (idConflictsActive)   toggleIdConflicts();
+    if (goodExampleActive)   toggleGoodExample();
+    if (_bulkCorrectActive)  toggleBulkCorrect();
+
+    btn.style.background = 'rgba(239,68,68,0.12)';
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    document.getElementById('catCount').textContent =
+      '✗ Coordinate duplicate groups — same polygon uploaded under multiple field IDs';
+    renderCoordDupeGroups();
+  } else {
+    btn.style.background = '';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+    renderPage();
+  }
+}
+
+function renderCoordDupeGroups() {
+  const groups = window._coordDupeGroups || {};
+  const actBar = document.getElementById('queueActions');
+  if (actBar) actBar.style.display = 'none';
+
+  if (!Object.keys(groups).length) {
+    document.getElementById('queueSummary').innerHTML =
+      `<span style="color:#22c55e;font-weight:700">✓ No coordinate duplicate groups found</span>`;
+    document.getElementById('queueBody').innerHTML =
+      `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--muted);
+        font-family:var(--mono);font-size:11px">No fields share identical polygon coordinates.</td></tr>`;
+    document.querySelector('#queueWrap table thead tr').innerHTML = _cdgTheadHTML();
+    return;
+  }
+
+  // Build group data
+  let groupList = Object.entries(groups).map(([fp, ids]) => {
+    const fields   = ids.map(id => fieldsData.find(f => f.fieldId === id)).filter(Boolean);
+    const withTrees = fields.filter(f => (treesByField[f.fieldId]||[]).length > 0);
+    const noTrees   = fields.filter(f => (treesByField[f.fieldId]||[]).length === 0);
+    const totalTrees = fields.reduce((s,f) => s + (treesByField[f.fieldId]||[]).length, 0);
+    // Sort by createdon — oldest first = likely the original
+    fields.sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''));
+    return { fp, ids, fields, withTrees, noTrees, totalTrees };
+  });
+
+  // Sort
+  const { col, dir } = _cdgSort;
+  groupList.sort((a,b) => {
+    let va, vb;
+    if      (col === 'size')     { va = a.ids.length;    vb = b.ids.length; }
+    else if (col === 'trees')    { va = a.totalTrees;    vb = b.totalTrees; }
+    else if (col === 'noTrees')  { va = a.noTrees.length; vb = b.noTrees.length; }
+    else                         { va = a.ids.length;    vb = b.ids.length; }
+    return va < vb ? dir : va > vb ? -dir : 0;
+  });
+
+  const totalFields     = Object.values(groups).reduce((s,ids) => s+ids.length, 0);
+  const safeToDisable   = groupList.reduce((s,g) => s + g.noTrees.length, 0);
+  const alreadyDisabled = groupList.reduce((s,g) =>
+    s + g.fields.filter(f => _deactivatedGuids.has(f.guid)).length, 0);
+
+  const sortArrow = (c) => _cdgSort.col !== c
+    ? `<span style="color:var(--border);font-size:8px"> ⇅</span>`
+    : _cdgSort.dir === -1
+      ? `<span style="color:#ef4444;font-size:8px"> ▼</span>`
+      : `<span style="color:#ef4444;font-size:8px"> ▲</span>`;
+  const thClick = (c) => `onclick="cdgSortBy('${c}')" style="cursor:pointer;user-select:none"`;
+
+  document.getElementById('queueSummary').innerHTML =
+    `<span style="color:#ef4444;font-weight:700;font-size:12px">${groupList.length.toLocaleString()} groups</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:#ef4444">${totalFields.toLocaleString()} total fields</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:#22c55e">⊘ ${safeToDisable.toLocaleString()} safe to disable (zero trees)</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:var(--muted)">${alreadyDisabled} already disabled</span>
+     <span style="flex:1"></span>
+     <button class="btn-export" onclick="exportCoordDupeFields()"
+       style="font-size:9px;padding:3px 10px">⬇ Export all groups</button>`;
+
+  document.querySelector('#queueWrap table thead tr').innerHTML = _cdgTheadHTML(sortArrow, thClick);
+
+  document.getElementById('queueBody').innerHTML = groupList.map((g, gi) => {
+    const { fp, fields, withTrees, noTrees, totalTrees } = g;
+    const safeCount = noTrees.filter(f => !_deactivatedGuids.has(f.guid)).length;
+
+    // Field rows within the group
+    const fieldRows = fields.map(f => {
+      const trees    = (treesByField[f.fieldId]||[]).length;
+      const m        = f.ring ? ringMetrics(f.ring) : null;
+      const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+      const isOldest = f === fields[0];
+      const isSafe   = trees === 0 && !inactive;
+      const fidIdx   = fieldsData.indexOf(f);
+      const rowBg    = inactive ? 'opacity:0.35;' : trees > 0 ? 'background:rgba(34,197,94,0.04);' : '';
+
+      return `<tr style="${rowBg}" onclick="openLb(${fidIdx})" title="Open lightbox">
+        <td style="padding:5px 8px;font-family:var(--mono);font-size:9px;color:${isOldest?'#f59e0b':'var(--muted)'}">
+          ${isOldest ? '★ Oldest' : 'Duplicate'}</td>
+        <td style="padding:5px 8px;font-family:var(--mono);font-size:9px;font-weight:700;color:var(--fg)">
+          ${f.fieldId}</td>
+        <td style="padding:5px 8px;font-family:var(--mono);font-size:9px;color:var(--muted)">
+          ${f.owner||'—'}</td>
+        <td style="padding:5px 8px;font-family:var(--mono);font-size:9px;color:var(--muted)">
+          ${f.createdOn||'—'}</td>
+        <td style="padding:5px 8px;font-family:var(--mono);font-size:9px;color:var(--muted)">
+          ${f.createdBy||'—'}</td>
+        <td style="padding:5px 8px;text-align:right;font-family:var(--mono);font-size:10px;
+          font-weight:700;color:${trees>0?'#22c55e':'#6b7280'}">
+          ${trees}</td>
+        <td style="padding:5px 8px;font-family:var(--mono);font-size:9px;color:var(--muted)">
+          ${m?m.area.toFixed(2)+' ha':'—'}</td>
+        <td style="padding:5px 4px;text-align:center" onclick="event.stopPropagation()">
+          ${inactive
+            ? `<span style="font-family:var(--mono);font-size:9px;color:var(--muted)">Disabled</span>`
+            : isSafe
+              ? `<button class="btn-deactivate" style="font-size:9px;padding:2px 7px"
+                  onclick="cdgDisable(${fidIdx},this)"
+                  title="Disable — zero trees, safe to remove">⊘ Disable</button>`
+              : `<span style="font-family:var(--mono);font-size:9px;color:#22c55e"
+                  title="Has trees — keep active">✓ Keep</span>`}
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <tr style="background:rgba(239,68,68,0.06);border-top:2px solid rgba(239,68,68,0.3)">
+        <td colspan="7" style="padding:6px 8px;font-family:var(--mono);font-size:9px">
+          <span style="color:#ef4444;font-weight:700">Group ${gi+1}</span>
+          <span style="color:var(--border);margin:0 8px">|</span>
+          <span style="color:var(--fg)">${fields.length} records</span>
+          <span style="color:var(--border);margin:0 8px">|</span>
+          <span style="color:#22c55e">${totalTrees} trees total</span>
+          <span style="color:var(--border);margin:0 8px">|</span>
+          <span style="color:var(--muted);font-size:8px">${fp}</span>
+        </td>
+        <td style="padding:6px 4px;text-align:center" onclick="event.stopPropagation()">
+          ${safeCount > 0
+            ? `<button class="btn-deactivate" style="font-size:9px;padding:2px 7px;white-space:nowrap"
+                onclick="cdgDisableGroup(${gi},this)"
+                title="Disable all ${safeCount} zero-tree records in this group">
+                ⊘ All (${safeCount})</button>`
+            : ''}
+        </td>
+      </tr>
+      ${fieldRows}`;
+  }).join('');
+}
+
+function _cdgTheadHTML(sortArrow, thClick) {
+  const sa = sortArrow || (() => '');
+  const tc = thClick   || (() => '');
+  return `
+    <th style="width:70px">Role</th>
+    <th class="q-col-fid">Field ID</th>
+    <th class="q-col-own">Owner</th>
+    <th style="width:88px">Registered</th>
+    <th style="width:120px">Created By</th>
+    <th style="width:52px;text-align:right" ${tc('trees')}>Trees${sa('trees')}</th>
+    <th style="width:64px" ${tc('size')}>Area${sa('size')}</th>
+    <th style="width:80px"></th>`;
+}
+
+function cdgSortBy(col) {
+  if (_cdgSort.col === col) _cdgSort.dir *= -1;
+  else { _cdgSort.col = col; _cdgSort.dir = -1; }
+  renderCoordDupeGroups();
+}
+
+async function cdgDisable(fidIdx, btnEl) {
+  const f = fieldsData[fidIdx];
+  if (!f) return;
+  if (!confirm(`⊘ Disable ${f.fieldId}?\n\nZero trees — coordinate duplicate. Safe to disable.`)) return;
+  btnEl.disabled = true; btnEl.textContent = '…';
+  try {
+    await patchFieldState(f.guid, f.fieldId, false);
+    _trackDisabled(f);
+    btnEl.textContent = '✓';
+    btnEl.style.color = '#22c55e';
+    btnEl.style.borderColor = 'rgba(34,197,94,0.3)';
+    showToast(`⊘ ${f.fieldId} disabled`, 'ok');
+  } catch(e) {
+    btnEl.disabled = false; btnEl.textContent = '⊘ Disable';
+    showToast('Disable failed: ' + e.message, 'warn');
+  }
+}
+
+async function cdgDisableGroup(groupIdx, btnEl) {
+  const groups   = window._coordDupeGroups || {};
+  const groupList = Object.entries(groups).map(([fp, ids]) => {
+    const fields = ids.map(id => fieldsData.find(f => f.fieldId === id)).filter(Boolean);
+    fields.sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''));
+    return { fields };
+  });
+  const g = groupList[groupIdx];
+  if (!g) return;
+
+  const toDisable = g.fields.filter(f =>
+    (treesByField[f.fieldId]||[]).length === 0 && !_deactivatedGuids.has(f.guid)
+  );
+  if (!toDisable.length) { showToast('No zero-tree records to disable in this group', 'info'); return; }
+
+  if (!confirm(
+    `⊘ Disable ${toDisable.length} zero-tree duplicate record${toDisable.length>1?'s':''} in this group?\n\n` +
+    `The oldest record will be kept active.\n\nThis action cannot be undone from this tool.`
+  )) return;
+
+  btnEl.disabled = true; btnEl.textContent = '…';
+  let ok = 0, fail = 0;
+  for (const f of toDisable) {
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) { fail++; }
+  }
+  showToast(fail > 0
+    ? `⊘ ${ok} disabled · ${fail} failed`
+    : `⊘ ${ok} duplicate record${ok>1?'s':''} disabled`, fail > 0 ? 'warn' : 'ok');
+  renderCoordDupeGroups();
 }
 
 // ── GOOD EXAMPLE FINDER ───────────────────────────────────────────────────
