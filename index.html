@@ -1760,10 +1760,11 @@ function detectCoordDupeKPI() {
 
   const fingerprints = {}; // fingerprint → [fieldId, ...]
   fieldsData.forEach(f => {
-    if (!f.ring) return;
-    const m = ringMetrics(f.ring);
-    if (!m) return;
-    const fp = `${m.cLat.toFixed(6)}|${m.cLng.toFixed(6)}|${m.area.toFixed(4)}|${m.vertices}`;
+    if (!f.ring || f.ring.length < 3) return;
+    // Use actual coordinate sequence — sort ring by first vertex to normalise
+    // winding direction, then join all coordinates to 7dp
+    const sorted = [...f.ring].sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+    const fp = sorted.map(c => `${c[0].toFixed(7)},${c[1].toFixed(7)}`).join('|');
     if (!fingerprints[fp]) fingerprints[fp] = [];
     fingerprints[fp].push(f.fieldId);
   });
