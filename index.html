@@ -1748,9 +1748,11 @@ function detectSelfIntersectKPI() {
 // ── COORDINATE DUPLICATE DETECTION ───────────────────────────────────────
 // Finds fields where identical polygon coordinates have been uploaded under
 // different field IDs — the "same polygon stamped on multiple records" pattern.
-// Uses a fingerprint: centroid (6dp) + area (4dp) + vertex count.
-// Any two fields sharing the same fingerprint but different field IDs are
-// coordinate duplicates regardless of field ID or owner name.
+// ── COORDINATE DUPLICATE DETECTION ───────────────────────────────────────
+// Finds fields where identical polygon coordinates have been uploaded under
+// different field IDs — the "same polygon stamped on multiple records" pattern.
+// Uses actual full coordinate sequence (7dp) sorted to normalise winding direction.
+// Only fields with byte-for-byte identical coordinate sets are grouped together.
 
 function detectCoordDupeKPI() {
   const el = document.getElementById('kpiCoordDupe');
@@ -4488,10 +4490,12 @@ function toggleCoordDupeGroups() {
   }
 }
 
-function renderCoordDupeGroups() {
-  const groups = window._coordDupeGroups || {};
-  const actBar = document.getElementById('queueActions');
+function renderCoordDupeGroups(searchTerm) {
+  const groups  = window._coordDupeGroups || {};
+  const actBar  = document.getElementById('queueActions');
   if (actBar) actBar.style.display = 'none';
+  const q = (searchTerm !== undefined ? searchTerm
+    : document.getElementById('cdgSearch')?.value || '').toLowerCase().trim();
 
   if (!Object.keys(groups).length) {
     document.getElementById('queueSummary').innerHTML =
@@ -4509,10 +4513,20 @@ function renderCoordDupeGroups() {
     const withTrees = fields.filter(f => (treesByField[f.fieldId]||[]).length > 0);
     const noTrees   = fields.filter(f => (treesByField[f.fieldId]||[]).length === 0);
     const totalTrees = fields.reduce((s,f) => s + (treesByField[f.fieldId]||[]).length, 0);
-    // Sort by createdon — oldest first = likely the original
     fields.sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''));
     return { fp, ids, fields, withTrees, noTrees, totalTrees };
   });
+
+  // Apply search filter — match any field ID or owner in the group
+  if (q) {
+    groupList = groupList.filter(g =>
+      g.fields.some(f =>
+        (f.fieldId||'').toLowerCase().includes(q) ||
+        (f.owner||'').toLowerCase().includes(q) ||
+        (f.createdBy||'').toLowerCase().includes(q)
+      )
+    );
+  }
 
   // Sort
   const { col, dir } = _cdgSort;
@@ -4546,6 +4560,12 @@ function renderCoordDupeGroups() {
      <span style="color:var(--border)">|</span>
      <span style="color:var(--muted)">${alreadyDisabled} already disabled</span>
      <span style="flex:1"></span>
+     <input id="cdgSearch" type="text" placeholder="Search field ID, owner, created by…"
+       oninput="renderCoordDupeGroups()"
+       value="${q}"
+       style="font-family:var(--mono);font-size:9px;padding:3px 8px;width:220px;
+       background:var(--bg);border:1px solid var(--border);border-radius:3px;
+       color:var(--fg);outline:none;margin-right:6px"/>
      <button class="btn-export" onclick="exportCoordDupeFields()"
        style="font-size:9px;padding:3px 10px">⬇ Export all groups</button>`;
 
