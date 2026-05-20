@@ -5621,7 +5621,7 @@ function exportCoordDupeFields() {
   ];
 
   const headers = [
-    'Group #', 'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Group', 'Role', 'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
     'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
     'Total Trees', 'Verra %',
     'Overlapping', 'Status', 'GeoJSON Polygon'
@@ -5629,16 +5629,32 @@ function exportCoordDupeFields() {
 
   const detailRows = [];
   groupList.forEach(([fp, ids], groupIdx) => {
-    ids.forEach(fieldId => {
-      const f      = fieldsData.find(x => x.fieldId === fieldId);
-      if (!f) return;
-      const m      = f.ring ? ringMetrics(f.ring) : null;
-      const trees  = (treesByField[f.fieldId]||[]).length;
-      const cl     = _classCache[f.fieldId] || {};
-      const pct    = trees > 0 ? (((cl.compliant||0)/trees)*100).toFixed(1)+'%' : '-';
+    // Sort fields within group oldest first
+    const fields = ids
+      .map(id => fieldsData.find(x => x.fieldId === id))
+      .filter(Boolean)
+      .sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''));
+
+    const totalTrees = fields.reduce((s,f) => s + (treesByField[f.fieldId]||[]).length, 0);
+
+    // Group header row — clearly labelled
+    detailRows.push([
+      `GROUP ${groupIdx + 1}`,
+      `${fields.length} records · ${totalTrees} trees total · ${fp}`,
+      '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+    ]);
+
+    // Field rows
+    fields.forEach((f, rowIdx) => {
+      const m        = f.ring ? ringMetrics(f.ring) : null;
+      const trees    = (treesByField[f.fieldId]||[]).length;
+      const cl       = _classCache[f.fieldId] || {};
+      const pct      = trees > 0 ? (((cl.compliant||0)/trees)*100).toFixed(1)+'%' : '-';
       const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+      const role     = rowIdx === 0 ? 'Oldest (keep)' : trees > 0 ? 'Has trees (review)' : 'Duplicate (disable)';
       detailRows.push([
-        groupIdx + 1,
+        `Group ${groupIdx + 1}`,
+        role,
         f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
         m ? m.area.toFixed(4) : '',
         m ? m.vertices : '',
@@ -5650,6 +5666,9 @@ function exportCoordDupeFields() {
         f.geoJSON || ''
       ]);
     });
+
+    // Blank separator row between groups
+    detailRows.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
   });
 
   const allRows = [...summaryRows, headers, ...detailRows];
