@@ -486,20 +486,16 @@ input[type=range] { width:100%; accent-color:var(--amber); }
     </div>
   </div><!-- end hdr-row1 -->
 
-  <!-- Row 2: All KPI chips — click any chip to filter instantly -->
-  <div class="hdr-row2">
 
-    <!-- Volume -->
+  <!-- Row 2: Compliance KPI chips -->
+  <div class="hdr-row2">
     <div class="kpi b" title="All fields — click to reset filter" style="cursor:pointer"
       onclick="setKpiFilter('')">
       <span class="v" id="kpiFields">—</span><span class="l">Fields</span></div>
     <div class="kpi b" title="All trees — click to reset filter" style="cursor:pointer"
       onclick="setKpiFilter('')">
       <span class="v" id="kpiTrees">—</span><span class="l">Trees</span></div>
-
     <div class="hd"></div>
-
-    <!-- Compliance zones -->
     <div class="kpi g" style="cursor:pointer" title="Click to filter: all compliant fields"
       onclick="setKpiFilter('inside')">
       <span class="v" id="kpiInside">—</span><span class="l">✓ Compliant</span></div>
@@ -515,21 +511,22 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: needs correction >10m" onclick="setKpiFilter('correction')">
       <span class="v" id="kpiOutside">—</span>
       <span class="l">✗ Correct</span></div>
+  </div>
 
-    <div class="hd"></div>
-
-    <!-- Structural issues -->
+  <!-- Row 3: Data quality KPI chips -->
+  <div class="hdr-row2">
     <div class="kpi" style="border-color:rgba(167,139,250,0.3);background:rgba(167,139,250,0.06);cursor:pointer"
       title="Click to filter: overlapping fields" onclick="setKpiFilter('overlapping')">
       <span class="v" id="kpiOverlap" style="color:#a78bfa">…</span>
       <span class="l">⧖ Overlap</span></div>
     <div class="kpi" style="border-color:rgba(56,189,248,0.3);background:rgba(56,189,248,0.06);cursor:pointer"
-      title="Click to filter: fields within 10m of another boundary — at risk if boundary is expanded" onclick="setKpiFilter('near')">
+      title="Click to filter: fields within 10m of another boundary" onclick="setKpiFilter('near')">
       <span class="v" id="kpiNear" style="color:#38bdf8">…</span>
       <span class="l">◻ Near</span></div>
     <div class="kpi a" style="cursor:pointer"
       title="Click to filter: large polygons" onclick="setKpiFilter('large')">
       <span class="v" id="kpiLarge">—</span><span class="l">⬡ Large</span></div>
+    <div class="hd"></div>
     <div class="kpi" style="border-color:rgba(251,191,36,0.3);background:rgba(251,191,36,0.06);cursor:pointer"
       title="Click to filter: fields with duplicate field ID registrations" onclick="setKpiFilter('duplicate_fields')">
       <span class="v" id="kpiDupeFields" style="color:#fbbf24">…</span>
@@ -538,19 +535,19 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: fields with duplicate tree registrations" onclick="setKpiFilter('duplicate_trees')">
       <span class="v" id="kpiDupeTrees" style="color:#fbbf24">…</span>
       <span class="l">⊕ Dupe Trees</span></div>
+    <div class="hd"></div>
     <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
-      title="Click to filter: self-intersecting polygons — vertices connected in wrong order, creating star/bowtie shapes. Requires script fix." onclick="setKpiFilter('self_intersect')">
+      title="Click to filter: self-intersecting polygons" onclick="setKpiFilter('self_intersect')">
       <span class="v" id="kpiSelfIntersect" style="color:#ef4444">…</span>
       <span class="l">✗ Self-Intersect</span></div>
     <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
-      title="Click to filter: fields sharing identical polygon coordinates — same geometry uploaded under different field IDs. Pipeline duplication error." onclick="setKpiFilter('coord_dupe')">
+      title="Click to filter: identical polygon coordinates under different field IDs" onclick="setKpiFilter('coord_dupe')">
       <span class="v" id="kpiCoordDupe" style="color:#ef4444">…</span>
       <span class="l">✗ Coord Dupe</span></div>
     <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
-      title="Click to filter: fields below minimum size (0.05 ha) with zero trees — safe to disable" onclick="setKpiFilter('sub_min_no_trees')">
+      title="Click to filter: fields below 0.05 ha with zero trees — safe to disable" onclick="setKpiFilter('sub_min_no_trees')">
       <span class="v" id="kpiSubMin" style="color:#ef4444">…</span>
       <span class="l">⬡ Sub-min</span></div>
-
   </div>
 </header>
 
