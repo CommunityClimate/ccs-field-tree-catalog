@@ -464,7 +464,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>📐 Field Size Analysis (CSV)</strong>
         <span>Area distribution with recommended min/max cutoffs — answers what is a valid field size</span>
       </div>
-      <div class="export-item" onclick="closeExportMenu();exportSelfIntersectFields()">
+      <div class="export-item" onclick="closeExportMenu();exportSubMinFields()">
+        <strong>⬡ Sub-minimum Fields + No Trees</strong>
+        <span>Fields below 0.05 ha with zero trees — safe to disable without field verification</span>
+      </div>
         <strong>⬇ Self-Intersecting Fields + GeoJSON</strong>
         <span>Polygons with vertex ordering errors — for Fieldforce administrator script fix</span>
       </div>
@@ -543,6 +546,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: fields sharing identical polygon coordinates — same geometry uploaded under different field IDs. Pipeline duplication error." onclick="setKpiFilter('coord_dupe')">
       <span class="v" id="kpiCoordDupe" style="color:#ef4444">…</span>
       <span class="l">✗ Coord Dupe</span></div>
+    <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
+      title="Click to filter: fields below minimum size (0.05 ha) with zero trees — safe to disable" onclick="setKpiFilter('sub_min_no_trees')">
+      <span class="v" id="kpiSubMin" style="color:#ef4444">…</span>
+      <span class="l">⬡ Sub-min · No trees</span></div>
 
   </div>
 </header>
@@ -582,6 +589,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
         <option value="self_intersect">✗ Self-intersecting polygon (vertex ordering error)</option>
         <option value="coord_dupe">✗ Coordinate duplicate (identical polygon registered multiple times)</option>
+        <option value="sub_min_no_trees">⬡ Sub-minimum size + no trees (safe to disable)</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
       <input type="text" id="fltCreatedBy" placeholder="Filter by intern / owner / created by…" oninput="render()"
@@ -1684,6 +1692,8 @@ function updateKPIs() {
   setTimeout(() => detectSelfIntersectKPI(), 300);
   // Run coordinate duplicate detection — finds same polygon uploaded multiple times
   setTimeout(() => detectCoordDupeKPI(), 500);
+  // Run sub-minimum no-trees detection
+  setTimeout(() => detectSubMinNoTreesKPI(), 600);
 }
 
 // ── SELF-INTERSECTION DETECTION ───────────────────────────────────────────
@@ -1802,6 +1812,37 @@ function detectCoordDupeKPI() {
     cdgBtn.style.color       = grpCount > 0 ? '#ef4444' : '#fb923c';
     cdgBtn.style.borderColor = grpCount > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(251,146,60,0.3)';
   }
+}
+
+// ── SUB-MINIMUM NO-TREES DETECTION ───────────────────────────────────────
+// Finds fields below the minimum viable field size (0.05 ha) with zero trees.
+// These are almost certainly registration errors and are safe to disable.
+const SUB_MIN_HA = 0.05;
+
+function detectSubMinNoTreesKPI() {
+  const el = document.getElementById('kpiSubMin');
+  if (el) el.textContent = '…';
+  window._subMinNoTreesIds = new Set();
+
+  fieldsData.forEach(f => {
+    if (!f.ring) return;
+    if ((treesByField[f.fieldId]||[]).length > 0) return;
+    const area = ringAreaHa(f.ring);
+    if (area < SUB_MIN_HA) window._subMinNoTreesIds.add(f.fieldId);
+  });
+
+  const count = window._subMinNoTreesIds.size;
+  if (el) {
+    el.textContent = count.toLocaleString();
+    el.style.color = count > 0 ? '#ef4444' : '#22c55e';
+  }
+
+  const opt = document.querySelector('#fltStatus option[value="sub_min_no_trees"]');
+  if (opt) opt.textContent = count > 0
+    ? `⬡ Sub-minimum size + no trees (${count.toLocaleString()}) — safe to disable`
+    : '⬡ Sub-minimum size + no trees — safe to disable';
+
+  console.log(`⬡ Sub-min no-trees detection: ${count} fields`);
 }
 
 // ── NEAR-FIELD DETECTION ──────────────────────────────────────────────────
@@ -2279,6 +2320,11 @@ function render() {
     }
     if (filter === 'coord_dupe') {
       return window._coordDupeIds && window._coordDupeIds.has(f.fieldId);
+    }
+    if (filter === 'sub_min_no_trees') {
+      if ((treesByField[f.fieldId]||[]).length > 0) return false;
+      const area = f.ring ? ringAreaHa(f.ring) : null;
+      return area !== null && area < 0.05;
     }
 
     // Zone-aware filters
@@ -4866,6 +4912,7 @@ function takeSnapshot() {
     dupeTrees:  parseInt(document.getElementById('kpiDupeTrees')?.textContent?.replace(/\D/g,'')) || 0,
     selfIntersect: parseInt(document.getElementById('kpiSelfIntersect')?.textContent?.replace(/\D/g,'')) || 0,
     coordDupe:     parseInt(document.getElementById('kpiCoordDupe')?.textContent?.replace(/\D/g,''))     || 0,
+    subMin:        parseInt(document.getElementById('kpiSubMin')?.textContent?.replace(/\D/g,''))         || 0,
   };
   snap.pct = snap.trees > 0
     ? Math.round((snap.compliant + snap.tolerance) / snap.trees * 100) : 0;
@@ -5647,6 +5694,60 @@ function exportFieldSizeAnalysis() {
 
   downloadCSV(csv, `CCS_Field_Size_Analysis_${exportDate}.csv`);
   showToast(`📐 Field size analysis exported — ${n.toLocaleString()} fields`, 'ok');
+}
+
+function exportSubMinFields() {
+  const siSet = window._subMinNoTreesIds;
+  if (!siSet || siSet.size === 0) {
+    showToast('No sub-minimum zero-tree fields detected', 'info'); return;
+  }
+  const fields     = fieldsData.filter(f => siSet.has(f.fieldId))
+                               .sort((a,b) => (a.ring?ringAreaHa(a.ring):0)-(b.ring?ringAreaHa(b.ring):0));
+  const exportDate = new Date().toISOString().slice(0,10);
+  const ovSet      = window._overlappingFieldIds || new Set();
+
+  const summaryRows = [
+    ['CCS Sub-Minimum Fields — Zero Trees — Safe to Disable'],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [`Total fields: ${fields.length.toLocaleString()}`],
+    [`Minimum size threshold: ${SUB_MIN_HA} ha`],
+    [],
+    ['These fields are below the minimum viable field size and have no trees registered.'],
+    ['They are almost certainly registration errors and are safe to disable without field verification.'],
+    [],
+    ['FIELD DETAIL — sorted smallest first'],
+  ];
+
+  const headers = [
+    'Field ID', 'Owner', 'Registered Date', 'Created By', 'Modified By',
+    'Area (ha)', 'Vertices', 'Centroid Lat', 'Centroid Lng',
+    'Overlapping', 'Status', 'GeoJSON Polygon'
+  ];
+
+  const detailRows = fields.map(f => {
+    const m        = f.ring ? ringMetrics(f.ring) : null;
+    const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
+    return [
+      f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'', f.modifiedBy||'',
+      m ? m.area.toFixed(4) : '',
+      m ? m.vertices : '',
+      m ? m.cLat.toFixed(6) : '',
+      m ? m.cLng.toFixed(6) : '',
+      ovSet.has(f.fieldId) ? 'Yes' : 'No',
+      inactive ? 'Disabled (pending sync)' : 'Active',
+      f.geoJSON || ''
+    ];
+  });
+
+  const allRows = [...summaryRows, headers, ...detailRows];
+  const csv = allRows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_SubMinimum_NoTree_Fields_${exportDate}.csv`);
+  showToast(`⬡ Exported ${fields.length} sub-minimum zero-tree fields`, 'ok');
 }
 
 function exportSelfIntersectFields() {
