@@ -468,6 +468,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬡ Sub-minimum Fields + No Trees</strong>
         <span>Fields below 0.05 ha with zero trees — safe to disable without field verification</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportSelfIntersectFields()">
         <strong>⬇ Self-Intersecting Fields + GeoJSON</strong>
         <span>Polygons with vertex ordering errors — for Fieldforce administrator script fix</span>
       </div>
@@ -475,6 +476,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Coordinate Duplicate Fields + GeoJSON</strong>
         <span>Fields sharing identical polygon coordinates — same geometry uploaded under multiple field IDs</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
         <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
         <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
       </div>
