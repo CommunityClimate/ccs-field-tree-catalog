@@ -4620,7 +4620,12 @@ function renderCoordDupeGroups(searchTerm) {
        onclick="cdgDisableAllZeroTree()"
        style="font-size:9px;padding:3px 10px;margin-left:4px"
        title="Disable all zero-tree duplicate records across all groups in one pass">
-       ⊘ Disable all zero-tree groups</button>`;
+       ⊘ Disable all zero-tree groups</button>
+     <button class="btn-deactivate" id="bcBtnDisableP2"
+       onclick="cdgDisablePriority2()"
+       style="font-size:9px;padding:3px 10px;margin-left:4px"
+       title="Disable zero-tree records in groups where trees exist on exactly one field — Priority 2">
+       ⊘ Disable Priority 2 groups</button>`;
 
   document.querySelector('#queueWrap table thead tr').innerHTML = _cdgTheadHTML(sortArrow, thClick);
 
@@ -4693,6 +4698,72 @@ function renderCoordDupeGroups(searchTerm) {
       </tr>
       ${fieldRows}`;
   }).join('');
+}
+
+async function cdgDisablePriority2() {
+  const groups    = window._coordDupeGroups || {};
+  const groupList = Object.entries(groups).map(([fp, ids]) => {
+    const fields = ids.map(id => fieldsData.find(f => f.fieldId === id)).filter(Boolean);
+    fields.sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''));
+    return { fields };
+  });
+
+  // Priority 2 = groups where exactly one record has trees
+  const toDisable = [];
+  let p2Groups = 0;
+  groupList.forEach(({ fields }) => {
+    const withTrees = fields.filter(f => (treesByField[f.fieldId]||[]).length > 0);
+    const noTrees   = fields.filter(f => (treesByField[f.fieldId]||[]).length === 0);
+    // Exactly one field has trees — Priority 2
+    if (withTrees.length !== 1) return;
+    p2Groups++;
+    noTrees.forEach(f => {
+      if (!_deactivatedGuids.has(f.guid)) toDisable.push(f);
+    });
+  });
+
+  if (!toDisable.length) {
+    showToast('No Priority 2 zero-tree records to disable', 'info');
+    return;
+  }
+
+  if (!confirm(
+    `⊘ Disable ${toDisable.length.toLocaleString()} zero-tree records across ${p2Groups} Priority 2 groups?\n\n` +
+    `These are groups where exactly one field has trees — the zero-tree duplicates will be disabled.\n` +
+    `Groups with trees on multiple fields (Priority 1) are not affected.\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const btn = document.getElementById('bcBtnDisableP2');
+  if (btn) { btn.disabled = true; btn.textContent = '⊘ Disabling P2…'; }
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < toDisable.length; i++) {
+    const f = toDisable[i];
+    if (btn) btn.textContent = `⊘ Disabling ${i+1} of ${toDisable.length}…`;
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  if (btn) {
+    btn.disabled    = false;
+    btn.textContent = '⊘ Disable Priority 2 groups';
+  }
+
+  showToast(
+    fail > 0
+      ? `⊘ ${ok.toLocaleString()} disabled · ${fail} failed`
+      : `⊘ ${ok.toLocaleString()} Priority 2 zero-tree records disabled across ${p2Groups} groups`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+
+  renderCoordDupeGroups();
 }
 
 async function cdgDisableAllZeroTree() {
