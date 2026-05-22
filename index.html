@@ -4615,7 +4615,12 @@ function renderCoordDupeGroups(searchTerm) {
        background:var(--bg);border:1px solid var(--border);border-radius:3px;
        color:var(--fg);outline:none;margin-right:6px"/>
      <button class="btn-export" onclick="exportCoordDupeFields()"
-       style="font-size:9px;padding:3px 10px">⬇ Export all groups</button>`;
+       style="font-size:9px;padding:3px 10px">⬇ Export all groups</button>
+     <button class="btn-deactivate" id="bcBtnDisableAllZero"
+       onclick="cdgDisableAllZeroTree()"
+       style="font-size:9px;padding:3px 10px;margin-left:4px"
+       title="Disable all zero-tree duplicate records across all groups in one pass">
+       ⊘ Disable all zero-tree groups</button>`;
 
   document.querySelector('#queueWrap table thead tr').innerHTML = _cdgTheadHTML(sortArrow, thClick);
 
@@ -4688,6 +4693,70 @@ function renderCoordDupeGroups(searchTerm) {
       </tr>
       ${fieldRows}`;
   }).join('');
+}
+
+async function cdgDisableAllZeroTree() {
+  const groups   = window._coordDupeGroups || {};
+  const groupList = Object.entries(groups).map(([fp, ids]) => {
+    const fields = ids.map(id => fieldsData.find(f => f.fieldId === id)).filter(Boolean);
+    fields.sort((a,b) => (a.createdOn||'').localeCompare(b.createdOn||''));
+    return { fields };
+  });
+
+  // Collect all zero-tree duplicates across all zero-tree groups
+  // A zero-tree group = totalTrees === 0 for all records in the group
+  const toDisable = [];
+  groupList.forEach(({ fields }) => {
+    const totalTrees = fields.reduce((s,f) => s + (treesByField[f.fieldId]||[]).length, 0);
+    if (totalTrees > 0) return; // skip groups with any trees — those are Priority 1 or 2
+    // Disable all except the oldest (first after sort)
+    fields.slice(1).forEach(f => {
+      if (!_deactivatedGuids.has(f.guid)) toDisable.push(f);
+    });
+  });
+
+  if (!toDisable.length) {
+    showToast('No zero-tree duplicate records to disable', 'info');
+    return;
+  }
+
+  if (!confirm(
+    `⊘ Disable ${toDisable.length.toLocaleString()} zero-tree duplicate records across all zero-tree groups?\n\n` +
+    `The oldest record in each group will be kept active.\n` +
+    `Groups with any trees are not affected.\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const btn = document.getElementById('bcBtnDisableAllZero');
+  if (btn) { btn.disabled = true; btn.textContent = '⊘ Disabling…'; }
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < toDisable.length; i++) {
+    const f = toDisable[i];
+    if (btn) btn.textContent = `⊘ Disabling ${i+1} of ${toDisable.length}…`;
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  if (btn) {
+    btn.disabled    = false;
+    btn.textContent = '⊘ Disable all zero-tree groups';
+  }
+
+  showToast(
+    fail > 0
+      ? `⊘ ${ok.toLocaleString()} disabled · ${fail} failed — check console`
+      : `⊘ ${ok.toLocaleString()} zero-tree duplicate records disabled`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+
+  renderCoordDupeGroups();
 }
 
 function _cdgTheadHTML(sortArrow, thClick) {
