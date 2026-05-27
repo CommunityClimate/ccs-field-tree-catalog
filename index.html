@@ -4586,6 +4586,11 @@ function renderSubMinPanel() {
       <span style="color:#ef4444">\u2717 ${outsideZambia.length} outside Zambia — flag for Eder</span>
       ${noPolygon.length ? `<span style="color:#6b7280">\u25a1 ${noPolygon.length} no polygon</span>` : ''}
       <div style="flex:1"></div>
+      ${(largeSpan.length + outsideZambia.length) > 0 ? `
+      <button class="btn-export" onclick="exportSubMinEderFields()"
+        style="font-size:9px;padding:3px 10px;margin-right:6px"
+        title="Export large span and outside Zambia fields for Eder">
+        \u2193 Export ${largeSpan.length + outsideZambia.length} for Eder</button>` : ''}
       <button class="btn-deactivate" id="btnSubMinDisableSafe"
         onclick="subMinDisableSafe()"
         style="font-size:9px;padding:3px 10px"
@@ -4645,6 +4650,65 @@ function renderSubMinPanel() {
         </tbody>
       </table>
     </div>`;
+}
+
+function exportSubMinEderFields() {
+  const fields = fieldsData.filter(f => {
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    if (area === null || area >= 0.05) return false;
+    const cls = subMinClassify(f);
+    return cls === 'large_span' || cls === 'outside_zambia';
+  });
+
+  if (!fields.length) { showToast('No Eder fields to export', 'info'); return; }
+
+  const exportDate = new Date().toISOString().slice(0,10);
+  const headers = ['Group','Field ID','Owner','Registered','Created By','Area (ha)',
+                   'Vertices','Unique Points','Polygon Type','Coord Span','Centroid Lat','Centroid Lng','Issue'];
+
+  const rows = fields.map(f => {
+    const cls      = subMinClassify(f);
+    const area     = f.ring ? ringAreaHa(f.ring).toFixed(4) : '';
+    const lngs     = f.ring ? f.ring.map(c=>c[0]) : [];
+    const lats     = f.ring ? f.ring.map(c=>c[1]) : [];
+    const lngSpan  = f.ring ? (Math.max(...lngs)-Math.min(...lngs)).toFixed(4) : '';
+    const latSpan  = f.ring ? (Math.max(...lats)-Math.min(...lats)).toFixed(4) : '';
+    const cLat     = f.ring ? ((Math.max(...lats)+Math.min(...lats))/2).toFixed(6) : '';
+    const cLng     = f.ring ? ((Math.max(...lngs)+Math.min(...lngs))/2).toFixed(6) : '';
+    const vertices = f.ring ? f.ring.length : 0;
+    const uniquePts= f.ring ? new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size : 0;
+    let polyType   = 'Valid';
+    if (uniquePts <= 2) polyType = 'Degenerate';
+    else if (uniquePts === 3) polyType = 'Triangle';
+    else if (area === '0.0000') polyType = 'Self-intersect';
+    const group    = cls === 'large_span' ? 'Large coordinate span' : 'Outside Zambia boundaries';
+    const issue    = cls === 'large_span'
+      ? `Coordinate span ${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0 exceeds 0.01\u00b0 threshold — possible self-intersecting or corrupted polygon`
+      : `Centroid at (${cLat}, ${cLng}) is outside Zambia boundaries — likely degenerate polygon with corrupted coordinates`;
+    return [group, f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
+            area, vertices, uniquePts, polyType, `${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0`,
+            cLat, cLng, issue];
+  });
+
+  const noteRows = [
+    [],
+    ['--- NOTES FOR EDER ---'],
+    ['These fields require pipeline investigation and correction before they can be disabled.'],
+    ['Large span: polygon coordinates span more than 0.01 degrees — likely self-intersecting or GPS track error.'],
+    ['Outside Zambia: centroid falls outside Zambia boundaries — likely degenerate polygon with only 2 unique coordinate pairs.'],
+    ['Degenerate polygons (Unique Points \u2264 2) cannot be corrected in the catalog — the field boundary must be re-collected and re-uploaded.'],
+    [`Exported: ${new Date().toLocaleString()}`],
+  ];
+
+  const allRows = [headers, ...rows, ...noteRows];
+  const csv = allRows.map(r =>
+    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_SubMin_Eder_Review_${exportDate}.csv`);
+  showToast(`\u2193 Exported ${fields.length} fields for Eder review`, 'ok');
 }
 
 async function subMinDisableSafe() {
