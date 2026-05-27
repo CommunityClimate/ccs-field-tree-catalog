@@ -466,7 +466,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       </div>
       <div class="export-item" onclick="closeExportMenu();exportSubMinFields()">
         <strong>⬡ Sub-minimum Fields + No Trees</strong>
-        <span>Fields below 0.05 ha with zero trees — safe to disable without field verification</span>
+        <span>Fields below CCS project MMU (0.05 ha) with zero trees — flagged for review. Verra has no universal minimum field size; requirements are methodology-specific.</span>
       </div>
       <div class="export-item" onclick="closeExportMenu();exportSelfIntersectFields()">
         <strong>⬇ Self-Intersecting Fields + GeoJSON</strong>
@@ -547,7 +547,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span class="v" id="kpiCoordDupe" style="color:#ef4444">…</span>
       <span class="l">✗ Coord Dupe</span></div>
     <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
-      title="Click to filter: fields below 0.05 ha with zero trees — safe to disable" onclick="setKpiFilter('sub_min_no_trees')">
+      title="Click to filter: fields below 0.05 ha (CCS project MMU) with zero trees — flagged for review" onclick="setKpiFilter('sub_min_no_trees')">
       <span class="v" id="kpiSubMin" style="color:#ef4444">…</span>
       <span class="l">⬡ Sub-min</span></div>
   </div>
@@ -588,7 +588,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <option value="overlap_no_trees">⊘ Overlapping — no trees (safe to disable)</option>
         <option value="self_intersect">✗ Self-intersecting polygon (vertex ordering error)</option>
         <option value="coord_dupe">✗ Coordinate duplicate (identical polygon registered multiple times)</option>
-        <option value="sub_min_no_trees">⬡ Sub-minimum size + no trees (safe to disable)</option>
+        <option value="sub_min_no_trees">⬡ Below CCS MMU (0.05 ha) + no trees — flagged for review</option>
       </select>
       <input type="text" id="fltSearch" placeholder="Search field ID or owner…" oninput="render()" style="margin-top:5px"/>
       <input type="text" id="fltCreatedBy" placeholder="Filter by intern / owner / created by…" oninput="render()"
@@ -710,6 +710,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnCoordDupeGroups" onclick="toggleCoordDupeGroups()"
         style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
         title="Show coordinate duplicate groups — same polygon uploaded under multiple field IDs">✗ Coord Dupe Groups</button>
+      <button class="view-btn" id="btnSubMinPanel" onclick="toggleSubMinPanel()"
+        style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
+        title="Sub-minimum fields review — safe disable with Zambia boundary and coordinate span checks">⬡ Sub-min Review</button>
       <button class="view-btn" id="btnGoodExample" onclick="toggleGoodExample()"
         style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
         title="Find clean simple fields — good for screenshots and demonstrations">⭐ Example</button>
@@ -1817,8 +1820,8 @@ function detectCoordDupeKPI() {
 }
 
 // ── SUB-MINIMUM NO-TREES DETECTION ───────────────────────────────────────
-// Finds fields below the minimum viable field size (0.05 ha) with zero trees.
-// These are almost certainly registration errors and are safe to disable.
+// Finds fields below the CCS project MMU (0.05 ha) with zero trees — flagged for review.
+// These may be registration errors but require coordinate span and boundary checks before disabling.
 const SUB_MIN_HA = 0.05;
 
 function detectSubMinNoTreesKPI() {
@@ -4507,6 +4510,196 @@ function exportIdConflictsCSV(typeOverride) {
 let _coordDupeGroupsActive = false;
 let _cdgSort = { col: 'size', dir: -1 }; // default: largest groups first
 
+let _subMinPanelActive = false;
+
+function toggleSubMinPanel() {
+  _subMinPanelActive = !_subMinPanelActive;
+  const btn   = document.getElementById('btnSubMinPanel');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+  btn.classList.toggle('active', _subMinPanelActive);
+
+  if (_subMinPanelActive) {
+    if (queueActive)              toggleQueue();
+    if (emptyOverlapsActive)      toggleEmptyOverlaps();
+    if (idConflictsActive)        toggleIdConflicts();
+    if (goodExampleActive)        toggleGoodExample();
+    if (_bulkCorrectActive)       toggleBulkCorrect();
+    if (_coordDupeGroupsActive)   toggleCoordDupeGroups();
+
+    btn.style.background = 'rgba(239,68,68,0.12)';
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    document.getElementById('catCount').textContent =
+      '⬡ Sub-minimum fields review — fields below CCS MMU (0.05 ha) with zero trees';
+    renderSubMinPanel();
+  } else {
+    btn.style.background = '';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+    renderPage();
+  }
+}
+
+// Zambia bounding box
+const ZAMBIA = { latMin: -18.1, latMax: -7.9, lngMin: 21.9, lngMax: 33.7 };
+
+function subMinClassify(f) {
+  if (!f.ring || f.ring.length < 3) return 'no_polygon';
+  const lngs = f.ring.map(c => c[0]);
+  const lats = f.ring.map(c => c[1]);
+  const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+  const latSpan = Math.max(...lats) - Math.min(...lats);
+  const cLat    = (Math.max(...lats) + Math.min(...lats)) / 2;
+  const cLng    = (Math.max(...lngs) + Math.min(...lngs)) / 2;
+  const inZambia = cLat >= ZAMBIA.latMin && cLat <= ZAMBIA.latMax &&
+                   cLng >= ZAMBIA.lngMin && cLng <= ZAMBIA.lngMax;
+  if (!inZambia)              return 'outside_zambia';
+  if (lngSpan > 0.01 || latSpan > 0.01) return 'large_span';
+  return 'safe';
+}
+
+function renderSubMinPanel() {
+  const fields = fieldsData.filter(f => {
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    return area !== null && area < 0.05;
+  });
+
+  const safe         = fields.filter(f => subMinClassify(f) === 'safe');
+  const largeSpan    = fields.filter(f => subMinClassify(f) === 'large_span');
+  const outsideZambia= fields.filter(f => subMinClassify(f) === 'outside_zambia');
+  const noPolygon    = fields.filter(f => subMinClassify(f) === 'no_polygon');
+
+  const summary = document.getElementById('queueSummary');
+  const actions = document.getElementById('queueActions');
+  actions.style.display = 'none';
+
+  summary.innerHTML = `
+    <div style="font-family:var(--mono);font-size:11px;padding:8px 12px;
+      border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+      <span style="color:var(--fg);font-weight:700">${fields.length} sub-minimum fields</span>
+      <span style="color:#22c55e">\u2714 ${safe.length} safe to disable</span>
+      <span style="color:#f59e0b">\u26a0 ${largeSpan.length} large coordinate span — flag for Eder</span>
+      <span style="color:#ef4444">\u2717 ${outsideZambia.length} outside Zambia — flag for Eder</span>
+      ${noPolygon.length ? `<span style="color:#6b7280">\u25a1 ${noPolygon.length} no polygon</span>` : ''}
+      <div style="flex:1"></div>
+      <button class="btn-deactivate" id="btnSubMinDisableSafe"
+        onclick="subMinDisableSafe()"
+        style="font-size:9px;padding:3px 10px"
+        title="Disable only the safe group — within Zambia, coordinate span < 0.01 degrees">
+        \u2298 Disable ${safe.length} safe fields</button>
+    </div>
+    <div style="overflow-y:auto">
+      <table class="queue-table">
+        <thead><tr>
+          <th>Status</th><th>Field ID</th><th>Owner</th>
+          <th>Registered</th><th>Area (ha)</th><th>Vertices</th><th>Unique pts</th><th>Type</th><th>Span</th>
+        </tr></thead>
+        <tbody>
+          ${fields.map(f => {
+            const cls   = subMinClassify(f);
+            const area  = f.ring ? ringAreaHa(f.ring).toFixed(4) : '—';
+            const lngs  = f.ring ? f.ring.map(c=>c[0]) : [];
+            const lats  = f.ring ? f.ring.map(c=>c[1]) : [];
+            const span  = f.ring ?
+              `${(Math.max(...lngs)-Math.min(...lngs)).toFixed(4)}\u00b0 \u00d7 ${(Math.max(...lats)-Math.min(...lats)).toFixed(4)}\u00b0` : '—';
+            const vertices = f.ring ? f.ring.length : 0;
+
+            // Count unique coordinate pairs
+            const uniquePts = f.ring ?
+              new Set(f.ring.map(c => `${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size : 0;
+
+            // Classify polygon type
+            let polyType = '—', polyColor = 'var(--muted)';
+            if (f.ring) {
+              if (uniquePts <= 2) {
+                polyType = 'Degenerate'; polyColor = '#ef4444';
+              } else if (uniquePts === 3) {
+                polyType = 'Triangle'; polyColor = '#f59e0b';
+              } else if (area === '0.0000') {
+                polyType = 'Self-intersect'; polyColor = '#ef4444';
+              } else {
+                polyType = 'Valid'; polyColor = '#22c55e';
+              }
+            }
+
+            const statusColor = cls==='safe'?'#22c55e':cls==='large_span'?'#f59e0b':'#ef4444';
+            const statusLabel = cls==='safe'?'\u2714 Safe':cls==='large_span'?'\u26a0 Large span':
+                                cls==='outside_zambia'?'\u2717 Outside Zambia':'\u25a1 No polygon';
+            return `<tr>
+              <td style="color:${statusColor};font-weight:700">${statusLabel}</td>
+              <td><span class="fid-link" onclick="openLb(${fieldsData.indexOf(f)})">${f.fieldId}</span></td>
+              <td>${f.owner||'—'}</td>
+              <td>${f.createdOn||'—'}</td>
+              <td style="font-family:var(--mono);font-size:9px">${area}</td>
+              <td style="font-family:var(--mono);font-size:9px;text-align:center">${vertices}</td>
+              <td style="font-family:var(--mono);font-size:9px;text-align:center;
+                color:${uniquePts<=2?'#ef4444':uniquePts<=3?'#f59e0b':'var(--fg)'}">${uniquePts}</td>
+              <td style="font-size:9px;color:${polyColor};font-weight:600">${polyType}</td>
+              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${span}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function subMinDisableSafe() {
+  const fields = fieldsData.filter(f => {
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    if (area === null || area >= 0.05) return false;
+    return subMinClassify(f) === 'safe';
+  });
+
+  if (!fields.length) { showToast('No safe sub-minimum fields to disable', 'info'); return; }
+
+  if (!confirm(
+    `\u2298 Disable ${fields.length} sub-minimum fields?\n\n` +
+    `These fields are:\n` +
+    `\u2714 Below 0.05 ha (CCS MMU)\n` +
+    `\u2714 Zero trees registered\n` +
+    `\u2714 Within Zambia boundaries\n` +
+    `\u2714 Coordinate span < 0.01 degrees\n\n` +
+    `Fields with large coordinate spans or outside Zambia are excluded and flagged for Eder.\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const btn = document.getElementById('btnSubMinDisableSafe');
+  if (btn) { btn.disabled = true; btn.textContent = '\u2298 Disabling\u2026'; }
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    if (btn) btn.textContent = `\u2298 Disabling ${i+1} of ${fields.length}\u2026`;
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = `\u2298 Disable ${fields.length} safe fields`; }
+
+  showToast(
+    fail > 0
+      ? `\u2298 ${ok} disabled \u00b7 ${fail} failed`
+      : `\u2298 ${ok} safe sub-minimum fields disabled`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+
+  renderSubMinPanel();
+}
+
 function toggleCoordDupeGroups() {
   _coordDupeGroupsActive = !_coordDupeGroupsActive;
   const btn   = document.getElementById('btnCoordDupeGroups');
@@ -5961,15 +6154,16 @@ function exportSubMinFields() {
   const ovSet      = window._overlappingFieldIds || new Set();
 
   const summaryRows = [
-    ['CCS Sub-Minimum Fields — Zero Trees — Safe to Disable'],
+    [],
+    ['--- EXPORT NOTES ---'],
+    [`CCS Sub-Minimum Fields — Zero Trees — Flagged for Review`],
     [`Generated: ${new Date().toLocaleString()}`],
     [`Total fields: ${fields.length.toLocaleString()}`],
     [`Minimum size threshold: ${SUB_MIN_HA} ha`],
-    [],
-    ['These fields are below the minimum viable field size and have no trees registered.'],
-    ['They are almost certainly registration errors and are safe to disable without field verification.'],
-    [],
-    ['FIELD DETAIL — sorted smallest first'],
+    ['These fields are below the CCS project Minimum Mapping Unit (0.05 ha) and have no trees registered.'],
+    ['They are flagged for review — not automatically safe to disable.'],
+    ['Verra does not mandate a universal minimum individual field size. Requirements are methodology-specific.'],
+    ['Run coordinate span and Zambia boundary checks before disabling. Use the Sub-min Review panel in the Field Tree Catalog.'],
   ];
 
   const headers = [
@@ -5993,7 +6187,7 @@ function exportSubMinFields() {
     ];
   });
 
-  const allRows = [...summaryRows, headers, ...detailRows];
+  const allRows = [headers, ...detailRows, ...summaryRows];
   const csv = allRows.map(r =>
     Array.isArray(r)
       ? r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
