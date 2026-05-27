@@ -4586,11 +4586,10 @@ function renderSubMinPanel() {
       <span style="color:#ef4444">\u2717 ${outsideZambia.length} outside Zambia — flag for Eder</span>
       ${noPolygon.length ? `<span style="color:#6b7280">\u25a1 ${noPolygon.length} no polygon</span>` : ''}
       <div style="flex:1"></div>
-      ${(largeSpan.length + outsideZambia.length) > 0 ? `
       <button class="btn-export" onclick="exportSubMinEderFields()"
         style="font-size:9px;padding:3px 10px;margin-right:6px"
         title="Export large span and outside Zambia fields for Eder">
-        \u2193 Export ${largeSpan.length + outsideZambia.length} for Eder</button>` : ''}
+        \u2193 Export Eder fields (${largeSpan.length + outsideZambia.length})</button>
       <button class="btn-deactivate" id="btnSubMinDisableSafe"
         onclick="subMinDisableSafe()"
         style="font-size:9px;padding:3px 10px"
