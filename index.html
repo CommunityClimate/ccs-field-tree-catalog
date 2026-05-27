@@ -4544,9 +4544,7 @@ function toggleSubMinPanel() {
   }
 }
 
-// Zambia bounding box
-const ZAMBIA = { latMin: -18.1, latMax: -7.9, lngMin: 21.9, lngMax: 33.7 };
-
+// Zambia bounding box — uses existing ZAMBIA constant (minLat/maxLat/minLng/maxLng)
 function subMinClassify(f) {
   if (!f.ring || f.ring.length < 3) return 'no_polygon';
   const lngs = f.ring.map(c => c[0]);
@@ -4555,8 +4553,8 @@ function subMinClassify(f) {
   const latSpan = Math.max(...lats) - Math.min(...lats);
   const cLat    = (Math.max(...lats) + Math.min(...lats)) / 2;
   const cLng    = (Math.max(...lngs) + Math.min(...lngs)) / 2;
-  const inZambia = cLat >= ZAMBIA.latMin && cLat <= ZAMBIA.latMax &&
-                   cLng >= ZAMBIA.lngMin && cLng <= ZAMBIA.lngMax;
+  const inZambia = cLat >= ZAMBIA.minLat && cLat <= ZAMBIA.maxLat &&
+                   cLng >= ZAMBIA.minLng && cLng <= ZAMBIA.maxLng;
   if (!inZambia)              return 'outside_zambia';
   if (lngSpan > 0.01 || latSpan > 0.01) return 'large_span';
   return 'safe';
