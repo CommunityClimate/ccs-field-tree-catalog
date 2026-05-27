@@ -4665,7 +4665,7 @@ function exportSubMinEderFields() {
 
   const exportDate = new Date().toISOString().slice(0,10);
   const headers = ['Group','Field ID','Owner','Registered','Created By','Area (ha)',
-                   'Vertices','Unique Points','Polygon Type','Coord Span','Centroid Lat','Centroid Lng','Issue'];
+                   'Vertices','Unique Points','Polygon Type','Coord Span (lng x lat)','Centroid Lat','Centroid Lng','Issue'];
 
   const rows = fields.map(f => {
     const cls      = subMinClassify(f);
@@ -4684,8 +4684,8 @@ function exportSubMinEderFields() {
     else if (area === '0.0000') polyType = 'Self-intersect';
     const group    = cls === 'large_span' ? 'Large coordinate span' : 'Outside Zambia boundaries';
     const issue    = cls === 'large_span'
-      ? `Coordinate span ${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0 exceeds 0.01\u00b0 threshold — possible self-intersecting or corrupted polygon`
-      : `Centroid at (${cLat}, ${cLng}) is outside Zambia boundaries — likely degenerate polygon with corrupted coordinates`;
+      ? `Polygon boundary is corrupted — coordinate span of ${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0 is impossibly large for a single field. Boundary must be re-collected and re-uploaded.`
+      : `Polygon boundary is corrupted — coordinates place the field outside Zambia or the polygon has only ${uniquePts} unique point(s). Boundary must be re-collected and re-uploaded.`;
     return [group, f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
             area, vertices, uniquePts, polyType, `${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0`,
             cLat, cLng, issue];
@@ -4694,10 +4694,10 @@ function exportSubMinEderFields() {
   const noteRows = [
     [],
     ['--- NOTES FOR EDER ---'],
-    ['These fields require pipeline investigation and correction before they can be disabled.'],
-    ['Large span: polygon coordinates span more than 0.01 degrees — likely self-intersecting or GPS track error.'],
-    ['Outside Zambia: centroid falls outside Zambia boundaries — likely degenerate polygon with only 2 unique coordinate pairs.'],
-    ['Degenerate polygons (Unique Points \u2264 2) cannot be corrected in the catalog — the field boundary must be re-collected and re-uploaded.'],
+    ['These fields have corrupted polygon boundaries and cannot be disabled until the boundary data is corrected.'],
+    ['Large coordinate span: the polygon coordinates span an impossibly large area for a single farmer field.'],
+    ['Outside Zambia: the polygon boundary places the field outside Zambia, or the polygon has only 1-2 unique coordinate points.'],
+    ['Action required: the field boundary must be re-collected in the field and re-uploaded with correct coordinates.'],
     [`Exported: ${new Date().toLocaleString()}`],
   ];
 
