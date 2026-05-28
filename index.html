@@ -4735,64 +4735,6 @@ function exportSubMinEderFields() {
   downloadCSV(csv, `CCS_Eder_Review_${exportDate}.csv`);
   showToast(`\u2193 Exported ${subMinFields.length} sub-min + ${largeFields.length} large corrupted fields for Eder`, 'ok');
 }
-  const fields = fieldsData.filter(f => {
-    if ((treesByField[f.fieldId]||[]).length > 0) return false;
-    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
-    const area = f.ring ? ringAreaHa(f.ring) : null;
-    if (area === null || area >= 0.05) return false;
-    const cls = subMinClassify(f);
-    return cls === 'large_span' || cls === 'outside_zambia';
-  });
-
-  if (!fields.length) { showToast('No Eder fields to export', 'info'); return; }
-
-  const exportDate = new Date().toISOString().slice(0,10);
-  const headers = ['Group','Field ID','Owner','Registered','Created By','Area (ha)',
-                   'Vertices','Unique Points','Polygon Type','Coord Span (lng x lat)','Centroid Lat','Centroid Lng','Issue'];
-
-  const rows = fields.map(f => {
-    const cls      = subMinClassify(f);
-    const area     = f.ring ? ringAreaHa(f.ring).toFixed(4) : '';
-    const lngs     = f.ring ? f.ring.map(c=>c[0]) : [];
-    const lats     = f.ring ? f.ring.map(c=>c[1]) : [];
-    const lngSpan  = f.ring ? (Math.max(...lngs)-Math.min(...lngs)).toFixed(4) : '';
-    const latSpan  = f.ring ? (Math.max(...lats)-Math.min(...lats)).toFixed(4) : '';
-    const cLat     = f.ring ? ((Math.max(...lats)+Math.min(...lats))/2).toFixed(6) : '';
-    const cLng     = f.ring ? ((Math.max(...lngs)+Math.min(...lngs))/2).toFixed(6) : '';
-    const vertices = f.ring ? f.ring.length : 0;
-    const uniquePts= f.ring ? new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size : 0;
-    let polyType   = 'Valid';
-    if (uniquePts <= 2) polyType = 'Degenerate';
-    else if (uniquePts === 3) polyType = 'Triangle';
-    else if (area === '0.0000') polyType = 'Self-intersect';
-    const group    = cls === 'large_span' ? 'Large coordinate span' : 'Outside Zambia boundaries';
-    const issue    = cls === 'large_span'
-      ? `Polygon boundary is corrupted — coordinate span of ${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0 is impossibly large for a single field. Boundary must be re-collected and re-uploaded.`
-      : `Polygon boundary is corrupted — coordinates place the field outside Zambia or the polygon has only ${uniquePts} unique point(s). Boundary must be re-collected and re-uploaded.`;
-    return [group, f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
-            area, vertices, uniquePts, polyType, `${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0`,
-            cLat, cLng, issue];
-  });
-
-  const noteRows = [
-    [],
-    ['--- NOTES FOR EDER ---'],
-    ['These fields have corrupted polygon boundaries and cannot be disabled until the boundary data is corrected.'],
-    ['Large coordinate span: the polygon coordinates span an impossibly large area for a single farmer field.'],
-    ['Outside Zambia: the polygon boundary places the field outside Zambia, or the polygon has only 1-2 unique coordinate points.'],
-    ['Action required: the field boundary must be re-collected in the field and re-uploaded with correct coordinates.'],
-    [`Exported: ${new Date().toLocaleString()}`],
-  ];
-
-  const allRows = [headers, ...rows, ...noteRows];
-  const csv = allRows.map(r =>
-    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
-  ).join('\n');
-
-  downloadCSV(csv, `CCS_SubMin_Eder_Review_${exportDate}.csv`);
-  showToast(`\u2193 Exported ${fields.length} fields for Eder review`, 'ok');
-}
-
 async function subMinDisableSafe() {
   const fields = fieldsData.filter(f => {
     if ((treesByField[f.fieldId]||[]).length > 0) return false;
