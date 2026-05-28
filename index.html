@@ -436,6 +436,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Large Polygons</strong>
         <span>Fields above the large polygon threshold</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportSubMinEderFields()">
+        <strong>⬇ Eder Review — Corrupted Boundaries</strong>
+        <span>Sub-min + large polygon fields with corrupted boundaries — for pipeline investigation</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
         <strong>⬇ Overlapping Fields</strong>
         <span>Fields detected as overlapping another field boundary</span>
@@ -4588,8 +4592,8 @@ function renderSubMinPanel() {
       <div style="flex:1"></div>
       <button class="btn-export" onclick="exportSubMinEderFields()"
         style="font-size:9px;padding:3px 10px;margin-right:6px"
-        title="Export large span and outside Zambia fields for Eder">
-        \u2193 Export Eder fields (${largeSpan.length + outsideZambia.length})</button>
+        title="Export large span, outside Zambia, and large corrupted polygon fields for Eder">
+        \u2193 Export Eder fields (${largeSpan.length + outsideZambia.length}+38)</button>
       <button class="btn-deactivate" id="btnSubMinDisableSafe"
         onclick="subMinDisableSafe()"
         style="font-size:9px;padding:3px 10px"
@@ -4652,6 +4656,85 @@ function renderSubMinPanel() {
 }
 
 function exportSubMinEderFields() {
+  // Group 1: Sub-min fields with large span or outside Zambia
+  const subMinFields = fieldsData.filter(f => {
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    if (area === null || area >= 0.05) return false;
+    const cls = subMinClassify(f);
+    return cls === 'large_span' || cls === 'outside_zambia';
+  });
+
+  // Group 2: Large polygon chip fields (> 10 ha) that are degenerate/corrupted
+  const SUB_MIN_HA = 0.05;
+  const largeFields = fieldsData.filter(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    if (area === null || area < 10) return false;
+    // Only include if polygon is degenerate or outside Zambia
+    if (!f.ring) return false;
+    const lngs = f.ring.map(c=>c[0]);
+    const lats = f.ring.map(c=>c[1]);
+    const uniquePts = new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size;
+    const lngSpan = Math.max(...lngs) - Math.min(...lngs);
+    const latSpan = Math.max(...lats) - Math.min(...lats);
+    // Corrupted if degenerate, or span > 0.5 degrees, or outside Zambia
+    return uniquePts <= 3 || lngSpan > 0.5 || latSpan > 0.5 || subMinClassify(f) === 'outside_zambia';
+  });
+
+  const allFields = [...subMinFields, ...largeFields];
+  if (!allFields.length) { showToast('No Eder fields to export', 'info'); return; }
+
+  const exportDate = new Date().toISOString().slice(0,10);
+  const headers = ['Source Group','Field ID','Owner','Registered','Created By','Area (ha)',
+                   'Vertices','Unique Points','Polygon Type','Coord Span','Issue'];
+
+  const buildRow = (f, sourceGroup) => {
+    const lngs     = f.ring ? f.ring.map(c=>c[0]) : [];
+    const lats     = f.ring ? f.ring.map(c=>c[1]) : [];
+    const area     = f.ring ? ringAreaHa(f.ring).toFixed(4) : '';
+    const lngSpan  = f.ring ? (Math.max(...lngs)-Math.min(...lngs)).toFixed(4) : '';
+    const latSpan  = f.ring ? (Math.max(...lats)-Math.min(...lats)).toFixed(4) : '';
+    const vertices = f.ring ? f.ring.length : 0;
+    const uniquePts= f.ring ? new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size : 0;
+    let polyType   = 'Valid';
+    if (uniquePts <= 2) polyType = 'Degenerate';
+    else if (uniquePts === 3) polyType = 'Triangle';
+    else if (area === '0.0000') polyType = 'Self-intersect';
+    const cls = subMinClassify(f);
+    const issue = uniquePts <= 2
+      ? `Degenerate polygon — only ${uniquePts} unique coordinate point(s). Boundary must be re-collected and re-uploaded.`
+      : lngSpan > 0.5 || latSpan > 0.5
+        ? `Polygon boundary is corrupted — coordinate span of ${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0 is impossibly large for a single field.`
+        : `Polygon boundary is corrupted — coordinates place the field outside Zambia or span is too large for a single field.`;
+    return [sourceGroup, f.fieldId, f.owner||'', f.createdOn||'', f.createdBy||'',
+            area, vertices, uniquePts, polyType, `${lngSpan}\u00b0 \u00d7 ${latSpan}\u00b0`, issue];
+  };
+
+  const rows = [
+    ...subMinFields.map(f => buildRow(f, 'Sub-min — corrupted boundary')),
+    ...largeFields.map(f => buildRow(f, 'Large polygon — corrupted boundary')),
+  ];
+
+  const noteRows = [
+    [],
+    ['--- NOTES FOR EDER ---'],
+    [`Sub-minimum fields (${subMinFields.length}): below 0.05 ha with corrupted boundaries — large coordinate span or outside Zambia.`],
+    [`Large polygon fields (${largeFields.length}): flagged as > 10 ha but polygon is degenerate or corrupted — likely same batch issue.`],
+    ['All fields require the boundary to be re-collected in the field and re-uploaded with correct coordinates.'],
+    ['The April 30, 2026 upload batch appears to be the primary source of the corruption.'],
+    [`Exported: ${new Date().toLocaleString()}`],
+  ];
+
+  const allRows = [headers, ...rows, ...noteRows];
+  const csv = allRows.map(r =>
+    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_Eder_Review_${exportDate}.csv`);
+  showToast(`\u2193 Exported ${subMinFields.length} sub-min + ${largeFields.length} large corrupted fields for Eder`, 'ok');
+}
   const fields = fieldsData.filter(f => {
     if ((treesByField[f.fieldId]||[]).length > 0) return false;
     if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
