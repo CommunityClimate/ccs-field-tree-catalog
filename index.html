@@ -4666,21 +4666,12 @@ function exportSubMinEderFields() {
     return cls === 'large_span' || cls === 'outside_zambia';
   });
 
-  // Group 2: Large polygon chip fields (> 10 ha) that are degenerate/corrupted
-  const SUB_MIN_HA = 0.05;
+  // Group 2: All large polygon chip fields (> large threshold) — same as ⬡ Large chip
+  const largeThreshold = getLargeThreshold ? getLargeThreshold() : 10;
   const largeFields = fieldsData.filter(f => {
     if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
     const area = f.ring ? ringAreaHa(f.ring) : null;
-    if (area === null || area < 10) return false;
-    // Only include if polygon is degenerate or outside Zambia
-    if (!f.ring) return false;
-    const lngs = f.ring.map(c=>c[0]);
-    const lats = f.ring.map(c=>c[1]);
-    const uniquePts = new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size;
-    const lngSpan = Math.max(...lngs) - Math.min(...lngs);
-    const latSpan = Math.max(...lats) - Math.min(...lats);
-    // Corrupted if degenerate, or span > 0.5 degrees, or outside Zambia
-    return uniquePts <= 3 || lngSpan > 0.5 || latSpan > 0.5 || subMinClassify(f) === 'outside_zambia';
+    return area !== null && area >= largeThreshold;
   });
 
   const allFields = [...subMinFields, ...largeFields];
