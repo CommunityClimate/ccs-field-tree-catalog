@@ -7075,6 +7075,16 @@ function renderBulkCorrectView() {
       padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);
       font-size:10px;background:var(--card)">
       <span id="bcStatus" style="color:var(--muted)">Processing overlapping fields…</span>
+      <select id="bcDiagFilter" onchange="renderBulkPage()"
+        style="font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:3px;
+        border:1px solid var(--border);background:var(--bg);color:var(--fg);cursor:pointer"
+        title="Filter by correction type">
+        <option value="">All types</option>
+        <option value="minor_overlap" selected>⚠ Minor overlap only</option>
+        <option value="contained">◻ Contained</option>
+        <option value="malformed_boundary">✗ Script fix needed</option>
+        <option value="manual">✎ Manual</option>
+      </select>
       <span style="flex:1"></span>
       <button onclick="setBulkCardSize('medium')" id="bcSizeMed"
         style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;
@@ -7373,7 +7383,12 @@ function analyseOverlapPair(f, nbr) {
 
 function renderBulkPage() {
   // Include 'manual' entries (show as needing correction) but exclude true no-ops
-  const visibleEntries = _bulkQueue.filter(e => e.diagnosis !== 'no_overlap');
+  const diagFilter = document.getElementById('bcDiagFilter')?.value || '';
+  const visibleEntries = _bulkQueue.filter(e => {
+    if (e.diagnosis === 'no_overlap') return false;
+    if (diagFilter && e.diagnosis !== diagFilter) return false;
+    return true;
+  });
   const page = visibleEntries.slice(0, (_bulkPage + 1) * BULK_PAGE_SIZE);
   const remaining = visibleEntries.length - page.length;
 
