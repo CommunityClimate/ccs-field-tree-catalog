@@ -1727,7 +1727,10 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
   if (Math.abs(denom) < 1e-12) return false;
   const t = ((lat3-lat1)*d2g-(lng3-lng1)*d2l)/denom;
   const u = ((lat3-lat1)*d1g-(lng3-lng1)*d1l)/denom;
-  return t > 1e-8 && t < 1-1e-8 && u > 1e-8 && u < 1-1e-8;
+  // Minimum crossing depth of 0.001 (0.1% of edge length) filters out
+  // tip-touching and near-miss cases that are invisible to the naked eye
+  const MIN_DEPTH = 0.001;
+  return t > MIN_DEPTH && t < 1-MIN_DEPTH && u > MIN_DEPTH && u < 1-MIN_DEPTH;
 }
 
 function isSelfIntersecting(ring) {
