@@ -436,6 +436,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Large Polygons</strong>
         <span>Fields above the large polygon threshold</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();exportUnstackingReport()">
+        <strong>⬡ Unstacking Report — Large Corrupted Polygons</strong>
+        <span>Raw coordinates + contained fields + tree clusters — for Eder pipeline investigation</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportSubMinEderFields()">
         <strong>⬇ Eder Review — Corrupted Boundaries</strong>
         <span>Sub-min + large polygon fields with corrupted boundaries — for pipeline investigation</span>
@@ -4653,6 +4657,129 @@ function renderSubMinPanel() {
         </tbody>
       </table>
     </div>`;
+}
+
+function exportUnstackingReport() {
+  const threshold = getLargeThreshold();
+
+  // Get all active large polygon fields
+  const largeFields = fieldsData.filter(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    return area !== null && area >= threshold;
+  });
+
+  if (!largeFields.length) { showToast('No large polygon fields found', 'info'); return; }
+
+  const exportDate = new Date().toISOString().slice(0,10);
+  const rows = [];
+
+  // Header
+  rows.push(['=== CCS UNSTACKING REPORT — LARGE CORRUPTED POLYGONS ===']);
+  rows.push([`Generated: ${new Date().toLocaleString()}`]);
+  rows.push([`Large polygon threshold: ${threshold} ha`]);
+  rows.push([`Total large fields: ${largeFields.length}`]);
+  rows.push([`Purpose: Raw coordinates and contained fields for pipeline investigation and boundary reconstruction`]);
+  rows.push([]);
+
+  largeFields.forEach((f, idx) => {
+    const m         = f.ring ? ringMetrics(f.ring) : null;
+    const trees     = treesByField[f.fieldId] || [];
+    const treeCount = trees.length;
+
+    // Find fields whose centroid is inside this large polygon
+    const containedFields = fieldsData.filter(other => {
+      if (other.fieldId === f.fieldId) return false;
+      if (!other.ring) return false;
+      const om = ringMetrics(other.ring);
+      if (!om) return false;
+      // Simple point-in-polygon check using ray casting
+      return pointInRing(om.cLng, om.cLat, f.ring);
+    });
+
+    // Cluster trees by proximity (simple grid-based clustering ~100m cells)
+    const treeClusters = {};
+    trees.forEach(t => {
+      const lat = parseFloat(t.ccs_treelatitude_tree);
+      const lng = parseFloat(t.ccs_treelongitude_tree);
+      if (isNaN(lat) || isNaN(lng)) return;
+      const key = `${(lat*100).toFixed(0)},${(lng*100).toFixed(0)}`;
+      if (!treeClusters[key]) treeClusters[key] = { lat, lng, count: 0 };
+      treeClusters[key].count++;
+    });
+    const clusterList = Object.values(treeClusters).sort((a,b) => b.count - a.count);
+
+    rows.push([`--- FIELD ${idx+1} of ${largeFields.length} ---`]);
+    rows.push(['Field ID', f.fieldId]);
+    rows.push(['Owner', f.owner || '—']);
+    rows.push(['Registered', f.createdOn || '—']);
+    rows.push(['Created by', f.createdBy || '—']);
+    rows.push(['Area (ha)', m ? m.area.toFixed(2) : '—']);
+    rows.push(['Perimeter (m)', m ? m.perimeter.toFixed(0) : '—']);
+    rows.push(['Vertices', m ? m.vertices : '—']);
+    rows.push(['Centroid', m ? `${m.cLat.toFixed(6)}, ${m.cLng.toFixed(6)}` : '—']);
+    rows.push(['Trees registered', treeCount]);
+    rows.push(['Fields contained inside boundary', containedFields.length]);
+    rows.push([]);
+
+    // Raw coordinates
+    rows.push(['RAW POLYGON COORDINATES [lng, lat]']);
+    rows.push(['#', 'Longitude', 'Latitude']);
+    if (f.ring) {
+      f.ring.forEach((c, ci) => rows.push([ci+1, c[0].toFixed(7), c[1].toFixed(7)]));
+    }
+    rows.push([]);
+
+    // Contained fields
+    if (containedFields.length > 0) {
+      rows.push(['FIELDS CONTAINED INSIDE THIS POLYGON (potential unstacking targets)']);
+      rows.push(['Field ID', 'Owner', 'Area (ha)', 'Trees', 'Centroid Lat', 'Centroid Lng']);
+      containedFields.slice(0, 50).forEach(cf => {
+        const cm = cf.ring ? ringMetrics(cf.ring) : null;
+        const ct = (treesByField[cf.fieldId]||[]).length;
+        rows.push([cf.fieldId, cf.owner||'—',
+          cm ? cm.area.toFixed(4) : '—', ct,
+          cm ? cm.cLat.toFixed(6) : '—',
+          cm ? cm.cLng.toFixed(6) : '—']);
+      });
+      if (containedFields.length > 50) rows.push([`... and ${containedFields.length - 50} more`]);
+      rows.push([]);
+    }
+
+    // Tree clusters
+    if (clusterList.length > 0) {
+      rows.push(['TREE CLUSTERS (suggested reconstruction centroids)']);
+      rows.push(['Cluster', 'Approx Lat', 'Approx Lng', 'Tree count']);
+      clusterList.slice(0, 20).forEach((cl, ci) => {
+        rows.push([`Cluster ${ci+1}`, cl.lat.toFixed(4), cl.lng.toFixed(4), cl.count]);
+      });
+      rows.push([]);
+    }
+
+    rows.push([]);
+  });
+
+  const csv = rows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_Unstacking_Report_${exportDate}.csv`);
+  showToast(`\u2193 Unstacking report exported for ${largeFields.length} large polygon fields`, 'ok');
+}
+
+// Ray casting point-in-polygon
+function pointInRing(x, y, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 function exportSubMinEderFields() {
