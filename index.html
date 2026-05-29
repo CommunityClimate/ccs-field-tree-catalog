@@ -558,6 +558,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: fields below 0.05 ha (CCS project MMU) with zero trees — flagged for review" onclick="setKpiFilter('sub_min_no_trees')">
       <span class="v" id="kpiSubMin" style="color:#ef4444">…</span>
       <span class="l">⬡ Sub-min</span></div>
+    <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
+      title="Click to open Sub-min Review panel: large self-intersecting fields with zero trees — safe to disable" onclick="toggleSubMinPanel()">
+      <span class="v" id="kpiLargeSelfInt" style="color:#ef4444">…</span>
+      <span class="l">⬡✗ Large+SI</span></div>
   </div>
 </header>
 
@@ -1707,6 +1711,8 @@ function updateKPIs() {
   setTimeout(() => detectCoordDupeKPI(), 500);
   // Run sub-minimum no-trees detection
   setTimeout(() => detectSubMinNoTreesKPI(), 600);
+  // Run large self-intersecting zero-tree detection
+  setTimeout(() => detectLargeSelfIntKPI(), 700);
 }
 
 // ── SELF-INTERSECTION DETECTION ───────────────────────────────────────────
@@ -1864,6 +1870,22 @@ function detectSubMinNoTreesKPI() {
 // new overlap if their boundary is expanded during correction.
 const NEAR_THRESHOLD_M = 10;
 let _nearFieldIds = new Set(); // fieldIds within NEAR_THRESHOLD_M of another boundary
+
+function detectLargeSelfIntKPI() {
+  const threshold = getLargeThreshold();
+  const siSet     = window._selfIntersectIds || new Set();
+  let count = 0;
+  fieldsData.forEach(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return;
+    if ((treesByField[f.fieldId]||[]).length > 0) return;
+    if (!siSet.has(f.fieldId)) return;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    if (area !== null && area >= threshold) count++;
+  });
+  const el = document.getElementById('kpiLargeSelfInt');
+  if (el) el.textContent = count.toLocaleString();
+  window._largeSelfIntCount = count;
+}
 
 async function detectNearKPI() {
   const el     = document.getElementById('kpiNear');
@@ -4581,6 +4603,17 @@ function renderSubMinPanel() {
   const outsideZambia= fields.filter(f => subMinClassify(f) === 'outside_zambia');
   const noPolygon    = fields.filter(f => subMinClassify(f) === 'no_polygon');
 
+  // Group 4: Large self-intersecting zero-tree fields
+  const threshold2 = getLargeThreshold();
+  const siSet2     = window._selfIntersectIds || new Set();
+  const largeSelfInt = fieldsData.filter(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    if (!siSet2.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    return area !== null && area >= threshold2;
+  });
+
   const summary = document.getElementById('queueSummary');
   const actions = document.getElementById('queueActions');
   actions.style.display = 'none';
@@ -4593,6 +4626,7 @@ function renderSubMinPanel() {
       <span style="color:#f59e0b">\u26a0 ${largeSpan.length} large coordinate span — flag for Eder</span>
       <span style="color:#ef4444">\u2717 ${outsideZambia.length} outside Zambia — flag for Eder</span>
       ${noPolygon.length ? `<span style="color:#6b7280">\u25a1 ${noPolygon.length} no polygon</span>` : ''}
+      ${largeSelfInt.length ? `<span style="color:#ef4444">\u2b21\u2717 ${largeSelfInt.length} large self-intersect — safe to disable</span>` : ''}
       <div style="flex:1"></div>
       <button class="btn-export" onclick="exportSubMinEderFields()"
         style="font-size:9px;padding:3px 10px;margin-right:6px"
@@ -4603,6 +4637,12 @@ function renderSubMinPanel() {
         style="font-size:9px;padding:3px 10px"
         title="Disable only the safe group — within Zambia, coordinate span < 0.01 degrees">
         \u2298 Disable ${safe.length} safe fields</button>
+      ${largeSelfInt.length ? `
+      <button class="btn-deactivate" id="btnLargeSelfIntDisable"
+        onclick="disableLargeSelfInt()"
+        style="font-size:9px;padding:3px 10px;margin-left:4px"
+        title="Disable large self-intersecting fields with zero trees — safe to disable">
+        \u2298 Disable ${largeSelfInt.length} large SI fields</button>` : ''}
     </div>
     <div style="overflow-y:auto">
       <table class="queue-table">
@@ -4680,6 +4720,33 @@ function exportUnstackingReport() {
   rows.push([`Large polygon threshold: ${threshold} ha`]);
   rows.push([`Total large fields: ${largeFields.length}`]);
   rows.push([`Purpose: Raw coordinates and contained fields for pipeline investigation and boundary reconstruction`]);
+  rows.push([]);
+  rows.push(['--- HOW TO USE THIS REPORT ---']);
+  rows.push(['Coordinates are in GeoJSON format [longitude, latitude] in WGS84 (EPSG:4326).']);
+  rows.push(['To visualise any polygon, paste the GeoJSON example below into geojson.io:']);
+  rows.push(['  1. Go to https://geojson.io']);
+  rows.push(['  2. Click the JSON tab on the right side']);
+  rows.push(['  3. Delete the existing content']);
+  rows.push(['  4. Paste the GeoJSON block below, replacing the coordinates with those from this report']);
+  rows.push(['  5. The map will zoom to the polygon location']);
+  rows.push([]);
+  rows.push(['--- GEOJSON TEMPLATE ---']);
+  rows.push(['{']);
+  rows.push(['  "type": "Feature",']);
+  rows.push(['  "geometry": {']);
+  rows.push(['    "type": "Polygon",']);
+  rows.push(['    "coordinates": [']);
+  rows.push(['      [']);
+  rows.push(['        [28.6273906, -16.0185843],']);
+  rows.push(['        [28.7254257, -15.8895471],']);
+  rows.push(['        [28.6273906, -16.0185843]']);
+  rows.push(['      ]']);
+  rows.push(['    ]']);
+  rows.push(['  },']);
+  rows.push(['  "properties": {}']);
+  rows.push(['}']);
+  rows.push([]);
+  rows.push(['Replace the coordinate pairs above with the [longitude, latitude] values from the RAW POLYGON COORDINATES section for each field.']);
   rows.push([]);
 
   largeFields.forEach((f, idx) => {
@@ -4853,6 +4920,58 @@ function exportSubMinEderFields() {
   downloadCSV(csv, `CCS_Eder_Review_${exportDate}.csv`);
   showToast(`\u2193 Exported ${subMinFields.length} sub-min + ${largeFields.length} large corrupted fields for Eder`, 'ok');
 }
+async function disableLargeSelfInt() {
+  const threshold = getLargeThreshold();
+  const siSet     = window._selfIntersectIds || new Set();
+  const fields    = fieldsData.filter(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    if (!siSet.has(f.fieldId)) return false;
+    const area = f.ring ? ringAreaHa(f.ring) : null;
+    return area !== null && area >= threshold;
+  });
+
+  if (!fields.length) { showToast('No large self-intersecting zero-tree fields found', 'info'); return; }
+
+  if (!confirm(
+    `\u2298 Disable ${fields.length} large self-intersecting fields with zero trees?\n\n` +
+    `These fields meet all three conditions:\n` +
+    `\u2714 Above ${threshold} ha large polygon threshold\n` +
+    `\u2714 Self-intersecting polygon — invalid geometry\n` +
+    `\u2714 Zero trees registered\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const btn = document.getElementById('btnLargeSelfIntDisable');
+  if (btn) { btn.disabled = true; btn.textContent = '\u2298 Disabling\u2026'; }
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    if (btn) btn.textContent = `\u2298 Disabling ${i+1} of ${fields.length}\u2026`;
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = `\u2298 Disable ${fields.length} large SI fields`; }
+
+  detectLargeSelfIntKPI();
+  showToast(
+    fail > 0
+      ? `\u2298 ${ok} disabled \u00b7 ${fail} failed`
+      : `\u2298 ${ok} large self-intersecting zero-tree fields disabled`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+
+  renderSubMinPanel();
+}
+
 async function subMinDisableSafe() {
   const fields = fieldsData.filter(f => {
     if ((treesByField[f.fieldId]||[]).length > 0) return false;
