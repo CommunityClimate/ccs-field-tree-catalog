@@ -529,6 +529,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: overlapping fields" onclick="setKpiFilter('overlapping')">
       <span class="v" id="kpiOverlap" style="color:#a78bfa">…</span>
       <span class="l">⧖ Overlap</span></div>
+    <div class="kpi" style="border-color:rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);cursor:pointer"
+      title="Click to filter: same-farmer overlapping fields — boundary adjustment candidates" onclick="setKpiFilter('same_farmer_overlap')">
+      <span class="v" id="kpiSameFarmerOverlap" style="color:#22c55e">…</span>
+      <span class="l">⧖ Same Farmer</span></div>
     <div class="kpi" style="border-color:rgba(56,189,248,0.3);background:rgba(56,189,248,0.06);cursor:pointer"
       title="Click to filter: fields within 10m of another boundary" onclick="setKpiFilter('near')">
       <span class="v" id="kpiNear" style="color:#38bdf8">…</span>
@@ -1889,6 +1893,32 @@ function detectSubMinNoTreesKPI() {
 const NEAR_THRESHOLD_M = 10;
 let _nearFieldIds = new Set(); // fieldIds within NEAR_THRESHOLD_M of another boundary
 
+function detectSameFarmerOverlapKPI() {
+  const neighbours = window._overlapNeighbours || {};
+  const fieldMap   = {};
+  fieldsData.forEach(f => { fieldMap[f.fieldId] = f; });
+
+  const sameFarmerIds = new Set();
+  Object.entries(neighbours).forEach(([fid, nids]) => {
+    const f = fieldMap[fid];
+    if (!f || _deactivatedGuids.has(f.guid)) return;
+    const hasSameFarmerNeighbour = nids.some(nid => {
+      const n = fieldMap[nid];
+      if (!n || _deactivatedGuids.has(n.guid)) return false;
+      return f.owner && n.owner &&
+             f.owner.trim().toLowerCase() === n.owner.trim().toLowerCase();
+    });
+    if (hasSameFarmerNeighbour) sameFarmerIds.add(fid);
+  });
+
+  window._sameFarmerOverlapIds = sameFarmerIds;
+  const el = document.getElementById('kpiSameFarmerOverlap');
+  if (el) {
+    el.textContent = sameFarmerIds.size.toLocaleString();
+    el.style.color = sameFarmerIds.size > 0 ? '#22c55e' : '#6b7280';
+  }
+}
+
 function detectSelfIntNoTreesKPI() {
   const siSet = window._selfIntersectIds || new Set();
   let count = 0;
@@ -2255,6 +2285,7 @@ async function detectOverlapsKPI() {
 
   // Signal that detection is fully complete — used by Bulk Corrector wait loop
   window._overlapDetectionComplete = true;
+  detectSameFarmerOverlapKPI();
 }
 
 // ── RENDER CATALOG ─────────────────────────────────────────────────────────
@@ -2370,6 +2401,9 @@ function render() {
     if (filter === 'overlapping') {
       const ovSet = window._overlappingFieldIds;
       return ovSet ? ovSet.has(f.fieldId) : false;
+    }
+    if (filter === 'same_farmer_overlap') {
+      return (window._sameFarmerOverlapIds || new Set()).has(f.fieldId);
     }
     if (filter === 'true_overlap') return (window._trueOverlapSet||new Set()).has(f.fieldId);
     if (filter === 'tip_over')     return (window._tipOverSet||new Set()).has(f.fieldId);
