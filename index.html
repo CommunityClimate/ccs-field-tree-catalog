@@ -1733,9 +1733,9 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
   if (Math.abs(denom) < 1e-12) return false;
   const t = ((lat3-lat1)*d2g-(lng3-lng1)*d2l)/denom;
   const u = ((lat3-lat1)*d1g-(lng3-lng1)*d1l)/denom;
-  // Minimum crossing depth of 0.001 (0.1% of edge length) filters out
-  // tip-touching and near-miss cases that are invisible to the naked eye
-  const MIN_DEPTH = 0.001;
+  // Minimum crossing depth of 0.0001 (0.01% of edge length) filters out
+  // true tip-touching cases while catching shallow but genuine crossings
+  const MIN_DEPTH = 0.0001;
   return t > MIN_DEPTH && t < 1-MIN_DEPTH && u > MIN_DEPTH && u < 1-MIN_DEPTH;
 }
 
