@@ -1722,9 +1722,13 @@ function updateKPIs() {
 }
 
 // ── SELF-INTERSECTION DETECTION ───────────────────────────────────────────
-// Detects polygons where edges cross each other — the star/bowtie pattern
-// caused by vertices connected in the wrong order during upload.
-// Detection: min side = 0 OR any two non-adjacent edges intersect.
+// Detects polygons where edges genuinely cross each other — the star/bowtie
+// pattern caused by vertices connected in the wrong order during upload.
+// Excludes: tip-touching, shared vertices, floating point noise.
+
+function _coordsEqual(a, b) {
+  return Math.abs(a[0]-b[0]) < 1e-9 && Math.abs(a[1]-b[1]) < 1e-9;
+}
 
 function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
   const d1l = lat2-lat1, d1g = lng2-lng1;
@@ -1733,21 +1737,26 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
   if (Math.abs(denom) < 1e-12) return false;
   const t = ((lat3-lat1)*d2g-(lng3-lng1)*d2l)/denom;
   const u = ((lat3-lat1)*d1g-(lng3-lng1)*d1l)/denom;
-  // Minimum crossing depth of 0.0001 (0.01% of edge length) filters out
-  // true tip-touching cases while catching shallow but genuine crossings
+  // Minimum crossing depth filters tip-touching and near-miss cases
   const MIN_DEPTH = 0.0001;
   return t > MIN_DEPTH && t < 1-MIN_DEPTH && u > MIN_DEPTH && u < 1-MIN_DEPTH;
 }
 
 function isSelfIntersecting(ring) {
   if (!ring || ring.length < 4) return false;
-  // Test non-adjacent edge pairs for crossing — this is the only reliable detection
-  // of star/bowtie patterns. Min Side = 0 is NOT used as it causes false positives
-  // on valid concave polygons with short edges.
   const n = ring.length - 1; // last point = first for closed rings
+
   for (let i = 0; i < n; i++) {
     for (let j = i + 2; j < n; j++) {
       if (i === 0 && j === n - 1) continue; // adjacent at wrap-around
+
+      // Skip if edges share a vertex — concave polygons have touching vertices
+      // at non-adjacent positions without being self-intersecting
+      if (_coordsEqual(ring[i],   ring[j])   ||
+          _coordsEqual(ring[i],   ring[j+1]) ||
+          _coordsEqual(ring[i+1], ring[j])   ||
+          _coordsEqual(ring[i+1], ring[j+1])) continue;
+
       if (_edgesIntersect(ring[i], ring[i+1], ring[j], ring[j+1])) return true;
     }
   }
