@@ -551,6 +551,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span class="v" id="kpiSelfIntersect" style="color:#ef4444">…</span>
       <span class="l">✗ Self-Intersect</span></div>
     <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
+      title="Click to open Sub-min Review panel: self-intersecting fields with zero trees — safe to disable" onclick="toggleSubMinPanel()">
+      <span class="v" id="kpiSelfIntNoTrees" style="color:#ef4444">…</span>
+      <span class="l">✗SI No Trees</span></div>
+    <div class="kpi" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);cursor:pointer"
       title="Click to filter: identical polygon coordinates under different field IDs" onclick="setKpiFilter('coord_dupe')">
       <span class="v" id="kpiCoordDupe" style="color:#ef4444">…</span>
       <span class="l">✗ Coord Dupe</span></div>
@@ -1713,6 +1717,8 @@ function updateKPIs() {
   setTimeout(() => detectSubMinNoTreesKPI(), 600);
   // Run large self-intersecting zero-tree detection
   setTimeout(() => detectLargeSelfIntKPI(), 700);
+  // Run self-intersecting zero-tree detection
+  setTimeout(() => detectSelfIntNoTreesKPI(), 800);
 }
 
 // ── SELF-INTERSECTION DETECTION ───────────────────────────────────────────
@@ -1873,6 +1879,23 @@ function detectSubMinNoTreesKPI() {
 // new overlap if their boundary is expanded during correction.
 const NEAR_THRESHOLD_M = 10;
 let _nearFieldIds = new Set(); // fieldIds within NEAR_THRESHOLD_M of another boundary
+
+function detectSelfIntNoTreesKPI() {
+  const siSet = window._selfIntersectIds || new Set();
+  let count = 0;
+  fieldsData.forEach(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return;
+    if (!siSet.has(f.fieldId)) return;
+    if ((treesByField[f.fieldId]||[]).length > 0) return;
+    count++;
+  });
+  const el = document.getElementById('kpiSelfIntNoTrees');
+  if (el) {
+    el.textContent = count.toLocaleString();
+    el.style.color = count > 0 ? '#ef4444' : '#22c55e';
+  }
+  window._selfIntNoTreesCount = count;
+}
 
 function detectLargeSelfIntKPI() {
   const threshold = getLargeThreshold();
@@ -4617,6 +4640,14 @@ function renderSubMinPanel() {
     return area !== null && area >= threshold2;
   });
 
+  // Group 5: Self-intersecting zero-tree fields
+  const siSet3    = window._selfIntersectIds || new Set();
+  const selfIntNoTrees = fieldsData.filter(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    return siSet3.has(f.fieldId);
+  });
+
   const summary = document.getElementById('queueSummary');
   const actions = document.getElementById('queueActions');
   actions.style.display = 'none';
@@ -4630,6 +4661,7 @@ function renderSubMinPanel() {
       <span style="color:#ef4444">\u2717 ${outsideZambia.length} outside Zambia — flag for Eder</span>
       ${noPolygon.length ? `<span style="color:#6b7280">\u25a1 ${noPolygon.length} no polygon</span>` : ''}
       ${largeSelfInt.length ? `<span style="color:#ef4444">\u2b21\u2717 ${largeSelfInt.length} large self-intersect — safe to disable</span>` : ''}
+      ${selfIntNoTrees.length ? `<span style="color:#ef4444">\u2717 ${selfIntNoTrees.length} self-intersect no trees — safe to disable</span>` : ''}
       <div style="flex:1"></div>
       <button class="btn-export" onclick="exportSubMinEderFields()"
         style="font-size:9px;padding:3px 10px;margin-right:6px"
@@ -4646,6 +4678,12 @@ function renderSubMinPanel() {
         style="font-size:9px;padding:3px 10px;margin-left:4px"
         title="Disable large self-intersecting fields with zero trees — safe to disable">
         \u2298 Disable ${largeSelfInt.length} large SI fields</button>` : ''}
+      ${selfIntNoTrees.length ? `
+      <button class="btn-deactivate" id="btnSelfIntNoTreesDisable"
+        onclick="disableSelfIntNoTrees()"
+        style="font-size:9px;padding:3px 10px;margin-left:4px"
+        title="Disable all self-intersecting fields with zero trees — safe to disable">
+        \u2298 Disable ${selfIntNoTrees.length} SI no-tree fields</button>` : ''}
     </div>
     <div style="overflow-y:auto">
       <table class="queue-table">
@@ -4923,6 +4961,55 @@ function exportSubMinEderFields() {
   downloadCSV(csv, `CCS_Eder_Review_${exportDate}.csv`);
   showToast(`\u2193 Exported ${subMinFields.length} sub-min + ${largeFields.length} large corrupted fields for Eder`, 'ok');
 }
+async function disableSelfIntNoTrees() {
+  const siSet = window._selfIntersectIds || new Set();
+  const fields = fieldsData.filter(f => {
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    if ((treesByField[f.fieldId]||[]).length > 0) return false;
+    return siSet.has(f.fieldId);
+  });
+
+  if (!fields.length) { showToast('No self-intersecting zero-tree fields found', 'info'); return; }
+
+  if (!confirm(
+    `\u2298 Disable ${fields.length.toLocaleString()} self-intersecting fields with zero trees?\n\n` +
+    `These fields meet both conditions:\n` +
+    `\u2714 Self-intersecting polygon — invalid boundary geometry\n` +
+    `\u2714 Zero trees registered — nothing to orphan\n\n` +
+    `Fields with trees are not affected.\n\n` +
+    `This action cannot be undone from this tool.`
+  )) return;
+
+  const btn = document.getElementById('btnSelfIntNoTreesDisable');
+  if (btn) { btn.disabled = true; btn.textContent = '\u2298 Disabling\u2026'; }
+
+  let ok = 0, fail = 0;
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    if (btn) btn.textContent = `\u2298 Disabling ${i+1} of ${fields.length}\u2026`;
+    try {
+      await patchFieldState(f.guid, f.fieldId, false);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = `\u2298 Disable ${fields.length} SI no-tree fields`; }
+
+  detectSelfIntNoTreesKPI();
+  detectSelfIntersectKPI();
+  showToast(
+    fail > 0
+      ? `\u2298 ${ok} disabled \u00b7 ${fail} failed`
+      : `\u2298 ${ok} self-intersecting zero-tree fields disabled`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+  renderSubMinPanel();
+}
+
 async function disableLargeSelfInt() {
   const threshold = getLargeThreshold();
   const siSet     = window._selfIntersectIds || new Set();
