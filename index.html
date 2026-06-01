@@ -533,6 +533,14 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       title="Click to filter: same-farmer overlapping fields — boundary adjustment candidates" onclick="setKpiFilter('same_farmer_overlap')">
       <span class="v" id="kpiSameFarmerOverlap" style="color:#22c55e">…</span>
       <span class="l">⧖ Same Farmer</span></div>
+    <div class="kpi" style="border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);cursor:pointer"
+      title="Click to filter: same-farmer overlaps with very close centroids and similar area — likely coord duplicates" onclick="setKpiFilter('same_farmer_dupe')">
+      <span class="v" id="kpiSameFarmerDupe" style="color:#f59e0b">…</span>
+      <span class="l">⧖ SF Dupe?</span></div>
+    <div class="kpi" style="border-color:rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);cursor:pointer"
+      title="Click to filter: same-farmer overlaps with different centroids — genuine boundary adjustment candidates" onclick="setKpiFilter('same_farmer_adjust')">
+      <span class="v" id="kpiSameFarmerAdjust" style="color:#22c55e">…</span>
+      <span class="l">⧖ SF Adjust</span></div>
     <div class="kpi" style="border-color:rgba(56,189,248,0.3);background:rgba(56,189,248,0.06);cursor:pointer"
       title="Click to filter: fields within 10m of another boundary" onclick="setKpiFilter('near')">
       <span class="v" id="kpiNear" style="color:#38bdf8">…</span>
@@ -1898,24 +1906,63 @@ function detectSameFarmerOverlapKPI() {
   const fieldMap   = {};
   fieldsData.forEach(f => { fieldMap[f.fieldId] = f; });
 
-  const sameFarmerIds = new Set();
+  const sameFarmerIds     = new Set();
+  const likelyDupeIds     = new Set();
+  const boundaryAdjustIds = new Set();
+
+  // Centroid distance threshold for likely coord dupe — < 50m apart
+  const DUPE_CENTROID_THRESHOLD = 0.0005; // ~55m in degrees
+
   Object.entries(neighbours).forEach(([fid, nids]) => {
     const f = fieldMap[fid];
     if (!f || _deactivatedGuids.has(f.guid)) return;
-    const hasSameFarmerNeighbour = nids.some(nid => {
+    const mf = f.ring ? ringMetrics(f.ring) : null;
+
+    nids.forEach(nid => {
       const n = fieldMap[nid];
-      if (!n || _deactivatedGuids.has(n.guid)) return false;
-      return f.owner && n.owner &&
-             f.owner.trim().toLowerCase() === n.owner.trim().toLowerCase();
+      if (!n || _deactivatedGuids.has(n.guid)) return;
+      if (!f.owner || !n.owner) return;
+      if (f.owner.trim().toLowerCase() !== n.owner.trim().toLowerCase()) return;
+
+      sameFarmerIds.add(fid);
+
+      // Sub-classify: likely coord dupe vs genuine boundary overlap
+      const mn = n.ring ? ringMetrics(n.ring) : null;
+      if (mf && mn) {
+        const latDiff = Math.abs(mf.cLat - mn.cLat);
+        const lngDiff = Math.abs(mf.cLng - mn.cLng);
+        const centroidDist = Math.sqrt(latDiff*latDiff + lngDiff*lngDiff);
+        const areaDiff = Math.abs(mf.area - mn.area);
+        const areaRatio = mf.area > 0 ? areaDiff / mf.area : 1;
+
+        // Likely coord dupe: centroids very close AND similar area
+        if (centroidDist < DUPE_CENTROID_THRESHOLD && areaRatio < 0.1) {
+          likelyDupeIds.add(fid);
+        } else {
+          boundaryAdjustIds.add(fid);
+        }
+      }
     });
-    if (hasSameFarmerNeighbour) sameFarmerIds.add(fid);
   });
 
-  window._sameFarmerOverlapIds = sameFarmerIds;
+  window._sameFarmerOverlapIds  = sameFarmerIds;
+  window._sameFarmerDupeIds     = likelyDupeIds;
+  window._sameFarmerAdjustIds   = boundaryAdjustIds;
+
   const el = document.getElementById('kpiSameFarmerOverlap');
   if (el) {
     el.textContent = sameFarmerIds.size.toLocaleString();
     el.style.color = sameFarmerIds.size > 0 ? '#22c55e' : '#6b7280';
+  }
+  const elD = document.getElementById('kpiSameFarmerDupe');
+  if (elD) {
+    elD.textContent = likelyDupeIds.size.toLocaleString();
+    elD.style.color = likelyDupeIds.size > 0 ? '#f59e0b' : '#6b7280';
+  }
+  const elA = document.getElementById('kpiSameFarmerAdjust');
+  if (elA) {
+    elA.textContent = boundaryAdjustIds.size.toLocaleString();
+    elA.style.color = boundaryAdjustIds.size > 0 ? '#22c55e' : '#6b7280';
   }
 }
 
@@ -2404,6 +2451,12 @@ function render() {
     }
     if (filter === 'same_farmer_overlap') {
       return (window._sameFarmerOverlapIds || new Set()).has(f.fieldId);
+    }
+    if (filter === 'same_farmer_dupe') {
+      return (window._sameFarmerDupeIds || new Set()).has(f.fieldId);
+    }
+    if (filter === 'same_farmer_adjust') {
+      return (window._sameFarmerAdjustIds || new Set()).has(f.fieldId);
     }
     if (filter === 'true_overlap') return (window._trueOverlapSet||new Set()).has(f.fieldId);
     if (filter === 'tip_over')     return (window._tipOverSet||new Set()).has(f.fieldId);
