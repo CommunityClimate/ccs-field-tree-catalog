@@ -5050,7 +5050,10 @@ function exportSameFarmerDupe() {
       const m     = f.ring ? ringMetrics(f.ring) : null;
       const trees = (treesByField[f.fieldId]||[]).length;
       const minSide = m ? m.min.toFixed(1) : '—';
-      const status = m && m.min === 0 ? 'Self-intersecting' :
+      const uniquePts = f.ring ? new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size : 0;
+      const status = !m ? 'No polygon' :
+                     uniquePts <= 2 ? 'Degenerate polygon — only 2 unique coordinate points' :
+                     m.min === 0 ? 'Self-intersecting — edges cross each other' :
                      trees === 0 ? 'Zero trees — review for disable' :
                      'Has trees — needs boundary correction';
       rows.push([
