@@ -2881,7 +2881,57 @@ async function lbActivate() {
 function lbOpenFix() {
   const f = fieldsData[_lbCurrentIdx];
   if (!f) return;
-  const url = `https://communityclimate.github.io/ccs-polygon-corrector/?fieldId=${encodeURIComponent(f.fieldId)}`;
+
+  // Collect overlapping and adjacent neighbours to pass to the corrector
+  const overlapIds  = _overlapNeighbours[f.fieldId] || [];
+  const nearIds     = (window._nearNeighbours && window._nearNeighbours[f.fieldId]) || [];
+
+  // Build neighbour GeoJSON array for display in corrector
+  const neighbourLayers = [];
+
+  overlapIds.slice(0, 20).forEach(nid => {
+    const n = fieldsData.find(x => x.fieldId === nid);
+    if (!n || !n.geoJSON) return;
+    try {
+      const geo = JSON.parse(n.geoJSON);
+      neighbourLayers.push({
+        fieldId: n.fieldId,
+        owner:   n.owner || '—',
+        type:    'overlap',
+        color:   '#a78bfa',
+        geoJSON: geo
+      });
+    } catch(e) {}
+  });
+
+  nearIds.slice(0, 10).forEach(nid => {
+    if (overlapIds.includes(nid)) return; // already included
+    const n = fieldsData.find(x => x.fieldId === nid);
+    if (!n || !n.geoJSON) return;
+    try {
+      const geo = JSON.parse(n.geoJSON);
+      neighbourLayers.push({
+        fieldId: n.fieldId,
+        owner:   n.owner || '—',
+        type:    'adjacent',
+        color:   '#f59e0b',
+        geoJSON: geo
+      });
+    } catch(e) {}
+  });
+
+  // Store neighbour data in localStorage for the corrector to read
+  try {
+    localStorage.setItem('ccs_corrector_neighbours', JSON.stringify({
+      fieldId:    f.fieldId,
+      neighbours: neighbourLayers,
+      timestamp:  Date.now()
+    }));
+  } catch(e) {
+    console.warn('Could not store neighbours in localStorage:', e);
+  }
+
+  const url = `https://communityclimate.github.io/ccs-polygon-corrector/?fieldId=${encodeURIComponent(f.fieldId)}&neighbours=${neighbourLayers.length}`;
   window.open(url, '_blank');
 }
 
