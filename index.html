@@ -444,7 +444,10 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Eder Review — Corrupted Boundaries</strong>
         <span>Sub-min + large polygon fields with corrupted boundaries — for pipeline investigation</span>
       </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
+      <div class="export-item" onclick="closeExportMenu();exportSameFarmerDupe()">
+        <strong>⧖ SF Dupe? — Same Farmer Duplicate Clusters</strong>
+        <span>Grouped clusters of same-farmer overlapping fields with near-identical centroids — for data integrity review</span>
+      </div>
         <strong>⬇ Overlapping Fields</strong>
         <span>Fields detected as overlapping another field boundary</span>
       </div>
@@ -4987,6 +4990,109 @@ function pointInRing(x, y, ring) {
     }
   }
   return inside;
+}
+
+function exportSameFarmerDupe() {
+  const dupeIds   = window._sameFarmerDupeIds || new Set();
+  if (!dupeIds.size) { showToast('No SF Dupe fields detected yet — wait for overlap detection to complete', 'info'); return; }
+
+  const fields = fieldsData.filter(f =>
+    dupeIds.has(f.fieldId) && !_deactivatedGuids.has(f.guid)
+  );
+
+  if (!fields.length) { showToast('No SF Dupe fields to export', 'info'); return; }
+
+  // Build field lookup
+  const fieldMap = {};
+  fieldsData.forEach(f => { fieldMap[f.fieldId] = f; });
+
+  // Cluster fields by proximity — group fields whose centroids are within ~150m
+  const CLUSTER_THRESHOLD = 0.0015; // ~165m
+  const visited  = new Set();
+  const clusters = [];
+
+  fields.forEach(f => {
+    if (visited.has(f.fieldId)) return;
+    const mf = f.ring ? ringMetrics(f.ring) : null;
+    if (!mf) return;
+
+    const cluster = [f];
+    visited.add(f.fieldId);
+
+    fields.forEach(other => {
+      if (visited.has(other.fieldId)) return;
+      const mo = other.ring ? ringMetrics(other.ring) : null;
+      if (!mo) return;
+      const dist = Math.sqrt(
+        Math.pow(mf.cLat - mo.cLat, 2) +
+        Math.pow(mf.cLng - mo.cLng, 2)
+      );
+      if (dist < CLUSTER_THRESHOLD) {
+        cluster.push(other);
+        visited.add(other.fieldId);
+      }
+    });
+    clusters.push(cluster);
+  });
+
+  // Sort clusters by size descending
+  clusters.sort((a, b) => b.length - a.length);
+
+  const exportDate = new Date().toISOString().slice(0,10);
+  const rows = [];
+
+  rows.push(['CCS SF DUPE? EXPORT — SAME FARMER DUPLICATE FIELD CLUSTERS']);
+  rows.push([`Generated: ${new Date().toLocaleString()}`]);
+  rows.push([`Total fields: ${fields.length} in ${clusters.length} clusters`]);
+  rows.push(['Fields flagged: same owner, overlapping boundaries, centroids within ~165m, similar area']);
+  rows.push(['Purpose: data integrity review — identify fields registered multiple times at the same location']);
+  rows.push([]);
+
+  clusters.forEach((cluster, ci) => {
+    // Calculate centroid spread for the cluster
+    const mets = cluster.map(f => f.ring ? ringMetrics(f.ring) : null).filter(Boolean);
+    const lats  = mets.map(m => m.cLat);
+    const lngs  = mets.map(m => m.cLng);
+    const latSpreadM = (Math.max(...lats) - Math.min(...lats)) * 111000;
+    const lngSpreadM = (Math.max(...lngs) - Math.min(...lngs)) * 111000 * Math.cos(lats[0] * Math.PI/180);
+    const totalTrees = cluster.reduce((s, f) => s + (treesByField[f.fieldId]||[]).length, 0);
+
+    rows.push([`--- CLUSTER ${ci+1} of ${clusters.length} — ${cluster.length} fields — ${totalTrees} trees total ---`]);
+    rows.push([`Centroid spread: ~${latSpreadM.toFixed(0)}m N-S × ${lngSpreadM.toFixed(0)}m E-W`]);
+    rows.push([]);
+    rows.push(['Field ID','Owner','Area (ha)','Trees','Centroid Lat','Centroid Lng','Registered','Created by','Min Side (m)','Status']);
+
+    cluster.forEach(f => {
+      const m     = f.ring ? ringMetrics(f.ring) : null;
+      const trees = (treesByField[f.fieldId]||[]).length;
+      const minSide = m ? m.min.toFixed(1) : '—';
+      const status = m && m.min === 0 ? 'Self-intersecting' :
+                     trees === 0 ? 'Zero trees — review for disable' :
+                     'Has trees — needs boundary correction';
+      rows.push([
+        f.fieldId,
+        f.owner || '—',
+        m ? m.area.toFixed(4) : '—',
+        trees,
+        m ? m.cLat.toFixed(6) : '—',
+        m ? m.cLng.toFixed(6) : '—',
+        f.createdOn || '—',
+        f.createdBy || '—',
+        minSide,
+        status
+      ]);
+    });
+    rows.push([]);
+  });
+
+  const csv = rows.map(r =>
+    Array.isArray(r)
+      ? r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+      : `"${String(r).replace(/"/g,'""')}"`
+  ).join('\n');
+
+  downloadCSV(csv, `CCS_SF_Dupe_Clusters_${exportDate}.csv`);
+  showToast(`\u2193 Exported ${fields.length} SF Dupe fields in ${clusters.length} clusters`, 'ok');
 }
 
 function exportSubMinEderFields() {
