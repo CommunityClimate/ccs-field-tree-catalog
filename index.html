@@ -6341,9 +6341,21 @@ function toggleExportMenu(e) {
   const menu = document.getElementById('exportMenu');
   const btn  = document.getElementById('btnExport');
   if (menu.style.display !== 'none') { closeExportMenu(); return; }
-  const rect = btn.getBoundingClientRect();
-  menu.style.top   = (rect.bottom + 4) + 'px';
-  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  const rect     = btn.getBoundingClientRect();
+  const menuH    = Math.min(window.innerHeight * 0.8, 600);
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const spaceAbove = rect.top - 8;
+
+  // Open upward if not enough space below
+  if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+    menu.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+    menu.style.top    = 'auto';
+  } else {
+    menu.style.top    = (rect.bottom + 4) + 'px';
+    menu.style.bottom = 'auto';
+  }
+  menu.style.right   = (window.innerWidth - rect.right) + 'px';
+  menu.style.maxHeight = Math.min(spaceBelow > spaceAbove ? spaceBelow : spaceAbove, window.innerHeight * 0.8) + 'px';
   menu.style.display = 'block';
   e.stopPropagation();
 }
