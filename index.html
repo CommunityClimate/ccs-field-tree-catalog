@@ -6377,31 +6377,21 @@ function toggleExportMenu(e) {
   const menu = document.getElementById('exportMenu');
   const btn  = document.getElementById('btnExport');
   if (menu.style.display !== 'none') { closeExportMenu(); return; }
-
-  // Temporarily show to measure real height
-  menu.style.visibility = 'hidden';
-  menu.style.display    = 'block';
-  menu.style.maxHeight  = 'none';
-  const menuH           = menu.scrollHeight;
-  menu.style.display    = 'none';
-  menu.style.visibility = '';
-
-  const rect       = btn.getBoundingClientRect();
+  const rect     = btn.getBoundingClientRect();
+  const menuH    = Math.min(window.innerHeight * 0.8, 600);
   const spaceBelow = window.innerHeight - rect.bottom - 8;
   const spaceAbove = rect.top - 8;
-  const maxH       = Math.min(menuH, window.innerHeight * 0.8);
 
-  // Open upward if menu doesn't fit below but fits above
-  if (menuH > spaceBelow && spaceAbove > spaceBelow) {
-    menu.style.top    = 'auto';
+  // Open upward if not enough space below
+  if (spaceBelow < 200 && spaceAbove > spaceBelow) {
     menu.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-    menu.style.maxHeight = Math.min(spaceAbove, window.innerHeight * 0.8) + 'px';
+    menu.style.top    = 'auto';
   } else {
     menu.style.top    = (rect.bottom + 4) + 'px';
     menu.style.bottom = 'auto';
-    menu.style.maxHeight = Math.min(spaceBelow, window.innerHeight * 0.8) + 'px';
   }
-  menu.style.right  = (window.innerWidth - rect.right) + 'px';
+  menu.style.right   = (window.innerWidth - rect.right) + 'px';
+  menu.style.maxHeight = Math.min(spaceBelow > spaceAbove ? spaceBelow : spaceAbove, window.innerHeight * 0.8) + 'px';
   menu.style.display = 'block';
   e.stopPropagation();
 }
