@@ -414,89 +414,7 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       style="background:rgba(167,139,250,0.1);color:#a78bfa;border-color:rgba(167,139,250,0.3)"
       title="View daily, weekly and monthly compliance trends">📈 Trend</button>
     <div class="hd"></div>
-    <div style="position:relative">
     <button class="btn-export" id="btnExport" onclick="toggleExportMenu(event)" disabled>⬇ Export ▾</button>
-    <div class="export-menu" id="exportMenu">
-      <div class="export-item" onclick="closeExportMenu();exportCSV('all')">
-        <strong>⬇ Field Compliance Summary</strong>
-        <span>All fields — area, perimeter, trees, compliance %</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('outside')">
-        <strong>⬇ Has Trees Outside</strong>
-        <span>Fields where at least one tree is outside the polygon</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('inside')">
-        <strong>⬇ All Trees Inside</strong>
-        <span>Fields where every tree is correctly inside</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('no_trees')">
-        <strong>⬇ No Trees Recorded</strong>
-        <span>Fields with a polygon but zero trees</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCSV('large')">
-        <strong>⬇ Large Polygons</strong>
-        <span>Fields above the large polygon threshold</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportUnstackingReport()">
-        <strong>⬡ Unstacking Report — Large Corrupted Polygons</strong>
-        <span>Raw coordinates + contained fields + tree clusters — for Eder pipeline investigation</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportSubMinEderFields()">
-        <strong>⬇ Eder Review — Corrupted Boundaries</strong>
-        <span>Sub-min + large polygon fields with corrupted boundaries — for pipeline investigation</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportSameFarmerDupe()">
-        <strong>⧖ SF Dupe? — Same Farmer Duplicate Clusters</strong>
-        <span>Grouped clusters of same-farmer overlapping fields with near-identical centroids — for data integrity review</span>
-      </div>
-        <strong>⬇ Overlapping Fields</strong>
-        <span>Fields detected as overlapping another field boundary</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportOverlapsWithGeoJSON()">
-        <strong>⬇ Overlapping Fields + GeoJSON</strong>
-        <span>Overlapping fields with full polygon coordinates for field verification</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportOverlapPriorityList()">
-        <strong>⬇ Overlap Priority Work List</strong>
-        <span>Tiered action plan — four phases from bulk-disable to field verification, sorted by impact</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportEmptyOverlapsGeoJSON()">
-        <strong>⬇ Empty Overlapping Fields + GeoJSON</strong>
-        <span>Overlapping fields with zero trees — safe to disable, with polygon coordinates</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportIdConflictsCSV()">
-        <strong>⬇ Field ID Conflicts + GeoJSON</strong>
-        <span>Pairs of active fields sharing the same ID but with different polygon coordinates</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCollectorReport()">
-        <strong>📊 Collector Report (CSV)</strong>
-        <span>All fields for the current "Filter by intern" value — with full compliance metrics</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportFieldSizeAnalysis()">
-        <strong>📐 Field Size Analysis (CSV)</strong>
-        <span>Area distribution with recommended min/max cutoffs — answers what is a valid field size</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportSubMinFields()">
-        <strong>⬡ Sub-minimum Fields + No Trees</strong>
-        <span>Fields below CCS project MMU (0.05 ha) with zero trees — flagged for review. Verra has no universal minimum field size; requirements are methodology-specific.</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportSelfIntersectFields()">
-        <strong>⬇ Self-Intersecting Fields + GeoJSON</strong>
-        <span>Polygons with vertex ordering errors — for Fieldforce administrator script fix</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportCoordDupeFields()">
-        <strong>⬇ Coordinate Duplicate Fields + GeoJSON</strong>
-        <span>Fields sharing identical polygon coordinates — same geometry uploaded under multiple field IDs</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportDuplicateFields()">
-        <strong>⬇ Duplicate Field Registrations + GeoJSON</strong>
-        <span>Field IDs registered more than once in Fieldforce, with polygon coordinates</span>
-      </div>
-      <div class="export-item" onclick="closeExportMenu();exportDuplicateTrees()">
-        <strong>⬇ Duplicate Tree Registrations + GeoJSON</strong>
-        <span>Active tree records with identical coordinates in the same field</span>
-      </div>
-    </div>
     </div>
   </div><!-- end hdr-row1 -->
 
@@ -584,8 +502,73 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <span class="l">⬡✗ Large+SI</span></div>
   </div>
 </header>
-
-<div class="main">
+<!-- Export menu rendered outside header to avoid overflow:hidden clipping -->
+    <div class="export-menu" id="exportMenu">
+      <div class="export-item" onclick="closeExportMenu();exportCSV('all')">
+        <strong>⬇ Field Compliance Summary</strong>
+        <span>All fields — area, perimeter, trees, compliance %</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('outside')">
+        <strong>⬇ Has Trees Outside</strong>
+        <span>Fields where at least one tree is outside the polygon</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('inside')">
+        <strong>⬇ All Trees Inside</strong>
+        <span>Fields where every tree is correctly inside</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('no_trees')">
+        <strong>⬇ No Trees Recorded</strong>
+        <span>Fields with a polygon but zero trees</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('large')">
+        <strong>⬡ Large Polygons</strong>
+        <span>Fields above the large polygon threshold</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportUnstackingReport()">
+        <strong>⬡ Unstacking Report — Large Corrupted Polygons</strong>
+        <span>Raw coordinates + contained fields + tree clusters — for Eder pipeline investigation</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportSubMinEderFields()">
+        <strong>⬇ Eder Review — Corrupted Boundaries</strong>
+        <span>Sub-min + large polygon fields with corrupted boundaries — for pipeline investigation</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportSameFarmerDupe()">
+        <strong>⧖ SF Dupe? — Same Farmer Duplicate Clusters</strong>
+        <span>Grouped clusters of same-farmer overlapping fields with near-identical centroids — for data integrity review</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
+        <strong>⬇ Overlapping Fields</strong>
+        <span>Fields detected as overlapping another field boundary</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportOverlapsWithGeoJSON()">
+        <strong>⬇ Overlapping Fields + GeoJSON</strong>
+        <span>Overlapping fields with full polygon coordinates for field verification</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportOverlapPriorityList()">
+        <strong>⬇ Overlap Priority Work List</strong>
+        <span>Prioritised list of overlapping fields for correction — sorted by severity and tree count</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportEmptyOverlapsGeoJSON()">
+        <strong>⬇ Empty Overlaps + GeoJSON</strong>
+        <span>Zero-tree overlapping fields with polygon coordinates</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportCoordDupeFields()">
+        <strong>✗ Coord Dupe Groups</strong>
+        <span>All coordinate duplicate groups — same polygon registered under multiple field IDs</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportSelfIntersectFields()">
+        <strong>✗ Self-Intersecting Fields</strong>
+        <span>Fields with self-intersecting polygon boundaries — vertex ordering errors</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportSubMinFields()">
+        <strong>⬡ Sub-minimum Fields + No Trees</strong>
+        <span>Fields below CCS project MMU (0.05 ha) with zero trees — flagged for review</span>
+      </div>
+      <div class="export-item" onclick="closeExportMenu();exportDeltaTrend()">
+        <strong>⬇ Export with Δ</strong>
+        <span>Snapshot trend data with delta indicators — for reporting</span>
+      </div>
+    </div><div class="main">
 
   <!-- LEFT SIDEBAR -->
   <div class="left">
