@@ -7935,6 +7935,11 @@ function renderBulkPage() {
     const queueIdx    = _bulkQueue.indexOf(entry);
     const fidIdx      = fieldsData.indexOf(f);
 
+    const areaA     = mA ? mA.area : 0;
+    const overlapPct = areaA > 0 ? (overlapHa / areaA) * 100 : 0;
+    const pctColor  = overlapPct < 2 ? '#22c55e' : overlapPct < 10 ? '#f59e0b' : '#ef4444';
+    const pctLabel  = overlapPct > 0 ? `${overlapPct.toFixed(1)}%` : '—';
+
     return `<div style="border:1px solid ${borderColor};border-radius:6px;
       overflow:visible;background:var(--card);opacity:${opacity};
       ${approved ? 'box-shadow:0 0 0 1px #22c55e33' : ''}
@@ -7950,8 +7955,13 @@ function renderBulkPage() {
           <div style="font-family:var(--mono);font-size:8px;color:var(--muted)">
             ${f.owner||'—'} · ${trees} trees · ${mA?mA.area.toFixed(2)+' ha':'—'}</div>
         </div>
-        <span style="font-family:var(--mono);font-size:8px;font-weight:700;
-          color:${diag.c}">${diag.t}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          <span style="font-family:var(--mono);font-size:8px;font-weight:700;
+            color:${diag.c}">${diag.t}</span>
+          ${overlapPct > 0 ? `<span style="font-family:var(--mono);font-size:10px;font-weight:700;
+            color:${pctColor};background:${pctColor}22;padding:1px 5px;border-radius:3px"
+            title="Overlap as % of field area">${pctLabel} overlap</span>` : ''}
+        </div>
       </div>
 
       <!-- SVG previews — click to open lightbox -->
@@ -7973,7 +7983,7 @@ function renderBulkPage() {
         font-family:var(--mono);font-size:8px;color:var(--muted);line-height:1.7">
         <span style="color:var(--fg)">${method}</span> ·
         <span style="color:${confCol}">${confidence} confidence</span>
-        ${overlapHa > 0 ? ` · ${overlapHa.toFixed(4)} ha overlap` : ''}
+        ${overlapHa > 0 ? ` · <span style="color:${pctColor}">${overlapHa.toFixed(4)} ha (${pctLabel} of field)</span>` : ''}
         <br>${explanation}
       </div>
 
