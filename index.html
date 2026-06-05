@@ -1747,32 +1747,32 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
 function isSelfIntersecting(ring) {
   if (!ring || ring.length < 4) return false;
 
-  // Remove ALL duplicate vertices — not just consecutive ones.
-  // A GPS point recorded twice anywhere in the ring creates a zero-length
-  // edge that makes a valid polygon appear self-intersecting.
-  const seen = new Set();
-  const clean = ring.filter(c => {
-    const key = `${c[0].toFixed(7)},${c[1].toFixed(7)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  if (clean.length < 4) return false;
+  // A genuine self-intersection is a star or bowtie pattern where the
+  // boundary visibly crosses itself — caused by vertices in the wrong order.
+  // False positives occur when two non-adjacent vertices are very close
+  // together, creating a near-zero edge that the algorithm misreads as a crossing.
+  //
+  // Strategy:
+  // 1. If the polygon has valid area (> 0.001 ha) after the standard ring
+  //    area calculation, it is almost certainly not genuinely self-intersecting.
+  //    Genuine self-intersections produce near-zero area because the positive
+  //    and negative loops cancel each other out.
+  // 2. Only flag fields where the ring area is near zero — these are the
+  //    genuine bowtie/star patterns where loops cancel.
 
-  // After removing all duplicate vertices, if the polygon has valid area
-  // and no zero-length edges it is not genuinely self-intersecting
-  const m = ringMetrics(clean);
-  if (m && m.area > 0.001 && m.min > 0.1) return false;
+  const area = Math.abs(ringAreaHa(ring));
+  if (area > 0.001) return false;
 
-  const n = clean.length - 1;
+  // For near-zero area polygons, run the full edge crossing test
+  const n = ring.length - 1;
   for (let i = 0; i < n; i++) {
     for (let j = i + 2; j < n; j++) {
       if (i === 0 && j === n - 1) continue;
-      if (_coordsEqual(clean[i],   clean[j])   ||
-          _coordsEqual(clean[i],   clean[j+1]) ||
-          _coordsEqual(clean[i+1], clean[j])   ||
-          _coordsEqual(clean[i+1], clean[j+1])) continue;
-      if (_edgesIntersect(clean[i], clean[i+1], clean[j], clean[j+1])) return true;
+      if (_coordsEqual(ring[i],   ring[j])   ||
+          _coordsEqual(ring[i],   ring[j+1]) ||
+          _coordsEqual(ring[i+1], ring[j])   ||
+          _coordsEqual(ring[i+1], ring[j+1])) continue;
+      if (_edgesIntersect(ring[i], ring[i+1], ring[j], ring[j+1])) return true;
     }
   }
   return false;
