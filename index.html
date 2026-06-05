@@ -1747,15 +1747,19 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
 function isSelfIntersecting(ring) {
   if (!ring || ring.length < 4) return false;
 
-  // Remove duplicate consecutive vertices — GPS standing still creates
-  // identical coordinate pairs that cause false zero-length edges
-  const clean = ring.filter((c, i) => {
-    if (i === 0) return true;
-    return !_coordsEqual(c, ring[i - 1]);
+  // Remove ALL duplicate vertices — not just consecutive ones.
+  // A GPS point recorded twice anywhere in the ring creates a zero-length
+  // edge that makes a valid polygon appear self-intersecting.
+  const seen = new Set();
+  const clean = ring.filter(c => {
+    const key = `${c[0].toFixed(7)},${c[1].toFixed(7)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
   if (clean.length < 4) return false;
 
-  // After removing duplicate vertices, if the polygon has valid area
+  // After removing all duplicate vertices, if the polygon has valid area
   // and no zero-length edges it is not genuinely self-intersecting
   const m = ringMetrics(clean);
   if (m && m.area > 0.001 && m.min > 0.1) return false;
