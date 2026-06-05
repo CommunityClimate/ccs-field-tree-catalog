@@ -731,6 +731,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="view-btn" id="btnSubMinPanel" onclick="toggleSubMinPanel()"
         style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
         title="Sub-minimum fields review — safe disable with Zambia boundary and coordinate span checks">⬡ Sub-min Review</button>
+      <button class="view-btn" id="btnSelfIntPanel" onclick="toggleSelfIntPanel()"
+        style="color:#ef4444;border-color:rgba(239,68,68,0.3)"
+        title="Self-intersect review — localize and classify genuine vs false positive self-intersecting polygons">✗ SI Review</button>
       <button class="view-btn" id="btnGoodExample" onclick="toggleGoodExample()"
         style="color:#a78bfa;border-color:rgba(167,139,250,0.3)"
         title="Find clean simple fields — good for screenshots and demonstrations">⭐ Example</button>
@@ -4698,6 +4701,161 @@ let _coordDupeGroupsActive = false;
 let _cdgSort = { col: 'size', dir: -1 }; // default: largest groups first
 
 let _subMinPanelActive = false;
+
+let _selfIntPanelActive = false;
+
+function toggleSelfIntPanel() {
+  _selfIntPanelActive = !_selfIntPanelActive;
+  const btn   = document.getElementById('btnSelfIntPanel');
+  const queue = document.getElementById('queueWrap');
+  const grid  = document.getElementById('catGrid');
+  const pager = document.getElementById('pagerRow');
+  btn.classList.toggle('active', _selfIntPanelActive);
+
+  if (_selfIntPanelActive) {
+    if (queueActive)              toggleQueue();
+    if (emptyOverlapsActive)      toggleEmptyOverlaps();
+    if (idConflictsActive)        toggleIdConflicts();
+    if (goodExampleActive)        toggleGoodExample();
+    if (_bulkCorrectActive)       toggleBulkCorrect();
+    if (_coordDupeGroupsActive)   toggleCoordDupeGroups();
+    if (_subMinPanelActive)       toggleSubMinPanel();
+
+    btn.style.background = 'rgba(239,68,68,0.12)';
+    queue.classList.add('active');
+    grid.classList.add('hidden');
+    if (pager) pager.style.display = 'none';
+    document.getElementById('catCount').textContent =
+      '✗ Self-intersect review — localize genuine polygon boundary crossings';
+    renderSelfIntPanel('all', '');
+  } else {
+    btn.style.background = '';
+    queue.classList.remove('active');
+    grid.classList.remove('hidden');
+    if (pager) pager.style.display = 'flex';
+    renderPage();
+  }
+}
+
+function renderSelfIntPanel(filterType, searchTerm) {
+  const siSet  = window._selfIntersectIds || new Set();
+  const fields = fieldsData.filter(f => {
+    if (!siSet.has(f.fieldId)) return false;
+    if (_deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId)) return false;
+    return true;
+  });
+
+  // Sub-classify each field
+  const classified = fields.map(f => {
+    const m      = f.ring ? ringMetrics(f.ring) : null;
+    const trees  = (treesByField[f.fieldId]||[]).length;
+    const area   = m ? m.area : 0;
+    const minSide = m ? m.min : 0;
+    const vertices = f.ring ? f.ring.length : 0;
+
+    // Count unique points
+    const uniquePts = f.ring
+      ? new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size
+      : 0;
+
+    let classification, classColor, classNote;
+    if (area < 0.001) {
+      classification = 'Likely genuine — near-zero area';
+      classColor = '#ef4444';
+      classNote  = 'Positive/negative loops cancelling — genuine star or bowtie pattern';
+    } else if (minSide < 0.1) {
+      classification = 'Possible false positive — duplicate vertex';
+      classColor = '#f59e0b';
+      classNote  = 'Valid area but zero-length edge — may be duplicate GPS point';
+    } else if (trees > 0 && area > 0.1) {
+      classification = 'Possible false positive — valid field';
+      classColor = '#f59e0b';
+      classNote  = 'Has trees and valid area — edge crossing may be floating point noise';
+    } else {
+      classification = 'Review needed';
+      classColor = '#a78bfa';
+      classNote  = 'Open in lightbox to verify';
+    }
+
+    return { f, m, trees, area, minSide, vertices, uniquePts, classification, classColor, classNote };
+  });
+
+  // Apply filter
+  const filtered = classified.filter(r => {
+    if (filterType === 'genuine')  return r.area < 0.001;
+    if (filterType === 'false_pos') return r.area >= 0.001;
+    if (filterType === 'trees')    return r.trees > 0;
+    if (filterType === 'no_trees') return r.trees === 0;
+    return true;
+  }).filter(r => {
+    if (!searchTerm) return true;
+    const s = searchTerm.toLowerCase();
+    return r.f.fieldId.toLowerCase().includes(s) ||
+           (r.f.owner||'').toLowerCase().includes(s);
+  });
+
+  const genuine  = classified.filter(r => r.area < 0.001).length;
+  const falsePosCount = classified.filter(r => r.area >= 0.001).length;
+  const withTrees = classified.filter(r => r.trees > 0).length;
+
+  const summary = document.getElementById('queueSummary');
+  const actions = document.getElementById('queueActions');
+  actions.style.display = 'none';
+
+  summary.innerHTML = `
+    <div style="font-family:var(--mono);font-size:11px;padding:8px 12px;
+      border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <span style="color:var(--fg);font-weight:700">${fields.length} self-intersecting fields</span>
+      <span style="color:#ef4444;cursor:pointer" onclick="renderSelfIntPanel('genuine','')">
+        ✗ ${genuine} likely genuine</span>
+      <span style="color:#f59e0b;cursor:pointer" onclick="renderSelfIntPanel('false_pos','')">
+        ⚠ ${falsePosCount} possible false positive</span>
+      <span style="color:#22c55e;cursor:pointer" onclick="renderSelfIntPanel('trees','')">
+        🌳 ${withTrees} with trees</span>
+      <span style="color:#6b7280;cursor:pointer" onclick="renderSelfIntPanel('no_trees','')">
+        ○ ${fields.length - withTrees} no trees</span>
+      <span style="cursor:pointer;color:var(--muted)" onclick="renderSelfIntPanel('all','')">
+        ↺ Show all</span>
+      <div style="flex:1"></div>
+      <input type="text" placeholder="Search field ID or owner…"
+        style="font-family:var(--mono);font-size:9px;padding:2px 6px;
+        border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--fg)"
+        oninput="renderSelfIntPanel('${filterType}', this.value)" />
+    </div>
+    <div style="overflow-y:auto">
+      <table class="queue-table">
+        <thead><tr>
+          <th>Classification</th>
+          <th>Field ID</th>
+          <th>Owner</th>
+          <th>Registered</th>
+          <th>Area (ha)</th>
+          <th>Min Side (m)</th>
+          <th>Vertices</th>
+          <th>Unique pts</th>
+          <th>Trees</th>
+          <th>Note</th>
+        </tr></thead>
+        <tbody>
+          ${filtered.map(r => `<tr>
+            <td style="color:${r.classColor};font-weight:700;white-space:nowrap">${r.classification}</td>
+            <td><span class="fid-link" onclick="openLb(${fieldsData.indexOf(r.f)})">${r.f.fieldId}</span></td>
+            <td>${r.f.owner||'—'}</td>
+            <td>${r.f.createdOn||'—'}</td>
+            <td style="font-family:var(--mono);font-size:9px">${r.area.toFixed(4)}</td>
+            <td style="font-family:var(--mono);font-size:9px;
+              color:${r.minSide < 0.1 ? '#ef4444' : 'var(--fg)'}">${r.minSide.toFixed(2)}</td>
+            <td style="font-family:var(--mono);font-size:9px;text-align:center">${r.vertices}</td>
+            <td style="font-family:var(--mono);font-size:9px;text-align:center;
+              color:${r.uniquePts <= 2 ? '#ef4444' : 'var(--fg)'}">${r.uniquePts}</td>
+            <td style="font-family:var(--mono);font-size:9px;text-align:center;
+              color:${r.trees > 0 ? '#22c55e' : 'var(--muted)'}">${r.trees}</td>
+            <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${r.classNote}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
 
 function toggleSubMinPanel() {
   _subMinPanelActive = !_subMinPanelActive;
