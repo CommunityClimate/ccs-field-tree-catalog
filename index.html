@@ -1746,24 +1746,6 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
 
 function isSelfIntersecting(ring) {
   if (!ring || ring.length < 4) return false;
-
-  // A genuine self-intersection is a star or bowtie pattern where the
-  // boundary visibly crosses itself — caused by vertices in the wrong order.
-  // False positives occur when two non-adjacent vertices are very close
-  // together, creating a near-zero edge that the algorithm misreads as a crossing.
-  //
-  // Strategy:
-  // 1. If the polygon has valid area (> 0.001 ha) after the standard ring
-  //    area calculation, it is almost certainly not genuinely self-intersecting.
-  //    Genuine self-intersections produce near-zero area because the positive
-  //    and negative loops cancel each other out.
-  // 2. Only flag fields where the ring area is near zero — these are the
-  //    genuine bowtie/star patterns where loops cancel.
-
-  const area = Math.abs(ringAreaHa(ring));
-  if (area > 0.001) return false;
-
-  // For near-zero area polygons, run the full edge crossing test
   const n = ring.length - 1;
   for (let i = 0; i < n; i++) {
     for (let j = i + 2; j < n; j++) {
