@@ -1714,8 +1714,8 @@ function updateKPIs() {
   setTimeout(() => detectNearKPI(), 1200);
   // Run duplicate detection after overlap (slightly delayed)
   setTimeout(() => detectDuplicatesKPI(), 800);
-  // Run self-intersection detection — fast, runs early
-  setTimeout(() => detectSelfIntersectKPI(), 300);
+  // Run self-intersection detection — after rings are fully parsed
+  setTimeout(() => detectSelfIntersectKPI(), 1000);
   // Run coordinate duplicate detection — finds same polygon uploaded multiple times
   setTimeout(() => detectCoordDupeKPI(), 500);
   // Run sub-minimum no-trees detection
@@ -4710,23 +4710,29 @@ let _selfIntPanelActive = false;
 
 const DUPE_VERTEX_THRESHOLD_M = 5; // metres — GPS standing still threshold
 
-function findNearDuplicateVertex(ring) {
-  // Returns index of the SECOND point in a near-duplicate pair, or -1 if none
-  for (let i = 0; i < ring.length - 1; i++) {
-    for (let j = i + 1; j < ring.length; j++) {
-      // Skip the closing vertex pair (first = last in GeoJSON)
-      if (i === 0 && j === ring.length - 1) continue;
-      const dist = haversineM(ring[i][1], ring[i][0], ring[j][1], ring[j][0]);
-      if (dist < DUPE_VERTEX_THRESHOLD_M) return j;
+function cleanDuplicateVertices(ring) {
+  // Iteratively remove ALL near-duplicate vertex pairs until none remain
+  let clean = [...ring];
+  let changed = true;
+  let passes = 0;
+  while (changed && passes < 20) {
+    changed = false;
+    passes++;
+    for (let i = 0; i < clean.length - 1; i++) {
+      for (let j = i + 1; j < clean.length; j++) {
+        if (i === 0 && j === clean.length - 1) continue; // skip closing vertex
+        const dist = haversineM(clean[i][1], clean[i][0], clean[j][1], clean[j][0]);
+        if (dist < DUPE_VERTEX_THRESHOLD_M) {
+          clean.splice(j, 1); // remove the second point
+          changed = true;
+          break;
+        }
+      }
+      if (changed) break;
     }
   }
-  return -1;
-}
-
-function removeDuplicateVertex(ring, idx) {
-  const clean = ring.filter((_, i) => i !== idx);
   // Ensure ring is still closed
-  if (clean.length > 0) {
+  if (clean.length > 1) {
     const first = clean[0], last = clean[clean.length - 1];
     if (first[0] !== last[0] || first[1] !== last[1]) {
       clean.push([...clean[0]]);
@@ -4745,7 +4751,8 @@ async function bulkCorrectDuplicateVertices() {
     if (!f.ring || f.ring.length < 4) return false;
     const m = f.ring ? ringMetrics(f.ring) : null;
     if (!m || m.area < 0.001) return false; // skip genuine self-intersections
-    return findNearDuplicateVertex(f.ring) !== -1;
+    const cleaned = cleanDuplicateVertices(f.ring);
+    return cleaned.length < f.ring.length; // only include if cleaning removed something
   });
 
   if (!candidates.length) {
@@ -4765,10 +4772,11 @@ async function bulkCorrectDuplicateVertices() {
   ];
 
   candidates.forEach(f => {
-    const dupeIdx = findNearDuplicateVertex(f.ring);
+    const cleanRing = cleanDuplicateVertices(f.ring);
+    const removed = f.ring.length - cleanRing.length;
     backupRows.push([
       f.fieldId, f.owner||'', f.createdOn||'',
-      f.ring.length, dupeIdx, f.geoJSON||''
+      f.ring.length, removed, f.geoJSON||''
     ]);
   });
 
@@ -4798,10 +4806,8 @@ async function bulkCorrectDuplicateVertices() {
     if (btn) btn.textContent = `✎ Correcting ${i+1} of ${candidates.length}…`;
 
     try {
-      const dupeIdx = findNearDuplicateVertex(f.ring);
-      if (dupeIdx === -1) { skipped++; continue; }
-
-      const cleanRing = removeDuplicateVertex(f.ring, dupeIdx);
+      const cleanRing = cleanDuplicateVertices(f.ring);
+      if (cleanRing.length >= f.ring.length) { skipped++; continue; } // nothing removed
       if (cleanRing.length < 4) { skipped++; continue; }
 
       // Build corrected GeoJSON
