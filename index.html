@@ -4704,6 +4704,150 @@ let _subMinPanelActive = false;
 
 let _selfIntPanelActive = false;
 
+// ── BULK DUPLICATE VERTEX CORRECTION ──────────────────────────────────────
+// Finds near-duplicate vertices (within 5m) in self-intersecting polygons
+// and removes the second point, then writes corrected polygon to Fieldforce.
+
+const DUPE_VERTEX_THRESHOLD_M = 5; // metres — GPS standing still threshold
+
+function findNearDuplicateVertex(ring) {
+  // Returns index of the SECOND point in a near-duplicate pair, or -1 if none
+  for (let i = 0; i < ring.length - 1; i++) {
+    for (let j = i + 1; j < ring.length; j++) {
+      // Skip the closing vertex pair (first = last in GeoJSON)
+      if (i === 0 && j === ring.length - 1) continue;
+      const dist = haversineM(ring[i][1], ring[i][0], ring[j][1], ring[j][0]);
+      if (dist < DUPE_VERTEX_THRESHOLD_M) return j;
+    }
+  }
+  return -1;
+}
+
+function removeDuplicateVertex(ring, idx) {
+  const clean = ring.filter((_, i) => i !== idx);
+  // Ensure ring is still closed
+  if (clean.length > 0) {
+    const first = clean[0], last = clean[clean.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      clean.push([...clean[0]]);
+    }
+  }
+  return clean;
+}
+
+async function bulkCorrectDuplicateVertices() {
+  const siSet = window._selfIntersectIds || new Set();
+
+  // Find all false positive fields — self-intersecting with near-duplicate vertex
+  const candidates = fieldsData.filter(f => {
+    if (!siSet.has(f.fieldId)) return false;
+    if (_deactivatedGuids.has(f.guid)) return false;
+    if (!f.ring || f.ring.length < 4) return false;
+    const m = f.ring ? ringMetrics(f.ring) : null;
+    if (!m || m.area < 0.001) return false; // skip genuine self-intersections
+    return findNearDuplicateVertex(f.ring) !== -1;
+  });
+
+  if (!candidates.length) {
+    showToast('No duplicate vertex fields found', 'info');
+    return;
+  }
+
+  // Generate backup export FIRST
+  const exportDate = new Date().toISOString().slice(0,10);
+  const backupRows = [
+    ['CCS BULK DUPLICATE VERTEX CORRECTION — BACKUP OF ORIGINAL COORDINATES'],
+    [`Generated: ${new Date().toLocaleString()}`],
+    [`Fields to correct: ${candidates.length}`],
+    [`Threshold: ${DUPE_VERTEX_THRESHOLD_M}m — vertices closer than this are treated as duplicates`],
+    [],
+    ['Field ID', 'Owner', 'Registered', 'Vertices', 'Duplicate Index', 'Original GeoJSON']
+  ];
+
+  candidates.forEach(f => {
+    const dupeIdx = findNearDuplicateVertex(f.ring);
+    backupRows.push([
+      f.fieldId, f.owner||'', f.createdOn||'',
+      f.ring.length, dupeIdx, f.geoJSON||''
+    ]);
+  });
+
+  const backupCsv = backupRows.map(r =>
+    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  downloadCSV(backupCsv, `CCS_DupeVertex_Backup_${exportDate}.csv`);
+
+  // Confirm before proceeding
+  if (!confirm(
+    `✎ Bulk correct ${candidates.length} self-intersecting fields?\n\n` +
+    `Each field has a near-duplicate GPS vertex (within ${DUPE_VERTEX_THRESHOLD_M}m).\n` +
+    `The duplicate point will be removed and the corrected polygon\n` +
+    `written directly to Fieldforce.\n\n` +
+    `✓ Backup CSV has been downloaded — keep it safe.\n\n` +
+    `This action modifies polygon coordinates in Fieldforce.`
+  )) return;
+
+  const btn = document.getElementById('btnBulkDupeVertex');
+  if (btn) { btn.disabled = true; btn.textContent = '✎ Correcting…'; }
+
+  let ok = 0, fail = 0, skipped = 0;
+  const token = await getToken();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const f = candidates[i];
+    if (btn) btn.textContent = `✎ Correcting ${i+1} of ${candidates.length}…`;
+
+    try {
+      const dupeIdx = findNearDuplicateVertex(f.ring);
+      if (dupeIdx === -1) { skipped++; continue; }
+
+      const cleanRing = removeDuplicateVertex(f.ring, dupeIdx);
+      if (cleanRing.length < 4) { skipped++; continue; }
+
+      // Build corrected GeoJSON
+      const correctedGeoJSON = JSON.stringify({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [cleanRing] },
+        properties: {}
+      });
+
+      // Write to Fieldforce
+      const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'OData-MaxVersion': '4.0',
+          'OData-Version': '4.0',
+          'If-Match': '*'
+        },
+        body: JSON.stringify({ ccs_fieldgeojson_field: correctedGeoJSON })
+      });
+
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to correct ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '✎ Bulk fix duplicate vertices'; }
+
+  showToast(
+    fail > 0
+      ? `✎ ${ok} corrected · ${fail} failed · ${skipped} skipped`
+      : `✎ ${ok} duplicate vertex polygons corrected in Fieldforce`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+
+  // Refresh data
+  setTimeout(() => {
+    showToast('Refreshing from Fieldforce…', 'info');
+    loadFieldforce();
+  }, 1500);
+}
+
 function toggleSelfIntPanel() {
   _selfIntPanelActive = !_selfIntPanelActive;
   const btn   = document.getElementById('btnSelfIntPanel');
@@ -4817,6 +4961,11 @@ function renderSelfIntPanel(filterType, searchTerm) {
       <span style="cursor:pointer;color:var(--muted)" onclick="renderSelfIntPanel('all','')">
         ↺ Show all</span>
       <div style="flex:1"></div>
+      <button class="btn-export" id="btnBulkDupeVertex"
+        onclick="bulkCorrectDuplicateVertices()"
+        style="font-size:9px;padding:3px 10px;margin-right:6px"
+        title="Download backup then bulk correct all duplicate vertex false positives in Fieldforce">
+        ✎ Bulk fix duplicate vertices (${falsePosCount})</button>
       <input type="text" placeholder="Search field ID or owner…"
         style="font-family:var(--mono);font-size:9px;padding:2px 6px;
         border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--fg)"
