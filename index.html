@@ -1747,27 +1747,28 @@ function _edgesIntersect([lat1,lng1],[lat2,lng2],[lat3,lng3],[lat4,lng4]) {
 function isSelfIntersecting(ring) {
   if (!ring || ring.length < 4) return false;
 
-  // If the polygon has a valid calculable area AND no zero-length edges
-  // it is almost certainly not genuinely self-intersecting — the edge
-  // crossing test on valid concave polygons produces floating point false positives.
-  // Only run the full edge test if Min Side = 0 OR area is near zero.
-  const m = ringMetrics(ring);
-  if (m && m.area > 0.001 && m.min > 0) return false;
+  // Remove duplicate consecutive vertices — GPS standing still creates
+  // identical coordinate pairs that cause false zero-length edges
+  const clean = ring.filter((c, i) => {
+    if (i === 0) return true;
+    return !_coordsEqual(c, ring[i - 1]);
+  });
+  if (clean.length < 4) return false;
 
-  const n = ring.length - 1; // last point = first for closed rings
+  // After removing duplicate vertices, if the polygon has valid area
+  // and no zero-length edges it is not genuinely self-intersecting
+  const m = ringMetrics(clean);
+  if (m && m.area > 0.001 && m.min > 0.1) return false;
 
+  const n = clean.length - 1;
   for (let i = 0; i < n; i++) {
     for (let j = i + 2; j < n; j++) {
-      if (i === 0 && j === n - 1) continue; // adjacent at wrap-around
-
-      // Skip if edges share a vertex — concave polygons have touching vertices
-      // at non-adjacent positions without being self-intersecting
-      if (_coordsEqual(ring[i],   ring[j])   ||
-          _coordsEqual(ring[i],   ring[j+1]) ||
-          _coordsEqual(ring[i+1], ring[j])   ||
-          _coordsEqual(ring[i+1], ring[j+1])) continue;
-
-      if (_edgesIntersect(ring[i], ring[i+1], ring[j], ring[j+1])) return true;
+      if (i === 0 && j === n - 1) continue;
+      if (_coordsEqual(clean[i],   clean[j])   ||
+          _coordsEqual(clean[i],   clean[j+1]) ||
+          _coordsEqual(clean[i+1], clean[j])   ||
+          _coordsEqual(clean[i+1], clean[j+1])) continue;
+      if (_edgesIntersect(clean[i], clean[i+1], clean[j], clean[j+1])) return true;
     }
   }
   return false;
