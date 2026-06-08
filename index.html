@@ -5386,51 +5386,55 @@ function exportSameFarmerDupe() {
   const exportDate = new Date().toISOString().slice(0,10);
   const rows = [];
 
-  rows.push(['CCS SF DUPE? EXPORT — SAME FARMER DUPLICATE FIELD CLUSTERS']);
-  rows.push([`Generated: ${new Date().toLocaleString()}`]);
-  rows.push([`Total fields: ${fields.length} in ${clusters.length} clusters`]);
-  rows.push(['Fields flagged: same owner, overlapping boundaries, centroids within ~165m, similar area']);
-  rows.push(['Purpose: data integrity review — identify fields registered multiple times at the same location']);
-  rows.push([]);
+  // Clean flat CSV — one row per field, cluster ID column for grouping
+  rows.push([
+    'Cluster','Cluster Size','Field ID','Owner','Registered','Created By',
+    'Area (ha)','Trees','Centroid Lat','Centroid Lng','Min Side (m)',
+    'Centroid Spread (m)','Status','Recommended Action'
+  ]);
 
   clusters.forEach((cluster, ci) => {
-    // Calculate centroid spread for the cluster
     const mets = cluster.map(f => f.ring ? ringMetrics(f.ring) : null).filter(Boolean);
     const lats  = mets.map(m => m.cLat);
     const lngs  = mets.map(m => m.cLng);
     const latSpreadM = (Math.max(...lats) - Math.min(...lats)) * 111000;
     const lngSpreadM = (Math.max(...lngs) - Math.min(...lngs)) * 111000 * Math.cos(lats[0] * Math.PI/180);
-    const totalTrees = cluster.reduce((s, f) => s + (treesByField[f.fieldId]||[]).length, 0);
+    const spreadM = Math.round(Math.max(latSpreadM, lngSpreadM));
 
-    rows.push([`--- CLUSTER ${ci+1} of ${clusters.length} — ${cluster.length} fields — ${totalTrees} trees total ---`]);
-    rows.push([`Centroid spread: ~${latSpreadM.toFixed(0)}m N-S × ${lngSpreadM.toFixed(0)}m E-W`]);
-    rows.push([]);
-    rows.push(['Field ID','Owner','Area (ha)','Trees','Centroid Lat','Centroid Lng','Registered','Created by','Min Side (m)','Status']);
+    // Sort cluster: oldest first
+    const sorted = [...cluster].sort((a, b) => {
+      const da = a.createdOn ? new Date(a.createdOn.split('.').reverse().join('-')) : 0;
+      const db = b.createdOn ? new Date(b.createdOn.split('.').reverse().join('-')) : 0;
+      return da - db;
+    });
 
-    cluster.forEach(f => {
+    sorted.forEach((f, fi) => {
       const m     = f.ring ? ringMetrics(f.ring) : null;
       const trees = (treesByField[f.fieldId]||[]).length;
-      const minSide = m ? m.min.toFixed(1) : '—';
       const uniquePts = f.ring ? new Set(f.ring.map(c=>`${c[0].toFixed(7)},${c[1].toFixed(7)}`)).size : 0;
       const status = !m ? 'No polygon' :
-                     uniquePts <= 2 ? 'Degenerate polygon — only 2 unique coordinate points' :
-                     m.min === 0 ? 'Self-intersecting — edges cross each other' :
-                     trees === 0 ? 'Zero trees — review for disable' :
-                     'Has trees — needs boundary correction';
+                     uniquePts <= 2 ? 'Degenerate' :
+                     m.min === 0 ? 'Self-intersecting' :
+                     trees === 0 ? 'Zero trees' :
+                     'Has trees';
+      const action = fi === 0 ? 'KEEP — oldest registration' : 'REVIEW — possible duplicate';
       rows.push([
+        `Cluster ${ci+1}`,
+        cluster.length,
         f.fieldId,
         f.owner || '—',
+        f.createdOn || '—',
+        f.createdBy || '—',
         m ? m.area.toFixed(4) : '—',
         trees,
         m ? m.cLat.toFixed(6) : '—',
         m ? m.cLng.toFixed(6) : '—',
-        f.createdOn || '—',
-        f.createdBy || '—',
-        minSide,
-        status
+        m ? m.min.toFixed(1) : '—',
+        spreadM,
+        status,
+        action
       ]);
     });
-    rows.push([]);
   });
 
   const csv = rows.map(r =>
