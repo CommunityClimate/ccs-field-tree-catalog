@@ -5513,7 +5513,10 @@ async function bulkDisableSFDupeCandidates() {
     });
 
     // Keep the first (winner), disable the rest
-    scored.slice(1).forEach(s => candidates.push(s.f));
+    scored.slice(1).forEach(s => {
+      // Only disable zero-tree candidates — fields with trees need Eder review
+      if ((treesByField[s.f.fieldId]||[]).length === 0) candidates.push(s.f);
+    });
   });
 
   if (!candidates.length) {
@@ -5525,13 +5528,12 @@ async function bulkDisableSFDupeCandidates() {
   const withTrees = candidates.filter(f => (treesByField[f.fieldId]||[]).length > 0);
 
   if (!confirm(
-    `⊘ Disable ${candidates.length} SF Dupe duplicate records?\n\n` +
+    `⊘ Disable ${candidates.length} SF Dupe zero-tree duplicates?\n\n` +
     `For each cluster, the field with the most trees is kept.\n` +
     `If trees are equal, the largest area is kept.\n` +
     `If area is equal, the oldest registration is kept.\n\n` +
-    `• ${zeroTrees.length} with zero trees — safe to disable\n` +
-    `• ${withTrees.length} with trees — will also be disabled\n\n` +
-    `The winning field in each cluster will be kept active.\n\n` +
+    `Only zero-tree duplicates are disabled in this pass.\n` +
+    `Fields with trees are skipped — review with Eder separately.\n\n` +
     `This action cannot be undone without Eder's help.`
   )) return;
 
