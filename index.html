@@ -5466,20 +5466,73 @@ async function bulkDisableDupeNoTrees() {
   const dupeIds = _duplicateFieldIds;
   if (!dupeIds || !dupeIds.size) { showToast('No duplicate fields detected — wait for detection to complete', 'info'); return; }
 
-  const candidates = fieldsData.filter(f =>
-    dupeIds.has(f.fieldId) &&
-    !_deactivatedGuids.has(f.guid) &&
-    (treesByField[f.fieldId]||[]).length === 0
-  );
+  // Group all zero-tree duplicate fields by Field ID
+  const byFieldId = {};
+  fieldsData.forEach(f => {
+    if (!dupeIds.has(f.fieldId)) return;
+    if (_deactivatedGuids.has(f.guid)) return;
+    if ((treesByField[f.fieldId]||[]).length > 0) return;
+    if (!byFieldId[f.fieldId]) byFieldId[f.fieldId] = [];
+    byFieldId[f.fieldId].push(f);
+  });
+
+  // For each Field ID — keep the oldest, disable the rest
+  const candidates = [];
+  Object.values(byFieldId).forEach(group => {
+    if (group.length < 2) return; // only one record — nothing to disable
+    // Sort oldest first
+    group.sort((a, b) => {
+      const da = a.createdOn ? new Date(a.createdOn.split('.').reverse().join('-')).getTime() : Infinity;
+      const db = b.createdOn ? new Date(b.createdOn.split('.').reverse().join('-')).getTime() : Infinity;
+      return da - db;
+    });
+    // Keep first (oldest), disable the rest
+    group.slice(1).forEach(f => candidates.push(f));
+  });
 
   if (!candidates.length) { showToast('No zero-tree duplicate fields to disable', 'info'); return; }
 
   if (!confirm(
     `⊘ Disable ${candidates.length} duplicate field registrations with zero trees?\n\n` +
-    `These fields share a Field ID with another active registration\n` +
-    `and have no trees — safe to disable.\n\n` +
+    `For each duplicated Field ID, the oldest registration is kept.\n` +
+    `All newer zero-tree duplicates will be disabled.\n\n` +
     `This action cannot be undone without Eder's help.`
   )) return;
+
+  let ok = 0, fail = 0;
+  const token = await getToken();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const f = candidates[i];
+    try {
+      const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'OData-MaxVersion': '4.0',
+          'OData-Version': '4.0',
+          'If-Match': '*'
+        },
+        body: JSON.stringify({ statecode: 1, statuscode: 2 })
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  showToast(
+    fail > 0
+      ? `⊘ ${ok} disabled · ${fail} failed`
+      : `⊘ ${ok} duplicate zero-tree registrations disabled — oldest kept per Field ID`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+  setTimeout(() => loadFieldforce(), 1500);
+}
 
   let ok = 0, fail = 0;
   const token = await getToken();
