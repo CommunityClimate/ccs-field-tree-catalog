@@ -5466,10 +5466,22 @@ async function bulkDisableDupeNoTrees() {
   const dupeIds = _duplicateFieldIds;
   if (!dupeIds || !dupeIds.size) { showToast('No duplicate fields detected — wait for detection to complete', 'info'); return; }
 
-  // Group all zero-tree duplicate fields by Field ID
+  // Only target active-active duplicates — Field IDs with 2+ active records
+  // (not active-inactive pairs which are already partially disabled in Fieldforce)
+  const activeIdCount = {};
+  fieldsData.forEach(f => {
+    if (f.fieldId && !_deactivatedGuids.has(f.guid)) {
+      activeIdCount[f.fieldId] = (activeIdCount[f.fieldId] || 0) + 1;
+    }
+  });
+  const activeActiveDupeIds = new Set(
+    Object.entries(activeIdCount).filter(([,count]) => count > 1).map(([id]) => id)
+  );
+
+  // Group all zero-tree active-active duplicate fields by Field ID
   const byFieldId = {};
   fieldsData.forEach(f => {
-    if (!dupeIds.has(f.fieldId)) return;
+    if (!activeActiveDupeIds.has(f.fieldId)) return;
     if (_deactivatedGuids.has(f.guid)) return;
     if ((treesByField[f.fieldId]||[]).length > 0) return;
     if (!byFieldId[f.fieldId]) byFieldId[f.fieldId] = [];
@@ -5529,41 +5541,6 @@ async function bulkDisableDupeNoTrees() {
     fail > 0
       ? `⊘ ${ok} disabled · ${fail} failed`
       : `⊘ ${ok} duplicate zero-tree registrations disabled — oldest kept per Field ID`,
-    fail > 0 ? 'warn' : 'ok'
-  );
-  setTimeout(() => loadFieldforce(), 1500);
-}
-
-  let ok = 0, fail = 0;
-  const token = await getToken();
-
-  for (let i = 0; i < candidates.length; i++) {
-    const f = candidates[i];
-    try {
-      const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'OData-MaxVersion': '4.0',
-          'OData-Version': '4.0',
-          'If-Match': '*'
-        },
-        body: JSON.stringify({ statecode: 1, statuscode: 2 })
-      });
-      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
-      _trackDisabled(f);
-      ok++;
-    } catch(e) {
-      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
-      fail++;
-    }
-  }
-
-  showToast(
-    fail > 0
-      ? `⊘ ${ok} disabled · ${fail} failed`
-      : `⊘ ${ok} duplicate zero-tree field registrations disabled`,
     fail > 0 ? 'warn' : 'ok'
   );
   setTimeout(() => loadFieldforce(), 1500);
