@@ -532,6 +532,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⬇ Eder Review — Corrupted Boundaries</strong>
         <span>Sub-min + large polygon fields with corrupted boundaries — for pipeline investigation</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();bulkDisableDupeNoTrees()"
+        style="border-left:3px solid #ef4444">
+        <strong>⊘ Disable Duplicate Fields — No Trees</strong>
+        <span>Disable zero-tree duplicate field registrations — fields sharing a Field ID with another active record</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportSameFarmerDupe()">
         <strong>⧖ SF Dupe? — Same Farmer Duplicate Clusters</strong>
         <span>Grouped clusters of same-farmer overlapping fields with near-identical centroids — for data integrity review</span>
@@ -5455,6 +5460,60 @@ function exportSameFarmerDupe() {
 
   downloadCSV(csv, `CCS_SF_Dupe_Clusters_${exportDate}.csv`);
   showToast(`\u2193 Exported ${fields.length} SF Dupe fields in ${clusters.length} clusters`, 'ok');
+}
+
+async function bulkDisableDupeNoTrees() {
+  const dupeIds = window._duplicateFieldIds || new Set();
+  if (!dupeIds.size) { showToast('No duplicate fields detected', 'info'); return; }
+
+  const candidates = fieldsData.filter(f =>
+    dupeIds.has(f.fieldId) &&
+    !_deactivatedGuids.has(f.guid) &&
+    (treesByField[f.fieldId]||[]).length === 0
+  );
+
+  if (!candidates.length) { showToast('No zero-tree duplicate fields to disable', 'info'); return; }
+
+  if (!confirm(
+    `⊘ Disable ${candidates.length} duplicate field registrations with zero trees?\n\n` +
+    `These fields share a Field ID with another active registration\n` +
+    `and have no trees — safe to disable.\n\n` +
+    `This action cannot be undone without Eder's help.`
+  )) return;
+
+  let ok = 0, fail = 0;
+  const token = await getToken();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const f = candidates[i];
+    try {
+      const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'OData-MaxVersion': '4.0',
+          'OData-Version': '4.0',
+          'If-Match': '*'
+        },
+        body: JSON.stringify({ statecode: 1, statuscode: 2 })
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  showToast(
+    fail > 0
+      ? `⊘ ${ok} disabled · ${fail} failed`
+      : `⊘ ${ok} duplicate zero-tree field registrations disabled`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+  setTimeout(() => loadFieldforce(), 1500);
 }
 
 async function bulkDisableSFDupeCandidates() {
