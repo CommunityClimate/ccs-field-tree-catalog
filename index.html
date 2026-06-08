@@ -2974,7 +2974,10 @@ function printFieldRecord(fieldsArr) {
           <tr><td style="padding:2px 8px 2px 0;color:#666">Verra Compliant</td><td>${cl.compliant??'—'} (${cl.pct??'—'}%)</td></tr>
           <tr><td style="padding:2px 8px 2px 0;color:#666">Needs Correction</td><td>${cl.outside??'—'}</td></tr>
           <tr><td style="padding:2px 8px 2px 0;color:#666">Record Status</td>
-            <td style="color:#c00;font-weight:bold">⊘ Disabled ${new Date().toISOString().slice(0,10)}</td></tr>
+            <td style="color:${(_deactivatedGuids.has(f.guid)||_deactivatedIds.has(f.fieldId))?'#c00':'#22c55e'};font-weight:bold">
+              ${(_deactivatedGuids.has(f.guid)||_deactivatedIds.has(f.fieldId))
+                ? '\u2298 Disabled in this session'
+                : '\u2714 Active in Fieldforce'}</td></tr>
         </table>
         <div style="font-size:10px;color:#666;margin-bottom:4px;font-family:monospace">GeoJSON Polygon Coordinates:</div>
         <pre style="font-size:9px;background:#f5f5f5;padding:8px;border:1px solid #ddd;
@@ -2993,7 +2996,7 @@ function printFieldRecord(fieldsArr) {
     <h2>CCS Field Polygon Record</h2>
     <p class="sub">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp;
       ${fields.length} field${fields.length>1?'s':''} &nbsp;|&nbsp;
-      Archived before disablement in Fieldforce</p>
+      CCS Field Tree Catalog</p>
     ${rows}
     <button class="no-print" onclick="window.print()"
       style="margin-top:16px;padding:8px 20px;font-size:12px">🖨 Print / Save as PDF</button>
