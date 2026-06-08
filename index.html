@@ -536,6 +536,11 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <strong>⧖ SF Dupe? — Same Farmer Duplicate Clusters</strong>
         <span>Grouped clusters of same-farmer overlapping fields with near-identical centroids — for data integrity review</span>
       </div>
+      <div class="export-item" onclick="closeExportMenu();bulkDisableSFDupeCandidates()"
+        style="border-left:3px solid #ef4444">
+        <strong>⊘ Disable SF Dupe FO Captures</strong>
+        <span>Disable Field Officer re-captures where an Eder Oliveira upload exists at the same location — keeps Eder record, disables FO duplicate</span>
+      </div>
       <div class="export-item" onclick="closeExportMenu();exportCSV('overlapping')">
         <strong>⬇ Overlapping Fields</strong>
         <span>Fields detected as overlapping another field boundary</span>
@@ -5417,7 +5422,12 @@ function exportSameFarmerDupe() {
                      m.min === 0 ? 'Self-intersecting' :
                      trees === 0 ? 'Zero trees' :
                      'Has trees';
-      const action = fi === 0 ? 'KEEP — oldest registration' : 'REVIEW — possible duplicate';
+      const isEder   = (f.createdBy||'').toLowerCase().includes('eder');
+      const action   = isEder
+        ? 'KEEP — Eder upload (authoritative)'
+        : cluster.some(x => (x.createdBy||'').toLowerCase().includes('eder'))
+          ? 'CANDIDATE — FO capture, Eder record exists'
+          : fi === 0 ? 'KEEP — oldest registration' : 'REVIEW — possible duplicate';
       rows.push([
         `Cluster ${ci+1}`,
         cluster.length,
@@ -5445,6 +5455,101 @@ function exportSameFarmerDupe() {
 
   downloadCSV(csv, `CCS_SF_Dupe_Clusters_${exportDate}.csv`);
   showToast(`\u2193 Exported ${fields.length} SF Dupe fields in ${clusters.length} clusters`, 'ok');
+}
+
+async function bulkDisableSFDupeCandidates() {
+  const dupeIds = window._sameFarmerDupeIds || new Set();
+  if (!dupeIds.size) { showToast('No SF Dupe fields detected', 'info'); return; }
+
+  const fields = fieldsData.filter(f =>
+    dupeIds.has(f.fieldId) && !_deactivatedGuids.has(f.guid)
+  );
+
+  // Build clusters
+  const CLUSTER_THRESHOLD = 0.0015;
+  const visited  = new Set();
+  const clusters = [];
+  fields.forEach(f => {
+    if (visited.has(f.fieldId)) return;
+    const mf = f.ring ? ringMetrics(f.ring) : null;
+    if (!mf) return;
+    const cluster = [f];
+    visited.add(f.fieldId);
+    fields.forEach(other => {
+      if (visited.has(other.fieldId)) return;
+      const mo = other.ring ? ringMetrics(other.ring) : null;
+      if (!mo) return;
+      const dist = Math.sqrt(Math.pow(mf.cLat-mo.cLat,2)+Math.pow(mf.cLng-mo.cLng,2));
+      if (dist < CLUSTER_THRESHOLD) { cluster.push(other); visited.add(other.fieldId); }
+    });
+    clusters.push(cluster);
+  });
+
+  // Find candidates — FO capture where Eder record exists in same cluster
+  const candidates = [];
+  clusters.forEach(cluster => {
+    const hasEder = cluster.some(f => (f.createdBy||'').toLowerCase().includes('eder'));
+    if (!hasEder) return;
+    cluster.forEach(f => {
+      if (!(f.createdBy||'').toLowerCase().includes('eder')) {
+        candidates.push(f);
+      }
+    });
+  });
+
+  if (!candidates.length) {
+    showToast('No FO capture candidates found — all SF Dupe clusters are Eder-only', 'info');
+    return;
+  }
+
+  // Show breakdown before confirming
+  const zeroTrees = candidates.filter(f => (treesByField[f.fieldId]||[]).length === 0);
+  const withTrees = candidates.filter(f => (treesByField[f.fieldId]||[]).length > 0);
+
+  if (!confirm(
+    `⊘ Disable ${candidates.length} SF Dupe FO capture records?\n\n` +
+    `These fields have an Eder Oliveira record at the same location.\n` +
+    `Based on Eder's explanation, these are Field Officer re-captures\n` +
+    `where the FO did not see Eder's upload on their device.\n\n` +
+    `• ${zeroTrees.length} with zero trees — safe to disable\n` +
+    `• ${withTrees.length} with trees — will also be disabled\n\n` +
+    `The Eder upload for each cluster will be kept.\n\n` +
+    `This action cannot be undone without Eder's help.`
+  )) return;
+
+  let ok = 0, fail = 0;
+  const token = await getToken();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const f = candidates[i];
+    try {
+      const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'OData-MaxVersion': '4.0',
+          'OData-Version': '4.0',
+          'If-Match': '*'
+        },
+        body: JSON.stringify({ statecode: 1, statuscode: 2 })
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  showToast(
+    fail > 0
+      ? `⊘ ${ok} disabled · ${fail} failed`
+      : `⊘ ${ok} SF Dupe FO capture records disabled`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+  setTimeout(() => loadFieldforce(), 1500);
 }
 
 function exportSubMinEderFields() {
