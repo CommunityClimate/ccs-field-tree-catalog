@@ -5463,7 +5463,7 @@ function exportSameFarmerDupe() {
 }
 
 async function bulkDisableDupeNoTrees() {
-  const dupeIds = window._duplicateFieldIds || new Set();
+  const dupeIds = _duplicateFieldIds || new Set();
   if (!dupeIds.size) { showToast('No duplicate fields detected', 'info'); return; }
 
   const candidates = fieldsData.filter(f =>
