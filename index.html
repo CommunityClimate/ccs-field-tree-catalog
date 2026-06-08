@@ -4708,7 +4708,7 @@ let _selfIntPanelActive = false;
 // Finds near-duplicate vertices (within 5m) in self-intersecting polygons
 // and removes the second point, then writes corrected polygon to Fieldforce.
 
-const DUPE_VERTEX_THRESHOLD_M = 5; // metres — GPS standing still threshold
+const DUPE_VERTEX_THRESHOLD_M = 15; // metres — GPS drift threshold for duplicate detection
 
 function cleanDuplicateVertices(ring) {
   // Iteratively remove ALL near-duplicate vertex pairs until none remain
