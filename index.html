@@ -5485,35 +5485,53 @@ async function bulkDisableSFDupeCandidates() {
     clusters.push(cluster);
   });
 
-  // Find candidates — FO capture where Eder record exists in same cluster
-  const candidates = [];
+  // For each cluster determine which field to KEEP using:
+  // Rule 1 — most trees
+  // Rule 2 — largest area (if trees equal)
+  // Rule 3 — oldest registration (if area equal)
+  const candidates = []; // fields to disable
+  let skippedClusters = 0;
+
   clusters.forEach(cluster => {
-    const hasEder = cluster.some(f => (f.createdBy||'').toLowerCase().includes('eder'));
-    if (!hasEder) return;
-    cluster.forEach(f => {
-      if (!(f.createdBy||'').toLowerCase().includes('eder')) {
-        candidates.push(f);
-      }
+    if (cluster.length < 2) { skippedClusters++; return; }
+
+    const scored = cluster.map(f => {
+      const m     = f.ring ? ringMetrics(f.ring) : null;
+      const trees = (treesByField[f.fieldId]||[]).length;
+      const area  = m ? m.area : 0;
+      const date  = f.createdOn
+        ? new Date(f.createdOn.split('.').reverse().join('-')).getTime()
+        : Infinity;
+      return { f, trees, area, date };
     });
+
+    // Sort: most trees → largest area → oldest date
+    scored.sort((a, b) => {
+      if (b.trees !== a.trees) return b.trees - a.trees;
+      if (b.area  !== a.area)  return b.area  - a.area;
+      return a.date - b.date;
+    });
+
+    // Keep the first (winner), disable the rest
+    scored.slice(1).forEach(s => candidates.push(s.f));
   });
 
   if (!candidates.length) {
-    showToast('No FO capture candidates found — all SF Dupe clusters are Eder-only', 'info');
+    showToast('No SF Dupe candidates to disable', 'info');
     return;
   }
 
-  // Show breakdown before confirming
   const zeroTrees = candidates.filter(f => (treesByField[f.fieldId]||[]).length === 0);
   const withTrees = candidates.filter(f => (treesByField[f.fieldId]||[]).length > 0);
 
   if (!confirm(
-    `⊘ Disable ${candidates.length} SF Dupe FO capture records?\n\n` +
-    `These fields have an Eder Oliveira record at the same location.\n` +
-    `Based on Eder's explanation, these are Field Officer re-captures\n` +
-    `where the FO did not see Eder's upload on their device.\n\n` +
+    `⊘ Disable ${candidates.length} SF Dupe duplicate records?\n\n` +
+    `For each cluster, the field with the most trees is kept.\n` +
+    `If trees are equal, the largest area is kept.\n` +
+    `If area is equal, the oldest registration is kept.\n\n` +
     `• ${zeroTrees.length} with zero trees — safe to disable\n` +
     `• ${withTrees.length} with trees — will also be disabled\n\n` +
-    `The Eder upload for each cluster will be kept.\n\n` +
+    `The winning field in each cluster will be kept active.\n\n` +
     `This action cannot be undone without Eder's help.`
   )) return;
 
@@ -5546,7 +5564,7 @@ async function bulkDisableSFDupeCandidates() {
   showToast(
     fail > 0
       ? `⊘ ${ok} disabled · ${fail} failed`
-      : `⊘ ${ok} SF Dupe FO capture records disabled`,
+      : `⊘ ${ok} SF Dupe duplicates disabled — winners kept by trees → area → date`,
     fail > 0 ? 'warn' : 'ok'
   );
   setTimeout(() => loadFieldforce(), 1500);
