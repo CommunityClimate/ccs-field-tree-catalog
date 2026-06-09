@@ -8516,6 +8516,9 @@ function renderBulkPage() {
   const visibleEntries = _bulkQueue.filter(e => {
     if (e.diagnosis === 'no_overlap') return false;
     if (diagFilter && e.diagnosis !== diagFilter) return false;
+    // Exclude large corrupted polygons — these need Eder pipeline fix, not bulk correction
+    const mA = e.f.ring ? ringMetrics(e.f.ring) : null;
+    if (mA && mA.area > threshold) return false;
     return true;
   });
   const page = visibleEntries.slice(0, (_bulkPage + 1) * BULK_PAGE_SIZE);
@@ -8531,7 +8534,9 @@ function renderBulkPage() {
     const trees    = (treesByField[e.f.fieldId]||[]).length;
     const mA       = e.f.ring ? ringMetrics(e.f.ring) : null;
     const areaA    = mA ? mA.area : 0;
+    const isLarge  = areaA > threshold; // exclude corrupted large polygons
     const ovPct    = areaA > 0 ? (e.overlapHa/areaA)*100 : 100;
+    if (isLarge) return false;
     return trees === 0 || (e.diagnosis==='minor_overlap' && e.confidence==='high' && (ovPct<5||e.overlapHa<0.005));
   }).length;
 
