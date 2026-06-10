@@ -3984,7 +3984,7 @@ async function bulkDisableSameFarmerEmpty() {
     fail > 0 ? 'warn' : 'ok'
   );
   _eoSameFarmerFilter = null;
-  setTimeout(() => loadFieldforce(), 1500);
+  setTimeout(() => connect(true), 1500);
 }
 
 function toggleEmptyOverlaps() {
@@ -5010,7 +5010,7 @@ async function bulkCorrectDuplicateVertices() {
   // Refresh data
   setTimeout(() => {
     showToast('Refreshing from Fieldforce…', 'info');
-    loadFieldforce();
+    connect(true);
   }, 1500);
 }
 
@@ -5690,7 +5690,7 @@ async function bulkDisableDupeNoTrees() {
       : `⊘ ${ok} duplicate zero-tree registrations disabled — oldest kept per Field ID`,
     fail > 0 ? 'warn' : 'ok'
   );
-  setTimeout(() => loadFieldforce(), 1500);
+  setTimeout(() => connect(true), 1500);
 }
 
 async function bulkDisableSFDupeCandidates() {
@@ -5805,7 +5805,7 @@ async function bulkDisableSFDupeCandidates() {
       : `⊘ ${ok} SF Dupe duplicates disabled — winners kept by trees → area → date`,
     fail > 0 ? 'warn' : 'ok'
   );
-  setTimeout(() => loadFieldforce(), 1500);
+  setTimeout(() => connect(true), 1500);
 }
 
 function exportSubMinEderFields() {
