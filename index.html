@@ -2288,10 +2288,18 @@ async function detectOverlapsKPI() {
   const lineCount    = lineOnSet.size;
   const touchCount   = touchingSet.size;
 
-  // KPI chip shows true overlaps + tip-overs (the ones needing action)
-  const actionCount = new Set([...trueOverlapSet, ...tipOverSet]).size;
+  // KPI chip shows TRUE overlaps only — the ones with actual area double-counting
+  // Tip/line/touching have zero area overlap and are GPS measurement artefacts
+  const actionCount = trueOverlapSet.size;
   el.textContent = actionCount.toLocaleString();
   el.style.color = actionCount > 0 ? '#ef4444' : '#22c55e';
+
+  el.title =
+    `✗ True overlap: ${trueCount.toLocaleString()} fields — must correct (shown in chip)\n` +
+    `⚠ Corner/tip: ${tipCount.toLocaleString()} fields — zero area, GPS artefact\n` +
+    `~ Line on boundary: ${lineCount.toLocaleString()} fields — zero area, GPS artefact\n` +
+    `◌ Touching: ${touchCount.toLocaleString()} fields — zero area, GPS artefact\n` +
+    `Total with any overlap: ${count.toLocaleString()} fields`;
 
   window._overlappingFieldIds = overlapping;
   window._overlapNeighbours   = _overlapNeighbours;
