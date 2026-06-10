@@ -3876,6 +3876,12 @@ async function renderQueue() {
 // Shows all overlapping fields with zero trees — safe to bulk-disable.
 let emptyOverlapsActive = false;
 let _eoSort = { col: 'neighbours', dir: -1 }; // default: most overlaps first
+let _eoSameFarmerFilter = null; // null = all, true = same-farmer only, false = different-farmer only
+
+function eoFilterSameFarmer(val) {
+  _eoSameFarmerFilter = _eoSameFarmerFilter === val ? null : val;
+  renderEmptyOverlaps();
+}
 
 function toggleEmptyOverlaps() {
   emptyOverlapsActive = !emptyOverlapsActive;
@@ -3923,7 +3929,7 @@ async function renderEmptyOverlaps() {
   const ovSet = window._overlappingFieldIds || new Set();
   const SEV_ORDER = { true_overlap: 0, tip_over: 1, line_on: 2, touching: 3 };
 
-  // Build row data
+  // Build row data with same-farmer detection
   let rows = fieldsData
     .filter(f => ovSet.has(f.fieldId) && (treesByField[f.fieldId] || []).length === 0)
     .map(f => {
@@ -3933,8 +3939,21 @@ async function renderEmptyOverlaps() {
       const worstSev   = ['true_overlap','tip_over','line_on','touching']
                            .find(s => sevVals.includes(s)) || 'touching';
       const area       = f.ring ? ringAreaHa(f.ring) : 0;
-      return { f, neighbours, worstSev, area, sevRank: SEV_ORDER[worstSev] ?? 3 };
+
+      // Check if any overlapping neighbour belongs to the same farmer
+      const sameFarmerOverlap = neighbours.some(nid => {
+        const n = fieldsData.find(x => x.fieldId === nid);
+        return n && n.owner && f.owner &&
+               n.owner.trim().toLowerCase() === f.owner.trim().toLowerCase();
+      });
+
+      return { f, neighbours, worstSev, area, sevRank: SEV_ORDER[worstSev] ?? 3, sameFarmerOverlap };
     });
+
+  // Apply same-farmer filter if active
+  if (_eoSameFarmerFilter !== null) {
+    rows = rows.filter(r => r.sameFarmerOverlap === _eoSameFarmerFilter);
+  }
 
   // Apply sort
   const { col, dir } = _eoSort;
@@ -3976,12 +3995,19 @@ async function renderEmptyOverlaps() {
     return;
   }
 
+  const sameFarmerRows  = rows.filter(r => r.sameFarmerOverlap);
+  const diffFarmerRows  = rows.filter(r => !r.sameFarmerOverlap);
+
   document.getElementById('queueSummary').innerHTML =
     `<span style="color:#ef4444;font-weight:700;font-size:12px">${rows.length.toLocaleString()} fields</span>
      <span style="color:var(--border)">|</span>
      <span style="color:var(--muted)">Zero trees · overlapping boundary</span>
      <span style="color:var(--border)">|</span>
-     <span style="color:#22c55e;font-size:9px">All safe to disable — no trees become unallocated</span>
+     <span style="color:#f59e0b;font-size:9px;cursor:pointer" onclick="eoFilterSameFarmer(true)">
+       ⧖ ${sameFarmerRows.length.toLocaleString()} same-farmer — likely duplicate, safe to disable</span>
+     <span style="color:var(--border)">|</span>
+     <span style="color:#22c55e;font-size:9px;cursor:pointer" onclick="eoFilterSameFarmer(false)">
+       ◻ ${diffFarmerRows.length.toLocaleString()} different farmer — legitimate field, do not disable</span>
      <span style="flex:1"></span>
      <button class="btn-export" onclick="exportEmptyOverlapsGeoJSON()"
        style="font-size:9px;padding:3px 10px;margin-left:8px"
@@ -4002,11 +4028,14 @@ async function renderEmptyOverlaps() {
   };
 
   document.getElementById('queueBody').innerHTML = rows.map((r, i) => {
-    const { f, neighbours, worstSev, area } = r;
+    const { f, neighbours, worstSev, area, sameFarmerOverlap } = r;
     const fidIdx   = fieldsData.indexOf(f);
     const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
     const sev      = SEV_LABELS[worstSev] || SEV_LABELS.touching;
     const areaStr  = area > 0 ? area.toFixed(2) + ' ha' : '—';
+    const sfBadge  = sameFarmerOverlap
+      ? `<span style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);border-radius:3px;font-family:var(--mono);font-size:8px;padding:1px 4px" title="Overlaps a field with the same owner — likely duplicate">⧖ Same farmer</span>`
+      : `<span style="background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:3px;font-family:var(--mono);font-size:8px;padding:1px 4px" title="Overlaps a field with a different owner — legitimate field">◻ Diff farmer</span>`;
     return `<tr onclick="openLb(${fidIdx}, window.queueNavList, ${i})"
       style="${inactive ? 'opacity:0.35;' : ''}">
       <td class="q-col-chk" onclick="event.stopPropagation()">
@@ -4019,6 +4048,7 @@ async function renderEmptyOverlaps() {
       <td style="padding:6px 10px;font-family:var(--mono);font-size:10px;color:var(--muted);
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:88px">
         ${f.createdOn || '—'}</td>
+      <td style="padding:6px 4px;text-align:center;width:100px">${sfBadge}</td>
       <td style="padding:6px 4px;text-align:center;width:46px">
         <span style="background:rgba(167,139,250,0.15);color:#a78bfa;
           border:1px solid rgba(167,139,250,0.35);border-radius:3px;
