@@ -1570,6 +1570,7 @@ function applyDataset(fieldsArr, treesObj, treeCount, unallocatedCount, fromCach
   const unallocMsg = unallocatedCount > 0
     ? ` · <span style="color:#f59e0b;font-weight:700">⚠ ${unallocatedCount.toLocaleString()} unallocated trees</span>`
     : ` · <span style="color:#22c55e">✓ All trees allocated</span>`;
+  window._unallocatedCount = unallocatedCount;
 
   setStatus(`${src} · ${fieldsArr.length.toLocaleString()} fields · ${treeCount.toLocaleString()} trees${unallocMsg}`, 'ok', true);
   document.getElementById('fieldCount').textContent = `Fields (${fieldsArr.length.toLocaleString()})`;
@@ -6552,12 +6553,7 @@ function takeSnapshot() {
     selfIntersect: parseInt(document.getElementById('kpiSelfIntersect')?.textContent?.replace(/\D/g,'')) || 0,
     coordDupe:     parseInt(document.getElementById('kpiCoordDupe')?.textContent?.replace(/\D/g,''))     || 0,
     subMin:        parseInt(document.getElementById('kpiSubMin')?.textContent?.replace(/\D/g,''))         || 0,
-    unallocated:   (() => {
-      // Parse unallocated count from the status bar text "⚠ N unallocated trees"
-      const statusEl = document.getElementById('statusMsg');
-      const match = statusEl?.textContent?.match(/(\d[\d']*)\s+unallocated/);
-      return match ? parseInt(match[1].replace(/\D/g,'')) : 0;
-    })(),
+    unallocated:   window._unallocatedCount || 0,
   };
   snap.pct = snap.trees > 0
     ? Math.round((snap.compliant + snap.tolerance) / snap.trees * 100) : 0;
