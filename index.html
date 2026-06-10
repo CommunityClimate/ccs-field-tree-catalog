@@ -6552,6 +6552,12 @@ function takeSnapshot() {
     selfIntersect: parseInt(document.getElementById('kpiSelfIntersect')?.textContent?.replace(/\D/g,'')) || 0,
     coordDupe:     parseInt(document.getElementById('kpiCoordDupe')?.textContent?.replace(/\D/g,''))     || 0,
     subMin:        parseInt(document.getElementById('kpiSubMin')?.textContent?.replace(/\D/g,''))         || 0,
+    unallocated:   (() => {
+      // Parse unallocated count from the status bar text "⚠ N unallocated trees"
+      const statusEl = document.getElementById('statusMsg');
+      const match = statusEl?.textContent?.match(/(\d[\d']*)\s+unallocated/);
+      return match ? parseInt(match[1].replace(/\D/g,'')) : 0;
+    })(),
   };
   snap.pct = snap.trees > 0
     ? Math.round((snap.compliant + snap.tolerance) / snap.trees * 100) : 0;
@@ -6573,7 +6579,8 @@ function exportSnapshots() {
   if (!snaps.length) { showToast('No snapshots to export', 'info'); return; }
   const headers = ['Date','Time','Fields','Trees',
     '✓ Compliant','± Tolerance','⚠ Review','✗ Correct','Verra %',
-    '⧖ Overlap','◻ Near','⬡ Large','⊕ Dupe Fields','⊕ Dupe Trees'];
+    '⧖ Overlap','◻ Near','⬡ Large','⊕ Dupe Fields','⊕ Dupe Trees',
+    '✗ Self-Intersect','✗ Coord Dupe','⬡ Sub-min','⚠ Unallocated Trees'];
   const rows = snaps.map(s => {
     const d = new Date(s.ts);
     return [
@@ -6581,7 +6588,8 @@ function exportSnapshots() {
       d.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}),
       s.fields, s.trees, s.compliant, s.tolerance,
       s.review, s.correct, s.pct + '%',
-      s.overlap, s.near, s.large, s.dupeFields, s.dupeTrees
+      s.overlap, s.near, s.large, s.dupeFields, s.dupeTrees,
+      s.selfIntersect||0, s.coordDupe||0, s.subMin||0, s.unallocated||0
     ];
   });
   const csv = [headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -6778,17 +6786,18 @@ function renderTrend() {
   }
 
   const metrics = [
-    ['Fields',        'fields',    false],
-    ['Trees',         'trees',     false],
-    ['✓ Compliant',   'compliant', false],
-    ['± Tolerance',   'tolerance', false],
-    ['⚠ Review',      'review',    true ],
-    ['✗ Correct',     'correct',   true ],
-    ['Verra %',       'pct',       false],
-    ['⧖ Overlap',     'overlap',   true ],
-    ['◻ Near',        'near',      true ],
-    ['⊕ Dupe Fields', 'dupeFields',true ],
-    ['⊕ Dupe Trees',  'dupeTrees', true ],
+    ['Fields',        'fields',      false],
+    ['Trees',         'trees',       false],
+    ['✓ Compliant',   'compliant',   false],
+    ['± Tolerance',   'tolerance',   false],
+    ['⚠ Review',      'review',      true ],
+    ['✗ Correct',     'correct',     true ],
+    ['Verra %',       'pct',         false],
+    ['⧖ Overlap',     'overlap',     true ],
+    ['◻ Near',        'near',        true ],
+    ['⊕ Dupe Fields', 'dupeFields',  true ],
+    ['⊕ Dupe Trees',  'dupeTrees',   true ],
+    ['⚠ Unallocated', 'unallocated', true ],
   ];
 
   const statsRows = metrics.map(([label, key, invert], ri) => {
