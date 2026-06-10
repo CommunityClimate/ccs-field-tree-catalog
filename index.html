@@ -761,6 +761,12 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         <div style="flex:1"></div>
         <button class="btn-export" onclick="exportQueueSelection()"
           style="font-size:9px;padding:3px 8px">⬇ Export selected</button>
+        <button class="btn-deactivate" id="btnDisableSameFarmerEmpty"
+          onclick="bulkDisableSameFarmerEmpty()"
+          style="font-size:9px;padding:3px 8px;background:rgba(245,158,11,0.12);
+          border-color:rgba(245,158,11,0.4);color:#f59e0b;display:none"
+          title="Disable same-farmer duplicate zero-tree fields — keep oldest per cluster">
+          ⊘ Disable same-farmer duplicates</button>
         <button class="btn-deactivate" id="btnBulkDeactivate"
           onclick="bulkDeactivate()" style="font-size:9px;padding:3px 8px"
           title="Print record then disable selected fields in Fieldforce">
@@ -3883,6 +3889,104 @@ function eoFilterSameFarmer(val) {
   renderEmptyOverlaps();
 }
 
+async function bulkDisableSameFarmerEmpty() {
+  const ovSet = window._overlappingFieldIds || new Set();
+
+  // Get all same-farmer zero-tree overlapping fields
+  const allSFEmpty = fieldsData.filter(f =>
+    ovSet.has(f.fieldId) &&
+    !_deactivatedGuids.has(f.guid) &&
+    (treesByField[f.fieldId]||[]).length === 0
+  ).filter(f => {
+    const neighbours = _overlapNeighbours[f.fieldId] || [];
+    return neighbours.some(nid => {
+      const n = fieldsData.find(x => x.fieldId === nid);
+      return n && n.owner && f.owner &&
+             n.owner.trim().toLowerCase() === f.owner.trim().toLowerCase();
+    });
+  });
+
+  // Group into same-farmer clusters by owner + proximity
+  const visited  = new Set();
+  const clusters = [];
+  allSFEmpty.forEach(f => {
+    if (visited.has(f.fieldId)) return;
+    const mf = f.ring ? ringMetrics(f.ring) : null;
+    if (!mf) return;
+    const cluster = [f];
+    visited.add(f.fieldId);
+    allSFEmpty.forEach(other => {
+      if (visited.has(other.fieldId)) return;
+      if ((other.owner||'').trim().toLowerCase() !== (f.owner||'').trim().toLowerCase()) return;
+      const mo = other.ring ? ringMetrics(other.ring) : null;
+      if (!mo) return;
+      const dist = Math.sqrt(Math.pow(mf.cLat-mo.cLat,2)+Math.pow(mf.cLng-mo.cLng,2));
+      if (dist < 0.002) { cluster.push(other); visited.add(other.fieldId); }
+    });
+    clusters.push(cluster);
+  });
+
+  // For each cluster — keep oldest, disable the rest
+  const candidates = [];
+  clusters.forEach(cluster => {
+    if (cluster.length < 2) return; // single field — skip
+    cluster.sort((a, b) => {
+      const da = a.createdOn ? new Date(a.createdOn.split('.').reverse().join('-')).getTime() : Infinity;
+      const db = b.createdOn ? new Date(b.createdOn.split('.').reverse().join('-')).getTime() : Infinity;
+      return da - db;
+    });
+    cluster.slice(1).forEach(f => candidates.push(f));
+  });
+
+  if (!candidates.length) {
+    showToast('No same-farmer duplicate pairs found to disable', 'info');
+    return;
+  }
+
+  if (!confirm(
+    `⊘ Disable ${candidates.length} same-farmer duplicate zero-tree fields?\n\n` +
+    `For each same-farmer cluster, the oldest registration is kept.\n` +
+    `All newer zero-tree duplicates from the same owner will be disabled.\n\n` +
+    `Single fields with no matching pair are skipped.\n\n` +
+    `This action cannot be undone without Eder's help.`
+  )) return;
+
+  let ok = 0, fail = 0;
+  const token = await getToken();
+
+  for (let i = 0; i < candidates.length; i++) {
+    const f = candidates[i];
+    try {
+      const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'OData-MaxVersion': '4.0',
+          'OData-Version': '4.0',
+          'If-Match': '*'
+        },
+        body: JSON.stringify({ statecode: 1, statuscode: 2 })
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+      _trackDisabled(f);
+      ok++;
+    } catch(e) {
+      console.warn(`Failed to disable ${f.fieldId}:`, e.message);
+      fail++;
+    }
+  }
+
+  showToast(
+    fail > 0
+      ? `⊘ ${ok} disabled · ${fail} failed`
+      : `⊘ ${ok} same-farmer zero-tree duplicates disabled — oldest kept per cluster`,
+    fail > 0 ? 'warn' : 'ok'
+  );
+  _eoSameFarmerFilter = null;
+  setTimeout(() => loadFieldforce(), 1500);
+}
+
 function toggleEmptyOverlaps() {
   emptyOverlapsActive = !emptyOverlapsActive;
   const btn   = document.getElementById('btnEmptyOverlaps');
@@ -3971,6 +4075,10 @@ async function renderEmptyOverlaps() {
   // Summary bar
   const actBar = document.getElementById('queueActions');
   if (actBar) actBar.style.display = rows.length > 0 ? 'flex' : 'none';
+
+  // Show same-farmer disable button only when same-farmer filter is active
+  const sfBtn = document.getElementById('btnDisableSameFarmerEmpty');
+  if (sfBtn) sfBtn.style.display = _eoSameFarmerFilter === true ? 'inline-block' : 'none';
 
   function sortArrow(c) {
     if (_eoSort.col !== c) return `<span style="color:var(--border);font-size:8px"> ⇅</span>`;
