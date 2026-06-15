@@ -1086,6 +1086,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
         ⚙️ Smart Correct</button>
       <button class="btn-export" onclick="printFieldRecord()" style="margin-left:auto"
         title="Print field record with GeoJSON coordinates">🖨 Print record</button>
+      <button class="btn-export" id="lbBtnRelocate" onclick="lbRelocateToTrees()"
+        style="display:none;background:rgba(245,158,11,0.1);color:var(--amber);border-color:rgba(245,158,11,0.3)"
+        title="Shift polygon to be centred on its own trees — preserves shape and size">📍 Relocate to Trees</button>
       <button class="btn-export" id="lbBtnFix" onclick="lbOpenFix()"
         style="background:rgba(56,189,248,0.1);color:var(--blue);border-color:rgba(56,189,248,0.3)"
         title="Open in Polygon Corrector">✎ Fix in Corrector</button>
@@ -2967,11 +2970,103 @@ function updateLbButtons(f) {
       .some(x => x && x.ring));
     scBtn.style.display = hasOverlapNbr ? 'inline-flex' : 'none';
   }
+  // Relocate to Trees button — show only when field has a ring AND trees
+  const relBtn = document.getElementById('lbBtnRelocate');
+  if (relBtn) {
+    const hasTrees = (treesByField[f.fieldId] || []).length > 0;
+    relBtn.style.display = (f.ring && hasTrees) ? 'inline-flex' : 'none';
+  }
   const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
   const btnD = document.getElementById('lbBtnDeactivate');
   const btnA = document.getElementById('lbBtnActivate');
   if (btnD) btnD.style.display = inactive ? 'none' : 'inline-block';
   if (btnA) btnA.style.display = inactive ? 'inline-block' : 'none';
+}
+
+// ── RELOCATE POLYGON TO TREE CENTROID ──────────────────────────────────────
+async function lbRelocateToTrees() {
+  const f = fieldsData[_lbCurrentIdx];
+  if (!f || !f.ring) return;
+
+  const trees = treesByField[f.fieldId] || [];
+  if (!trees.length) { showToast('No trees loaded for this field', 'warn'); return; }
+
+  // Compute current polygon centroid
+  const n = f.ring.length - 1; // exclude closing duplicate
+  let cLng = 0, cLat = 0;
+  for (let i = 0; i < n; i++) { cLng += f.ring[i][0]; cLat += f.ring[i][1]; }
+  cLng /= n; cLat /= n;
+
+  // Compute tree centroid
+  const tLng = trees.reduce((s, t) => s + t.lng, 0) / trees.length;
+  const tLat = trees.reduce((s, t) => s + t.lat, 0) / trees.length;
+
+  // Compute offset
+  const dLng = tLng - cLng;
+  const dLat = tLat - cLat;
+
+  // Distance sanity check (metres)
+  const distM = Math.sqrt(
+    ((dLng) * 111320 * Math.cos(cLat * Math.PI / 180)) ** 2 +
+    ((dLat) * 111320) ** 2
+  );
+
+  const confirmed = confirm(
+    `📍 RELOCATE POLYGON TO TREES\n\n` +
+    `Field: ${f.fieldId}\n` +
+    `Owner: ${f.owner || '—'}\n\n` +
+    `The polygon will be shifted ${Math.round(distM)} m to align with\n` +
+    `the centroid of ${trees.length} registered trees.\n\n` +
+    `Shape and size are preserved — only the location changes.\n\n` +
+    `This will update the polygon in Fieldforce. Continue?`
+  );
+  if (!confirmed) return;
+
+  const btn = document.getElementById('lbBtnRelocate');
+  btn.disabled = true;
+  btn.textContent = '⏳ Relocating…';
+
+  try {
+    // Shift all vertices by the offset
+    const newRing = f.ring.map(v => [v[0] + dLng, v[1] + dLat]);
+
+    const newGeoJSON = JSON.stringify({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [newRing] },
+      properties: {}
+    });
+
+    const token = await getToken();
+    const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'OData-MaxVersion': '4.0',
+        'OData-Version': '4.0',
+        'If-Match': '*'
+      },
+      body: JSON.stringify({ ccs_fieldgeojson_field: newGeoJSON })
+    });
+
+    if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+
+    // Update local data
+    f.ring   = newRing;
+    f.geoJSON = newGeoJSON;
+
+    showToast(`📍 ${f.fieldId} relocated ${Math.round(distM)} m to tree centroid`, 'ok');
+    btn.textContent = `✓ Relocated ${Math.round(distM)} m`;
+    setTimeout(() => { btn.textContent = '📍 Relocate to Trees'; btn.disabled = false; }, 3000);
+
+    // Refresh lightbox map and stats
+    setTimeout(() => connect(true), 2000);
+
+  } catch(e) {
+    showToast('Relocate failed: ' + e.message, 'err');
+    btn.textContent = '📍 Relocate to Trees';
+    btn.disabled = false;
+  }
 }
 
 // ── PRINT FIELD RECORD ─────────────────────────────────────────────────────
