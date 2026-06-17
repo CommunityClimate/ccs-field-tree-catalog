@@ -1089,6 +1089,9 @@ input[type=range] { width:100%; accent-color:var(--amber); }
       <button class="btn-export" id="lbBtnRelocate" onclick="lbRelocateToTrees()"
         style="display:none;background:rgba(245,158,11,0.1);color:var(--amber);border-color:rgba(245,158,11,0.3)"
         title="Shift polygon to be centred on its own trees — preserves shape and size">📍 Relocate to Trees</button>
+      <button class="btn-export" id="lbBtnRedraw" onclick="lbRedrawFromTrees()"
+        style="display:none;background:rgba(167,139,250,0.1);color:var(--purple);border-color:rgba(167,139,250,0.3)"
+        title="Reconstruct polygon boundary from tree positions (convex hull + 8m buffer) — use for degenerate/broken polygons">🔄 Redraw from Trees</button>
       <button class="btn-export" id="lbBtnFix" onclick="lbOpenFix()"
         style="background:rgba(56,189,248,0.1);color:var(--blue);border-color:rgba(56,189,248,0.3)"
         title="Open in Polygon Corrector">✎ Fix in Corrector</button>
@@ -2976,6 +2979,12 @@ function updateLbButtons(f) {
     const hasTrees = (treesByField[f.fieldId] || []).length > 0;
     relBtn.style.display = (f.ring && hasTrees) ? 'inline-flex' : 'none';
   }
+  // Redraw from Trees button — needs at least 3 trees to compute a hull
+  const redrawBtn = document.getElementById('lbBtnRedraw');
+  if (redrawBtn) {
+    const treeCount = (treesByField[f.fieldId] || []).length;
+    redrawBtn.style.display = (f.ring && treeCount >= 3) ? 'inline-flex' : 'none';
+  }
   const inactive = _deactivatedGuids.has(f.guid) || _deactivatedIds.has(f.fieldId);
   const btnD = document.getElementById('lbBtnDeactivate');
   const btnA = document.getElementById('lbBtnActivate');
@@ -3065,6 +3074,157 @@ async function lbRelocateToTrees() {
   } catch(e) {
     showToast('Relocate failed: ' + e.message, 'err');
     btn.textContent = '📍 Relocate to Trees';
+    btn.disabled = false;
+  }
+}
+
+// ── REDRAW POLYGON FROM TREE POSITIONS (convex hull + buffer) ──────────────
+// Calibrated against 4 manually-corrected fields: 8m buffer landed within
+// -9.3% to +3.3% of the manually-drawn boundary (avg -1.9%), the tightest
+// spread of any buffer tested (5/8/10/12m). See redraw_dry_run.js for the
+// validation methodology.
+const REDRAW_BUFFER_M = 8;
+
+function _redrawConvexHull(points) {
+  points = points.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+  const cross = (o,a,b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lower = [];
+  for (const p of points) {
+    while (lower.length>=2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i=points.length-1;i>=0;i--) {
+    const p = points[i];
+    while (upper.length>=2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper); // CCW order
+}
+
+function _redrawOffsetPolygon(hull, bufferM) {
+  const n = hull.length;
+  if (n < 3) return hull;
+  const lines = [];
+  for (let i=0;i<n;i++) {
+    const p1 = hull[i], p2 = hull[(i+1)%n];
+    let dx = p2[0]-p1[0], dy = p2[1]-p1[1];
+    const len = Math.sqrt(dx*dx+dy*dy) || 1;
+    dx/=len; dy/=len;
+    const nx = dy, ny = -dx; // outward normal for CCW polygon
+    lines.push({ p:[p1[0]+nx*bufferM, p1[1]+ny*bufferM], d:[dx,dy] });
+  }
+  const newVerts = [];
+  for (let i=0;i<n;i++) {
+    const A = lines[(i-1+n)%n], B = lines[i];
+    const [x1,y1]=A.p, [dx1,dy1]=A.d;
+    const [x2,y2]=B.p, [dx2,dy2]=B.d;
+    const denom = dx1*dy2 - dy1*dx2;
+    if (Math.abs(denom) < 1e-9) { newVerts.push(B.p); continue; }
+    const t = ((x2-x1)*dy2 - (y2-y1)*dx2)/denom;
+    newVerts.push([x1+t*dx1, y1+t*dy1]);
+  }
+  return newVerts;
+}
+
+function _redrawPolygonAreaM2(verts) {
+  let area = 0;
+  const n = verts.length;
+  for (let i=0;i<n;i++) {
+    const [x1,y1] = verts[i], [x2,y2] = verts[(i+1)%n];
+    area += x1*y2 - x2*y1;
+  }
+  return Math.abs(area/2);
+}
+
+async function lbRedrawFromTrees() {
+  const f = fieldsData[_lbCurrentIdx];
+  if (!f || !f.ring) return;
+
+  const trees = treesByField[f.fieldId] || [];
+  if (trees.length < 3) { showToast('Need at least 3 trees to redraw a boundary', 'warn'); return; }
+
+  // Project to local meters (equirectangular approx, origin at first tree)
+  const lat0 = trees[0].lat, lng0 = trees[0].lng;
+  const toLocal = (lat, lng) => [
+    (lng-lng0)*111320*Math.cos(lat0*Math.PI/180),
+    (lat-lat0)*111320
+  ];
+  const toLatLng = (x, y) => [
+    lng0 + x/(111320*Math.cos(lat0*Math.PI/180)),
+    lat0 + y/111320
+  ];
+
+  const localPts = trees.map(t => toLocal(t.lat, t.lng));
+  const hull = _redrawConvexHull(localPts);
+  const offset = _redrawOffsetPolygon(hull, REDRAW_BUFFER_M);
+
+  const newAreaHa = _redrawPolygonAreaM2(offset) / 10000;
+
+  const n = f.ring.length - 1; // exclude closing duplicate
+  const ringLocal = f.ring.slice(0, n).map(v => toLocal(v[1], v[0])); // ring is [lng,lat]
+  const origAreaHa = _redrawPolygonAreaM2(ringLocal) / 10000;
+
+  const pctChange = origAreaHa > 0 ? Math.round((newAreaHa/origAreaHa - 1)*1000)/10 : null;
+
+  const confirmed = confirm(
+    `🔄 REDRAW BOUNDARY FROM TREES\n\n` +
+    `Field: ${f.fieldId}\n` +
+    `Owner: ${f.owner || '—'}\n\n` +
+    `This reconstructs the polygon entirely from the positions of\n` +
+    `${trees.length} registered trees (convex hull + ${REDRAW_BUFFER_M}m margin),\n` +
+    `replacing the current shape rather than just shifting it.\n\n` +
+    `Current area: ${origAreaHa.toFixed(2)} ha\n` +
+    `New area:     ${newAreaHa.toFixed(2)} ha\n` +
+    `Change:       ${pctChange !== null ? (pctChange>0?'+':'')+pctChange+'%' : 'n/a'}\n\n` +
+    `Use this for degenerate/broken polygons, not fields where the\n` +
+    `boundary is correct but trees only cover part of the plot.\n\n` +
+    `This will update the polygon in Fieldforce. Continue?`
+  );
+  if (!confirmed) return;
+
+  const btn = document.getElementById('lbBtnRedraw');
+  btn.disabled = true;
+  btn.textContent = '⏳ Redrawing…';
+
+  try {
+    const newRingLatLng = offset.map(([x,y]) => toLatLng(x,y)); // [lng,lat]
+    newRingLatLng.push(newRingLatLng[0]); // close ring
+
+    const newGeoJSON = JSON.stringify({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [newRingLatLng] },
+      properties: {}
+    });
+
+    const token = await getToken();
+    const res = await fetch(`${DV_API}/ccs_fields(${f.guid})`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'OData-MaxVersion': '4.0',
+        'OData-Version': '4.0',
+        'If-Match': '*'
+      },
+      body: JSON.stringify({ ccs_fieldgeojson_field: newGeoJSON })
+    });
+
+    if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+
+    f.ring    = newRingLatLng;
+    f.geoJSON = newGeoJSON;
+
+    showToast(`🔄 ${f.fieldId} redrawn from trees (${origAreaHa.toFixed(2)}ha → ${newAreaHa.toFixed(2)}ha)`, 'ok');
+    btn.textContent = `✓ Redrawn`;
+    setTimeout(() => { btn.textContent = '🔄 Redraw from Trees'; btn.disabled = false; }, 3000);
+
+    setTimeout(() => connect(true), 2000);
+
+  } catch(e) {
+    showToast('Redraw failed: ' + e.message, 'err');
+    btn.textContent = '🔄 Redraw from Trees';
     btn.disabled = false;
   }
 }
