@@ -3814,18 +3814,33 @@ async function detectDuplicatesKPI() {
   _duplicateFieldIds = new Set();
 
   // ── 1. Duplicate field IDs ─────────────────────────────────────────────
-  // A duplicate field ID = a field ID that exists in BOTH active AND inactive
-  // records in Fieldforce. We fetch inactive IDs separately and cross-reference.
-  // We do NOT flag active-only or inactive-only IDs as duplicates.
+  // A genuine duplicate = a field ID that appears MORE THAN ONCE in active
+  // Fieldforce records. These are unresolved and need action.
+  //
+  // Active-inactive pairs (1 active + 1 inactive sharing the same ID) are
+  // already resolved — Fieldforce deliberately deactivated the duplicate.
+  // We track these separately in _activeInactiveDupeIds for awareness only;
+  // they do NOT count toward the Dupe Fields KPI or "safe to disable" filter.
 
-  const activeFieldIds = new Set(fieldsData.map(f => f.fieldId).filter(Boolean));
+  // Active-active duplicates — the only genuinely unresolved cases
+  const activeIdCount = {};
+  fieldsData.forEach(f => {
+    if (f.fieldId) activeIdCount[f.fieldId] = (activeIdCount[f.fieldId] || 0) + 1;
+  });
+  Object.entries(activeIdCount).forEach(([id, count]) => {
+    if (count > 1) {
+      _duplicateFieldIds.add(id);
+      _duplicateFields.add(id);
+    }
+  });
 
-  // Fetch inactive field IDs — paginated to handle >5000 records
-  const inactiveFieldIds = new Set();
+  // Fetch inactive field IDs — paginated, for awareness logging only
+  window._activeInactiveDupeIds = new Set();
   try {
     const token = await getToken();
     let nextUrl = `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field&$filter=statecode eq 1&$top=1000`;
     let pageCount = 0;
+    const activeFieldIds = new Set(fieldsData.map(f => f.fieldId).filter(Boolean));
     while (nextUrl && pageCount < 50) {
       pageCount++;
       const res = await fetch(nextUrl, { headers: {
@@ -3838,36 +3853,18 @@ async function detectDuplicatesKPI() {
       const data = await res.json();
       (data.value || []).forEach(r => {
         const id = String(r.ccs_cssfieldid_field || '').trim();
-        if (id) inactiveFieldIds.add(id);
+        // Only note as active-inactive if not already an active-active dupe
+        if (id && activeFieldIds.has(id) && !_duplicateFieldIds.has(id)) {
+          window._activeInactiveDupeIds.add(id);
+        }
       });
       nextUrl = data['@odata.nextLink'] || null;
-      // Small delay between pages to avoid ERR_INSUFFICIENT_RESOURCES
       if (nextUrl) await new Promise(r => setTimeout(r, 200));
     }
-    console.log(`[Dupes] Fetched ${inactiveFieldIds.size} inactive field IDs across ${pageCount} page(s)`);
+    console.log(`[Dupes] Active-active dupes: ${_duplicateFieldIds.size} | Active-inactive (already resolved in Fieldforce): ${window._activeInactiveDupeIds.size} | Pages: ${pageCount}`);
   } catch(e) {
     console.warn('[Dupes] Could not fetch inactive fields:', e.message);
   }
-
-  // Only flag active fields whose ID also appears as inactive
-  activeFieldIds.forEach(id => {
-    if (inactiveFieldIds.has(id)) {
-      _duplicateFieldIds.add(id);
-      _duplicateFields.add(id);
-    }
-  });
-
-  // Also check for active-active duplicates (same ID appearing twice in active records)
-  const activeIdCount = {};
-  fieldsData.forEach(f => {
-    if (f.fieldId) activeIdCount[f.fieldId] = (activeIdCount[f.fieldId] || 0) + 1;
-  });
-  Object.entries(activeIdCount).forEach(([id, count]) => {
-    if (count > 1) {
-      _duplicateFieldIds.add(id);
-      _duplicateFields.add(id);
-    }
-  });
 
   // ── Classify active-active pairs by geometry ───────────────────────────
   // For each field ID with 2+ active records, compare polygon centroids and
