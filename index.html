@@ -2483,7 +2483,11 @@ function render() {
     if (filter === 'touching')     return (window._touchingSet||new Set()).has(f.fieldId);
     if (filter === 'duplicate_fields') return _duplicateFieldIds.has(f.fieldId);
     if (filter === 'dupe_fields_no_trees') {
-      return _duplicateFieldIds.has(f.fieldId) && (treesByField[f.fieldId] || []).length === 0;
+      if (!_duplicateFieldIds.has(f.fieldId)) return false;
+      const treeCount = (treesByField[f.guid] !== undefined)
+        ? (treesByField[f.guid] || []).length
+        : (treesByField[f.fieldId] || []).length;
+      return treeCount === 0;
     }
     if (filter === 'duplicate_trees')  return !!_duplicateTrees[f.fieldId];
     if (filter === 'near')             return _nearFieldIds.has(f.fieldId) && !((window._overlappingFieldIds||new Set()).has(f.fieldId));
@@ -3816,25 +3820,31 @@ async function detectDuplicatesKPI() {
 
   const activeFieldIds = new Set(fieldsData.map(f => f.fieldId).filter(Boolean));
 
-  // Fetch inactive field IDs
+  // Fetch inactive field IDs — paginated to handle >5000 records
   const inactiveFieldIds = new Set();
   try {
     const token = await getToken();
-    const res = await fetch(
-      `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field&$filter=statecode eq 1&$top=5000`,
-      { headers: {
+    let nextUrl = `${DV_API}/ccs_fields?$select=ccs_cssfieldid_field&$filter=statecode eq 1&$top=1000`;
+    let pageCount = 0;
+    while (nextUrl && pageCount < 50) {
+      pageCount++;
+      const res = await fetch(nextUrl, { headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
-        'OData-MaxVersion': '4.0', 'OData-Version': '4.0'
-      }}
-    );
-    if (res.ok) {
+        'OData-MaxVersion': '4.0', 'OData-Version': '4.0',
+        'Prefer': 'odata.maxpagesize=1000'
+      }});
+      if (!res.ok) break;
       const data = await res.json();
       (data.value || []).forEach(r => {
         const id = String(r.ccs_cssfieldid_field || '').trim();
         if (id) inactiveFieldIds.add(id);
       });
+      nextUrl = data['@odata.nextLink'] || null;
+      // Small delay between pages to avoid ERR_INSUFFICIENT_RESOURCES
+      if (nextUrl) await new Promise(r => setTimeout(r, 200));
     }
+    console.log(`[Dupes] Fetched ${inactiveFieldIds.size} inactive field IDs across ${pageCount} page(s)`);
   } catch(e) {
     console.warn('[Dupes] Could not fetch inactive fields:', e.message);
   }
