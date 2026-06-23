@@ -2041,8 +2041,9 @@ async function detectNearKPI() {
   window._nearDetectionComplete = false;
 
   // Use same grid as overlap detection
-  const CELL = 0.05;
-  const grid  = {};
+  const CELL        = 0.05;  // ~5 km cells
+  const MAX_BOX_DEG = 0.5;   // ~55 km — skip rings with corrupt/impossible extents
+  const grid  = new Map();   // Map avoids Object.keys() property-count limit
   const boxes = [];
 
   fields.forEach((f, idx) => {
@@ -2052,21 +2053,24 @@ async function detectNearKPI() {
       minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
     };
     boxes.push(box);
+    // Skip fields whose bounding box is implausibly large — corrupted coordinates
+    // in even one ring can generate millions of grid entries and crash enumeration.
+    if ((box.maxLat - box.minLat) > MAX_BOX_DEG ||
+        (box.maxLng - box.minLng) > MAX_BOX_DEG) return;
     const r0 = Math.floor(box.minLat / CELL), r1 = Math.floor(box.maxLat / CELL);
     const c0 = Math.floor(box.minLng / CELL), c1 = Math.floor(box.maxLng / CELL);
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         const key = `${r}:${c}`;
-        if (!grid[key]) grid[key] = [];
-        grid[key].push(idx);
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(idx);
       }
     }
   });
 
   const testedPairs = new Set();
   const candidates  = [];
-  for (const key of Object.keys(grid)) {
-    const cell = grid[key];
+  for (const cell of grid.values()) {
     if (cell.length < 2) continue;
     for (let a = 0; a < cell.length; a++) {
       for (let b = a + 1; b < cell.length; b++) {
@@ -2136,8 +2140,9 @@ async function detectOverlapsKPI() {
   el.textContent = '…';
 
   // ── Step 1: Build bounding boxes + spatial grid index ─────────────────────
-  const CELL = 0.05; // ~5km cells
-  const grid  = {};
+  const CELL        = 0.05;  // ~5 km cells
+  const MAX_BOX_DEG = 0.5;   // ~55 km — skip rings with corrupt/impossible extents
+  const grid  = new Map();   // Map avoids Object.keys() property-count limit
   const boxes = [];
 
   fields.forEach((f, idx) => {
@@ -2147,13 +2152,17 @@ async function detectOverlapsKPI() {
       minLng: Math.min(...lngs), maxLng: Math.max(...lngs)
     };
     boxes.push(box);
+    // Skip fields whose bounding box is implausibly large — corrupted coordinates
+    // in even one ring can generate millions of grid entries and crash enumeration.
+    if ((box.maxLat - box.minLat) > MAX_BOX_DEG ||
+        (box.maxLng - box.minLng) > MAX_BOX_DEG) return;
     const r0 = Math.floor(box.minLat / CELL), r1 = Math.floor(box.maxLat / CELL);
     const c0 = Math.floor(box.minLng / CELL), c1 = Math.floor(box.maxLng / CELL);
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         const key = `${r}:${c}`;
-        if (!grid[key]) grid[key] = [];
-        grid[key].push(idx);
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(idx);
       }
     }
   });
@@ -2161,8 +2170,7 @@ async function detectOverlapsKPI() {
   // ── Step 2: Collect unique candidate pairs ────────────────────────────────
   const testedPairs = new Set();
   const candidates  = [];
-  for (const key of Object.keys(grid)) {
-    const cell = grid[key];
+  for (const cell of grid.values()) {
     if (cell.length < 2) continue;
     for (let a = 0; a < cell.length; a++) {
       for (let b = a + 1; b < cell.length; b++) {
