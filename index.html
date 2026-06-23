@@ -1496,26 +1496,40 @@ function setStatus(msg, cls = '', isHtml = false) {
   el.className = 'ff-status ' + cls;
 }
 
-async function dvFetchAll(token, url, label) {
-  const rows = [];
-  let page = 0;
+// onPage(pageRows) — optional streaming callback. When provided, pages are
+// processed and discarded immediately; dvFetchAll returns the total row count
+// instead of accumulating all rows. Use this for large entities (trees).
+async function dvFetchAll(token, url, label, onPage, annotations = true) {
+  const rows   = onPage ? null : [];
+  let page     = 0;
+  let total    = 0;
+  const prefer = annotations
+    ? 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+    : 'odata.maxpagesize=5000';
   while (url) {
     page++;
-    setStatus(`⬇ ${label}: page ${page} (${rows.length.toLocaleString()} so far)…`, 'ok');
+    setStatus(`⬇ ${label}: page ${page} (${total.toLocaleString()} so far)…`, 'ok');
     const res = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
         'OData-MaxVersion': '4.0', 'OData-Version': '4.0',
-        'Prefer': 'odata.maxpagesize=5000,odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+        'Prefer': prefer
       }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    rows.push(...(data.value || []));
+    const pageRows = data.value || [];
+    total += pageRows.length;
+    if (onPage) {
+      onPage(pageRows);   // process this page immediately
+      // pageRows goes out of scope here — GC can reclaim it
+    } else {
+      rows.push(...pageRows);
+    }
     url = data['@odata.nextLink'] || null;
   }
-  return rows;
+  return onPage ? total : rows;
 }
 
 // ── INDEXEDDB CACHE ────────────────────────────────────────────────────────
@@ -1652,30 +1666,37 @@ async function connect(forceRefresh = false) {
     })).map(f => { f.ring = parseGeoJSON(f.geoJSON); return f; })
       .filter(f => f.fieldId);
 
-    setStatus('Loading trees…', 'ok');
-    const tRows = await dvFetchAll(token,
-      `${DV_API}/ccs_trees?$select=ccs_treecode,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
-      'Trees'
-    );
-
+    // Build GUID → fieldId map, then drop fRows — no longer needed
     const guidToId = {};
     fieldsArr.forEach(f => { if (f.guid) guidToId[f.guid.toLowerCase()] = f.fieldId; });
+    fRows.length = 0;   // release raw OData rows before fetching trees
 
-    const treesObj      = {};
-    let treeCount       = 0;
+    // Stream trees page-by-page — each page is processed and discarded
+    // immediately so we never hold all 1.4M rows in memory at once.
+    // annotations=false: trees have no lookup columns needing formatted values.
+    setStatus('Loading trees…', 'ok');
+    const treesObj       = {};
+    let treeCount        = 0;
     let unallocatedCount = 0;
-    tRows.forEach(r => {
-      const lat = parseFloat(r.ccs_treelatitude_tree);
-      const lng = parseFloat(r.ccs_treelongitude_tree);
-      if (isNaN(lat) || isNaN(lng)) return;
-      const coords = autoLatLng(lat, lng);
-      const guid   = (r['_ccs_field_tree_value'] || '').toLowerCase();
-      const fid    = guidToId[guid];
-      if (!fid) { unallocatedCount++; return; }
-      if (!treesObj[fid]) treesObj[fid] = [];
-      treesObj[fid].push({ lat: coords.lat, lng: coords.lng, code: r.ccs_treecode || '' });
-      treeCount++;
-    });
+    await dvFetchAll(token,
+      `${DV_API}/ccs_trees?$select=ccs_treecode,ccs_treelatitude_tree,ccs_treelongitude_tree,_ccs_field_tree_value&$filter=statecode eq 0`,
+      'Trees',
+      (pageRows) => {
+        pageRows.forEach(r => {
+          const lat = parseFloat(r.ccs_treelatitude_tree);
+          const lng = parseFloat(r.ccs_treelongitude_tree);
+          if (isNaN(lat) || isNaN(lng)) return;
+          const coords = autoLatLng(lat, lng);
+          const guid   = (r['_ccs_field_tree_value'] || '').toLowerCase();
+          const fid    = guidToId[guid];
+          if (!fid) { unallocatedCount++; return; }
+          if (!treesObj[fid]) treesObj[fid] = [];
+          treesObj[fid].push({ lat: coords.lat, lng: coords.lng, code: r.ccs_treecode || '' });
+          treeCount++;
+        });
+      },
+      false   // no annotation header — reduces tree response payload ~50%
+    );
 
     // Save to cache (without ring — rebuilt on load)
     setStatus('💾 Saving to cache…', 'ok');
