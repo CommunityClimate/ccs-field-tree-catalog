@@ -3402,6 +3402,11 @@ function clearFilters() {
   document.getElementById('fltDateTo').value    = '';
   const warnEl = document.getElementById('collectorFilterWarn');
   if (warnEl) warnEl.style.display = 'none';
+  // Close any active special panels so the main catalog is restored
+  if (emptyOverlapsActive)  toggleEmptyOverlaps();
+  if (_bulkCorrectActive)   toggleBulkCorrect();
+  if (typeof _siReviewActive !== 'undefined' && _siReviewActive) toggleSIReview?.();
+  if (typeof _subMinActive   !== 'undefined' && _subMinActive)   toggleSubMin?.();
   render();
 }
 
