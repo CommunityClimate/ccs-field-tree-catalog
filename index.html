@@ -1727,15 +1727,15 @@ function updateKPIs() {
       if (ringAreaHa(f.ring) > threshold) largeCount++;
       if (trees.length > 0) {
         const cl = classifyField(f);
-        totalInside    += cl.inside + cl.tolerance;
+        totalInside    += cl.inside;
         totalTolerance += cl.tolerance;
         totalReview    += cl.review;
         totalOutside   += cl.outside;
       }
     }
   });
-  const totalTrees = totalInside + totalReview + totalOutside;
-  const pct = totalTrees > 0 ? Math.round(totalInside / totalTrees * 100) : 0;
+  const totalTrees = totalInside + totalTolerance + totalReview + totalOutside;
+  const pct = totalTrees > 0 ? Math.round((totalInside + totalTolerance) / totalTrees * 100) : 0;
   const pctCol = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
 
   document.getElementById('kpiFields').textContent    = fieldsData.length.toLocaleString();
