@@ -8991,7 +8991,7 @@ function renderBulkPage() {
     const isLarge  = areaA > (parseFloat(document.getElementById('largeThreshold')?.value) || 10); // exclude corrupted large polygons
     const ovPct    = areaA > 0 ? (e.overlapHa/areaA)*100 : 100;
     if (isLarge) return false;
-    return trees === 0 || (e.diagnosis==='minor_overlap' && e.confidence==='high' && (ovPct<5||e.overlapHa<0.005));
+    return trees === 0 || (e.diagnosis==='minor_overlap' && (e.confidence==='high'||e.confidence==='medium') && (ovPct<5||e.overlapHa<0.005||e.overlapHa===0));
   }).length;
 
   document.getElementById('bcStatus').innerHTML =
@@ -9241,7 +9241,7 @@ function autoApproveSafeCases() {
     const isZeroTree     = trees === 0;
     const isTrivialClip  = entry.diagnosis === 'minor_overlap' &&
                            (entry.confidence === 'high' || entry.confidence === 'medium') &&
-                           (overlapPct < 5 || entry.overlapHa < 0.005);
+                           (overlapPct < 5 || entry.overlapHa < 0.005 || entry.overlapHa === 0);
 
     if (isZeroTree || isTrivialClip) {
       entry.approved = true;
