@@ -9240,7 +9240,7 @@ function autoApproveSafeCases() {
 
     const isZeroTree     = trees === 0;
     const isTrivialClip  = entry.diagnosis === 'minor_overlap' &&
-                           entry.confidence === 'high' &&
+                           (entry.confidence === 'high' || entry.confidence === 'medium') &&
                            (overlapPct < 5 || entry.overlapHa < 0.005);
 
     if (isZeroTree || isTrivialClip) {
