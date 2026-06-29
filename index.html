@@ -2254,8 +2254,8 @@ async function detectOverlapsKPI() {
   // Returns: 'true_overlap' | 'tip_over' | 'line_on' | 'touching'
   function classifyOverlap(rA, rB) {
     const sharedM2 = estimateSharedAreaM2(rA, rB);
-    if (sharedM2 > 5)    return 'true_overlap'; // >5m² — genuine shared area
-    if (sharedM2 > 0.1)  return 'tip_over';     // 0.1–5m² — corner/tip over boundary
+    if (sharedM2 > 500)  return 'true_overlap'; // >500m² (0.05ha) — material shared area
+    if (sharedM2 > 5)    return 'tip_over';     // 5–500m² — minor encroachment, GPS tolerance
     // Near-zero area — check if it's edge-on-edge or just touching
     // Count vertices of A that lie exactly on B's boundary
     let onBoundary = 0;
